@@ -6,6 +6,8 @@ node_modules/
 # Expo
 .expo/
 dist/
+dist-android/
+dist-ios/
 web-build/
 expo-env.d.ts
 
@@ -13,6 +15,7 @@ expo-env.d.ts
 .kotlin/
 *.orig.*
 *.jks
+*.keystore
 *.p8
 *.p12
 *.key
@@ -31,7 +34,15 @@ yarn-error.*
 *.pem
 
 # local env files
+.env
+.env.*
+!.env.example
 .env*.local
+
+# local databases and exports
+*.db
+*.sqlite
+*.sqlite3
 
 # typescript
 *.tsbuildinfo

@@ -1,0 +1,13 @@
+import React, { useState } from 'react';
+import { router } from 'expo-router';
+import { uid } from '../core/date';
+import { validateProfileValues } from '../core/validation';
+import { Language, Profile } from '../core/types';
+import { repo } from '../data/db';
+import { useApp } from '../state/app';
+import { Button, Card, Choices, Field, message, MultiChoices, Page, styles } from '../ui/components';
+import { Text } from '../ui/LocalizedText';
+export default function Onboarding() { const {refresh,setLanguage:applyLanguage}=useApp(); const [name,setName]=useState(''),[birth,setBirth]=useState(''),[height,setHeight]=useState(''),[weight,setWeight]=useState(''),[target,setTarget]=useState(''),[experience,setExperience]=useState('Beginner'),[goal,setGoal]=useState('Improve general fitness'),[growth,setGrowth]=useState<string[]>(['Build discipline']),[language,setLanguage]=useState<Language>('en');
+  async function save(){ try { const values=validateProfileValues({name,birth_date:birth,height_cm:Number(height),start_weight:Number(weight),target_weight:target?Number(target):null}); if(!growth.length) throw Error('Select at least one personal growth goal.'); const p:Profile={id:uid(),...values,experience,fitness_goal:goal,growth_goals:growth.join(','),language,completed_at:new Date().toISOString()}; await repo.createProfile(p); await refresh(); router.replace('/(tabs)'); } catch(e){message(e);} }
+  return <Page title="Your starting point"><Text style={styles.subtitle}>Progress over perfection. Become better, one day at a time.</Text><Card><Field label="Display name" value={name} onChangeText={setName}/><Field label="Date of birth (YYYY-MM-DD)" value={birth} onChangeText={setBirth} placeholder="1995-06-15"/><Field label="Height (cm)" value={height} onChangeText={setHeight} keyboardType="decimal-pad"/><Field label="Current weight (kg)" value={weight} onChangeText={setWeight} keyboardType="decimal-pad"/><Field label="Target weight (kg, optional)" value={target} onChangeText={setTarget} keyboardType="decimal-pad"/><Choices label="Experience" options={['Beginner','Intermediate','Advanced']} value={experience} onChange={setExperience}/><Choices label="Fitness goal" options={['Lose weight','Gain muscle','Improve general fitness','Maintain current fitness']} value={goal} onChange={setGoal}/><MultiChoices label="Personal growth goals" options={['Build discipline','Improve consistency','Build healthier habits','Improve productivity']} value={growth} onChange={setGrowth}/><Choices label="Language" options={['en','fr','ar'] as const} value={language} onChange={next=>{setLanguage(next);applyLanguage(next);}}/><Button title="Continue" onPress={save}/></Card></Page>;
+}
