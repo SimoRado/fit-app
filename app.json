@@ -27,7 +27,9 @@
       "expo-router",
       "expo-sqlite",
       "expo-notifications",
-      "expo-font"
+      "expo-font",
+      "@clerk/expo",
+      "expo-secure-store"
     ]
   }
 }

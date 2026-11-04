@@ -47,6 +47,20 @@ describe('SQLite persistence schema', () => {
     database.close();
   });
 
+  it('preserves existing workout sets as completed when adding per-set status', () => {
+    const database = open();
+    database.exec(migrations[0]); database.exec(migrations[1]); database.exec('PRAGMA user_version=2');
+    addProfile(database);
+    database.prepare('INSERT INTO exercises VALUES (?,?,?,?)').run('bench', 'Bench Press', 'weight_reps', 0);
+    database.prepare('INSERT INTO workouts VALUES (?,?,?,?,?,?,?,?,?)').run('w', 'p', 'Session', '2026-11-02', '2026-11-02T12:00:00Z', 30, '', 1, 'now');
+    database.prepare('INSERT INTO workout_exercises VALUES (?,?,?,?)').run('we', 'w', 'bench', 0);
+    database.prepare('INSERT INTO workout_sets VALUES (?,?,?,?,?,?,?)').run('s', 'we', 1, 8, 50, null, '');
+    migrate(database);
+    expect(database.prepare('SELECT reps,weight_kg,completed FROM workout_sets WHERE id=?').get('s')).toEqual({ reps: 8, weight_kg: 50, completed: 1 });
+    expect((database.prepare(trainingWorkoutsQuery).all() as { id: string }[]).map(row => row.id)).toEqual(['w']);
+    database.close();
+  });
+
   it('supports profile, weight, and habit completion CRUD with duplicate protection and cascades', () => {
     const database = open(); migrate(database); addProfile(database);
     database.prepare('INSERT INTO weights VALUES (?,?,?,?,?,?)').run('w', 'p', '2026-11-02', 80, '', 'now');
@@ -81,11 +95,13 @@ describe('SQLite persistence schema', () => {
     const addWorkout = (id: string, day: string, completed: number) => database.prepare('INSERT INTO workouts VALUES (?,?,?,?,?,?,?,?,?)').run(id, 'p', id, day, `${day}T12:00:00Z`, 30, '', completed, `${day}T12:00:00Z`);
     addWorkout('empty', '2026-11-01', 1); addWorkout('draft', '2026-11-03', 0); addWorkout('valid-old', '2026-11-02', 1); addWorkout('valid-new', '2026-11-03', 1);
     database.prepare('INSERT INTO workout_exercises VALUES (?,?,?,?)').run('link-old', 'valid-old', 'bench', 0);
-    database.prepare('INSERT INTO workout_sets VALUES (?,?,?,?,?,?,?)').run('set-old', 'link-old', 1, 8, 50, null, '');
+    database.prepare('INSERT INTO workout_sets (id,workout_exercise_id,set_number,reps,weight_kg,duration_sec,note) VALUES (?,?,?,?,?,?,?)').run('set-old', 'link-old', 1, 8, 50, null, '');
     database.prepare('INSERT INTO workout_exercises VALUES (?,?,?,?)').run('link-new', 'valid-new', 'bench', 0);
-    database.prepare('INSERT INTO workout_sets VALUES (?,?,?,?,?,?,?)').run('set-new', 'link-new', 1, 10, 55, null, '');
+    database.prepare('INSERT INTO workout_sets (id,workout_exercise_id,set_number,reps,weight_kg,duration_sec,note) VALUES (?,?,?,?,?,?,?)').run('set-new', 'link-new', 1, 10, 55, null, '');
     const rows = database.prepare(trainingWorkoutsQuery).all() as { id: string }[];
     expect(rows.map(row => row.id)).toEqual(['valid-new', 'valid-old']);
+    database.prepare('UPDATE workout_sets SET completed=0 WHERE id=?').run('set-old');
+    expect((database.prepare(trainingWorkoutsQuery).all() as { id: string }[]).map(row => row.id)).toEqual(['valid-new']);
     database.prepare('DELETE FROM workouts WHERE id=?').run('valid-new');
     expect((database.prepare('SELECT COUNT(*) AS n FROM workout_sets').get() as { n: number }).n).toBe(1);
     database.close();
@@ -99,7 +115,7 @@ describe('SQLite persistence schema', () => {
     database.prepare('INSERT INTO routine_exercises VALUES (?,?,?,?)').run('re', 'r', 'bench', 0);
     database.prepare('INSERT INTO workouts VALUES (?,?,?,?,?,?,?,?,?)').run('w', 'p', 'Upper body', '2026-11-02', '2026-11-02T12:00:00Z', 40, '', 1, 'now');
     database.prepare('INSERT INTO workout_exercises VALUES (?,?,?,?)').run('we', 'w', 'bench', 0);
-    database.prepare('INSERT INTO workout_sets VALUES (?,?,?,?,?,?,?)').run('s', 'we', 1, 8, 50, null, '');
+    database.prepare('INSERT INTO workout_sets (id,workout_exercise_id,set_number,reps,weight_kg,duration_sec,note) VALUES (?,?,?,?,?,?,?)').run('s', 'we', 1, 8, 50, null, '');
     database.exec('BEGIN');
     database.prepare('UPDATE routines SET name=? WHERE id=?').run('Lower body', 'r');
     database.prepare('DELETE FROM routine_exercises WHERE routine_id=?').run('r');

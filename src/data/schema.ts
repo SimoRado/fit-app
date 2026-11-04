@@ -17,6 +17,7 @@ export const migrations = [
    CREATE TABLE IF NOT EXISTS preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS notification_schedules (key TEXT PRIMARY KEY, notification_id TEXT NOT NULL);`,
   `ALTER TABLE notification_schedules ADD COLUMN config TEXT NOT NULL DEFAULT '';`,
+  `ALTER TABLE workout_sets ADD COLUMN completed INTEGER NOT NULL DEFAULT 1;`,
 ] as const;
 
 export const exerciseSeeds: readonly [string, string][] = [

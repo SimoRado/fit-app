@@ -37,6 +37,61 @@ const phrases: Record<string, Partial<Record<Language, string>>> = Object.assign
   }
 );
 
+Object.assign(phrases, {
+  'Elapsed time': { fr: 'Temps écoulé', ar: 'الوقت المنقضي' },
+  'Timer uses time since this session was opened.': { fr: 'Le chronomètre commence à l’ouverture de cette séance.', ar: 'يبدأ المؤقت عند فتح هذه الجلسة.' },
+  'Use timer': { fr: 'Utiliser le chronomètre', ar: 'استخدام المؤقت' },
+  'Completed sets:': { fr: 'Séries terminées :', ar: 'المجموعات المكتملة:' },
+  'Only completed sets count toward workout statistics and records.': { fr: 'Seules les séries terminées comptent dans les statistiques et les records.', ar: 'تُحتسب المجموعات المكتملة فقط في الإحصاءات والأرقام الشخصية.' },
+  'A completed workout needs at least one completed set.': { fr: 'Une séance terminée doit comporter au moins une série terminée.', ar: 'يجب أن تتضمن الجلسة المكتملة مجموعة مكتملة واحدة على الأقل.' },
+  'Remove set?': { fr: 'Supprimer cette série ?', ar: 'حذف هذه المجموعة؟' },
+  'Remove exercise?': { fr: 'Supprimer cet exercice ?', ar: 'حذف هذا التمرين؟' },
+  'Exercise': { fr: 'Exercice', ar: 'تمرين' },
+  'Discard changes': { fr: 'Abandonner les modifications', ar: 'تجاهل التغييرات' },
+  'Discard workout changes?': { fr: 'Abandonner les modifications de cette séance ?', ar: 'تجاهل تغييرات هذا التمرين؟' },
+  'Discard': { fr: 'Abandonner', ar: 'تجاهل' },
+  'Workout not found.': { fr: 'Séance introuvable.', ar: 'تعذر العثور على التمرين.' },
+  'Routine not found.': { fr: 'Programme introuvable.', ar: 'تعذر العثور على الروتين.' },
+  'Session details': { fr: 'Détails de la séance', ar: 'تفاصيل الجلسة' },
+  'Hide session details': { fr: 'Masquer les détails', ar: 'إخفاء التفاصيل' },
+  'Good morning,': { fr: 'Bonjour,', ar: 'صباح الخير،' },
+  'Good afternoon,': { fr: 'Bonjour,', ar: 'طاب نهارك،' },
+  'Good evening,': { fr: 'Bonsoir,', ar: 'مساء الخير،' },
+  'friend': { fr: 'ami', ar: 'صديقي' },
+  'Day streak': { fr: 'Jours de suite', ar: 'أيام متتالية' },
+  'day streak': { fr: 'jours de suite', ar: 'أيام متتالية' },
+  'Today is complete': { fr: 'Journée accomplie', ar: 'اكتملت مهام اليوم' },
+  'Finish today to extend it': { fr: 'Terminez la journée pour la prolonger', ar: 'أكمل مهام اليوم لتواصل السلسلة' },
+  'Featured workout': { fr: 'Séance du jour', ar: 'التمرين المقترح' },
+  'Open your saved session': { fr: 'Ouvrir la séance enregistrée', ar: 'افتح التمرين المحفوظ' },
+  'Ready when you are': { fr: 'Prêt à commencer', ar: 'ابدأ عندما تكون مستعدًا' },
+  'Build your next session': { fr: 'Préparez votre prochaine séance', ar: 'أنشئ تمرينك القادم' },
+  'View log': { fr: 'Voir le journal', ar: 'عرض السجل' },
+  'Start workout': { fr: 'Commencer la séance', ar: 'ابدأ التمرين' },
+  "Today's missions": { fr: 'Missions du jour', ar: 'مهام اليوم' },
+  'See all': { fr: 'Tout voir', ar: 'عرض الكل' },
+  'Done': { fr: 'Terminée', ar: 'مكتملة' },
+  'Saved routines': { fr: 'Programmes enregistrés', ar: 'الروتينات المحفوظة' },
+  'Recent workouts': { fr: 'Séances récentes', ar: 'التمارين الأخيرة' },
+  'sessions this week': { fr: 'séances cette semaine', ar: 'تمارين هذا الأسبوع' },
+  'Habit completion': { fr: 'Habitudes accomplies', ar: 'إنجاز العادات' },
+  'Weight change in selected period': { fr: 'Évolution du poids sur la période', ar: 'تغير الوزن خلال الفترة' },
+  'Add two weight entries to see your change': { fr: 'Ajoutez deux mesures pour voir l’évolution', ar: 'أضف قياسين للوزن لعرض التغير' },
+  'Completed today': { fr: 'Terminées aujourd’hui', ar: 'المكتملة اليوم' },
+  'Create your first mission': { fr: 'Créez votre première mission', ar: 'أنشئ مهمتك الأولى' },
+  'remaining': { fr: 'restantes', ar: 'متبقية' },
+  'Day locked in': { fr: 'Journée accomplie', ar: 'اكتمل اليوم' },
+  'Every mission is done.': { fr: 'Toutes les missions sont terminées.', ar: 'اكتملت جميع المهام.' },
+  'Tap the circle to complete or undo': { fr: 'Touchez le cercle pour valider ou annuler', ar: 'اضغط الدائرة للإكمال أو التراجع' },
+  'Finish': { fr: 'Terminer', ar: 'إنهاء' },
+  'Use timer for duration': { fr: 'Utiliser la durée du chronomètre', ar: 'استخدم مدة المؤقت' },
+  'Edit profile': { fr: 'Modifier le profil', ar: 'تعديل الملف الشخصي' },
+  'Set notes': { fr: 'Notes de la série', ar: 'ملاحظات المجموعة' },
+  'SET': { fr: 'SÉRIE', ar: 'مجموعة' },
+  'SECONDS': { fr: 'SECONDES', ar: 'ثوانٍ' },
+  'REPS': { fr: 'RÉP.', ar: 'تكرارات' },
+  'KG': { fr: 'KG', ar: 'كغ' },
+});
 let activeLanguage: Language = 'en';
 export const setActiveLanguage = (language: Language) => { activeLanguage = language; };
 export const getActiveLanguage = () => activeLanguage;
@@ -45,6 +100,10 @@ export function localize(text: string, language = activeLanguage): string {
   const exact = phrases[text.trim()]?.[language];
   if (exact) return formatDatesAndNumbers(exact, language);
   let result = text;
+  if (result === 'Weekly challenges') result = language === 'fr' ? 'Défis hebdomadaires' : 'التحديات الأسبوعية';
+  if (result === 'Review your details') result = language === 'fr' ? 'Vérifiez vos informations' : 'راجع معلوماتك';
+  const onboardingStep = result.match(/^Step (\d+) of (\d+)$/);
+  if (onboardingStep) result = language === 'fr' ? `Étape ${onboardingStep[1]} sur ${onboardingStep[2]}` : `الخطوة ${onboardingStep[1]} من ${onboardingStep[2]}`;
   const dailyProgress = result.match(/^Daily progress: (\d+)\/(\d+) objectives · (\d+)%$/);
   if (dailyProgress) result = language === 'fr'
     ? `Progrès du jour : ${dailyProgress[1]}/${dailyProgress[2]} objectifs · ${dailyProgress[3]}%`
@@ -56,6 +115,10 @@ export function localize(text: string, language = activeLanguage): string {
   if (result === 'No objectives scheduled today.') result = language === 'fr'
     ? 'Aucun objectif prévu aujourd’hui.'
     : 'لا توجد أهداف مجدولة اليوم.';
+  const leftToday = result.match(/^(\d+) left today\. Keep going\.$/);
+  if (leftToday) result = language === 'fr' ? `Encore ${leftToday[1]} objectifs aujourd’hui. Continuez.` : `تبقى ${leftToday[1]} من أهداف اليوم. واصل.`;
+  const remainingCount = result.match(/^(\d+) remaining$/);
+  if (remainingCount) result = language === 'fr' ? `${remainingCount[1]} restantes` : `${remainingCount[1]} متبقية`;
   if (result === 'No fixed-schedule habits today.') result = language === 'fr'
     ? 'Aucune habitude à fréquence fixe aujourd’hui.'
     : 'لا توجد عادات ذات جدول ثابت اليوم.';
@@ -102,6 +165,7 @@ export function localize(text: string, language = activeLanguage): string {
   const needsDuration = result.match(/^(.+) needs a duration\.$/);
   if (needsDuration) result = language === 'fr' ? `${needsDuration[1]} nécessite une durée.` : `${needsDuration[1]} يتطلب إدخال مدة.`;
   const replacements: [string, string, string][] = [
+    ['Done', 'Terminée', 'مكتملة'],
     [' · ', ' · ', ' · '], ['Completed today', 'Terminée aujourd’hui', 'مكتمل اليوم'], ['Latest:', 'Dernière séance :', 'الأحدث:'], ['Starting:', 'Au départ :', 'وزن البداية:'], ['Target:', 'Objectif :', 'الهدف:'], ['Change:', 'Évolution :', 'التغير:'], ['Habits', 'Habitudes', 'العادات'], ['Missions', 'Missions', 'المهام'], ['Workout', 'Séance', 'التمرين'], ['Weight', 'Poids', 'الوزن'], ['Today', 'Aujourd’hui', 'اليوم'], ['today', 'aujourd’hui', 'اليوم'], ['this week', 'cette semaine', 'هذا الأسبوع'], ['this month', 'ce mois-ci', 'هذا الشهر'], ['Current streak', 'Série actuelle', 'السلسلة الحالية'], ['Longest', 'Record', 'الأطول'], ['Completed', 'Terminé', 'مكتمل'], ['In progress', 'En cours', 'قيد التنفيذ'], ['No entries', 'Aucune mesure', 'لا توجد قياسات'], ['completed sessions', 'séances terminées', 'تمارين مكتملة'], ['training minutes', 'minutes d’entraînement', 'دقائق تدريب'], ['peak', 'maximum', 'أعلى عدد'], ['active days out of', 'jours actifs sur', 'أيام نشطة من أصل'], ['habit targets', 'objectifs d’habitude', 'أهداف العادات'], ['weight entry', 'mesure de poids', 'قياس وزن'], ['Create habit', 'Créer une habitude', 'إنشاء عادة'], ['All habits', 'Toutes les habitudes', 'كل العادات'], ['streak', 'série', 'سلسلة'], ['Beginner', 'Débutant', 'مبتدئ'], ['Intermediate', 'Intermédiaire', 'متوسط'], ['Advanced', 'Avancé', 'متقدم'], ['daily', 'quotidien', 'يومي'], ['weekly', 'hebdomadaire', 'أسبوعي'], ['manual', 'manuel', 'يدوي'], ['workouts', 'séances', 'تمارين'], ['habits', 'habitudes', 'عادات'], ['weight', 'poids', 'وزن'], [' sec', ' s', ' ث'], [' kg', ' kg', ' كغ'], [' min', ' min', ' د'],
   ];
   for (const [source, fr, ar] of replacements) result = result.replaceAll(source, language === 'fr' ? fr : ar);

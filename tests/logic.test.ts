@@ -66,9 +66,10 @@ describe('period ranges and edge cases',()=>{
     const exercise={id:'bench',name:'Bench Press',metric:'weight_reps' as const,custom:0};
     const link={id:'link',workout_id:'w',exercise_id:'bench',position:0};
     const workout:Workout={id:'w',owner_id:'p',name:'Gym',day:'2026-11-02',started_at:'',duration_min:30,notes:'',completed:1,created_at:''};
-    const set={id:'set',workout_exercise_id:'link',set_number:1,reps:8,weight_kg:60,duration_sec:null,note:''};
+    const set={id:'set',workout_exercise_id:'link',set_number:1,reps:8,weight_kg:60,duration_sec:null,note:'',completed:1};
     expect(personalRecords([exercise],[link],[set],[workout])).toEqual([{name:'Bench Press',metric:'weight_reps',value:60,reps:8}]);
     expect(personalRecords([exercise],[link],[{...set,weight_kg:65}],[workout])[0].value).toBe(65);
     expect(personalRecords([exercise],[link],[set],[{...workout,completed:0}])).toEqual([]);
+    expect(personalRecords([exercise],[link],[{...set,completed:0}],[workout])).toEqual([]);
   });
 });

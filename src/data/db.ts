@@ -3,11 +3,20 @@ import { Exercise, Favorite, Habit, HabitCompletion, Measurement, Mission, Missi
 import { addDays, dayKey, uid } from '../core/date';
 import { exerciseSeeds, migrations } from './schema';
 import { trainingWorkoutsQuery } from './queries';
+import { localDatabaseName } from './account';
 
 let promise: Promise<SQLite.SQLiteDatabase> | undefined;
+let activeAccount: string | null = null;
+
+export function setLocalAccount(userId: string | null) {
+  if (userId !== null) localDatabaseName(userId);
+  if (activeAccount !== userId) { activeAccount = userId; promise = undefined; }
+}
+
 export async function db() {
+  if (!activeAccount) throw new Error('Sign in before accessing local fitness data');
   if (!promise) promise = (async () => {
-    const d = await SQLite.openDatabaseAsync('better-day.db');
+    const d = await SQLite.openDatabaseAsync(localDatabaseName(activeAccount));
     await d.execAsync('PRAGMA foreign_keys = ON');
     const row = await d.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
     for (let i = row?.user_version ?? 0; i < migrations.length; i++) {
@@ -55,7 +64,7 @@ export const repo = {
   saveWorkoutBundle: async (w: Workout, exercises: { link: WorkoutExercise; sets: WorkoutSet[] }[]) => { const d = await db(); await d.withExclusiveTransactionAsync(async tx => {
     await tx.runAsync('INSERT INTO workouts VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,day=excluded.day,started_at=excluded.started_at,duration_min=excluded.duration_min,notes=excluded.notes,completed=excluded.completed', w.id,w.owner_id,w.name,w.day,w.started_at,w.duration_min,w.notes,w.completed,w.created_at);
     await tx.runAsync('DELETE FROM workout_exercises WHERE workout_id=?',w.id);
-    for (const item of exercises) { await tx.runAsync('INSERT INTO workout_exercises VALUES (?,?,?,?)',item.link.id,item.link.workout_id,item.link.exercise_id,item.link.position); for (const s of item.sets) await tx.runAsync('INSERT INTO workout_sets VALUES (?,?,?,?,?,?,?)',s.id,s.workout_exercise_id,s.set_number,s.reps,s.weight_kg,s.duration_sec,s.note); }
+    for (const item of exercises) { await tx.runAsync('INSERT INTO workout_exercises VALUES (?,?,?,?)',item.link.id,item.link.workout_id,item.link.exercise_id,item.link.position); for (const s of item.sets) await tx.runAsync('INSERT INTO workout_sets (id,workout_exercise_id,set_number,reps,weight_kg,duration_sec,note,completed) VALUES (?,?,?,?,?,?,?,?)',s.id,s.workout_exercise_id,s.set_number,s.reps,s.weight_kg,s.duration_sec,s.note,s.completed); }
   }); },
   saveWorkoutExercise: (e: WorkoutExercise) => put('workout_exercises', e),
   saveSet: (s: WorkoutSet) => put('workout_sets', s),

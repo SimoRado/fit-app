@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { View } from 'react-native';
 import { router } from 'expo-router';
 import { Text } from '../../ui/LocalizedText';
 import Svg, { Circle, Polyline, Rect, Text as SvgText } from 'react-native-svg';
@@ -8,6 +9,9 @@ import { Exercise, Habit, HabitCompletion, Mission, MissionCompletion, WeightEnt
 import { repo } from '../../data/db';
 import { useApp } from '../../state/app';
 import { Button, Card, Choices, Empty, Page, styles, message } from '../../ui/components';
+import { ProgressBar, Reveal, TransformationRuler } from '../../ui/visuals';
+import { colors, fonts } from '../../ui/theme';
+import { DisplayMetric } from '../../ui/DisplayMetric';
 
 type Period = '7' | '30' | '90';
 const dateLabel = (day: string, language: string = 'en') => new Intl.DateTimeFormat(language === 'fr' ? 'fr-FR' : language === 'ar' ? 'ar-u-nu-arab' : 'en-US', { month: 'short', day: 'numeric' }).format(new Date(`${day}T12:00:00`));
@@ -68,33 +72,38 @@ export default function Progress() {
   const missionDoneToday = missions.filter(mission => mission.active && mission.period === 'daily' && missionProgress(mission, today, { completions, workouts, weights, manual }).done).length;
   const dailyMissionCount = missions.filter(mission => mission.active && mission.period === 'daily').length;
   const goalProgress = selectedWeight.latest && profile ? weightGoalProgress(profile.start_weight, selectedWeight.latest.kg, profile.target_weight) : null;
+  const weightChange = chronologicalWeights.length > 1 ? chronologicalWeights.at(-1)!.kg - chronologicalWeights[0].kg : null;
 
   return <Page title="Progress">
-    <Choices label="Activity period" options={['7', '30', '90'] as const} value={period} onChange={setPeriod}/>
+    <View style={{ marginTop: 4 }}><DisplayMetric value={weightChange === null ? '—' : (weightChange > 0 ? '+' : '−') + Math.abs(weightChange).toFixed(1)} label="KG" size={118}/><Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 10, letterSpacing: 1.2, textTransform: 'uppercase' }}>{weightChange === null ? 'Add two weight entries to see your change' : 'Weight change in selected period'}</Text></View>
+    <Choices label="Activity period" options={['7', '30', '90'] as const} value={period} onChange={setPeriod} compact/>
+    {goalProgress !== null && selectedWeight.latest && profile?.target_weight != null && <View style={{ paddingVertical: 14, gap: 10 }}><Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 10, letterSpacing: 1.2, textTransform: 'uppercase' }}>Progress toward target: {goalProgress}%</Text><TransformationRuler progress={goalProgress} start={profile.start_weight} current={selectedWeight.latest.kg} target={profile.target_weight}/></View>}
     <Card>
-      <Text style={styles.text}>Habits</Text>
+      <Text style={{ color: colors.text, fontFamily: fonts.displayHeavy, fontSize: 30, textTransform: 'uppercase' }}>Habit completion</Text>
+      <DisplayMetric value={selectedHabitRate.percent + '%'} size={96}/>
       <Text style={styles.muted}>{selectedHabitRate.done}/{selectedHabitRate.due} scheduled habit targets completed · {selectedHabitRate.percent}%</Text>
+      <ProgressBar value={selectedHabitRate.percent / 100}/>
       <Text style={styles.muted}>{`Fixed-habit streaks: ${Math.max(0, ...fixedStreaks.map(streak => streak.current))} current · ${Math.max(0, ...fixedStreaks.map(streak => streak.longest))} longest scheduled occurrences`}</Text>
       <Text style={styles.muted}>{`Weekly quota streaks: ${Math.max(0, ...quotaStreaks.map(streak => streak.current))} current · ${Math.max(0, ...quotaStreaks.map(streak => streak.longest))} longest weeks`}</Text>
     </Card>
     <Card>
       <Text style={styles.text}>Workouts</Text>
       <Text style={styles.muted}>{workoutSummary.total} completed sessions · {workoutSummary.minutes} training minutes · peak {workoutSummary.mostInWeek} in one week</Text>
-      {bins.some(bin => bin.count) ? <>
+      {bins.some(bin => bin.count) ? <Reveal key={period}>
         <Svg width="100%" height={148} viewBox="0 0 300 148" accessibilityLabel="Completed workouts per week">
           {bins.map((bin, index) => {
             const barWidth = Math.min(20, 240 / bins.length);
             const x = 14 + index * 280 / bins.length;
             const height = bin.count * 72 / maxWorkouts;
             return <React.Fragment key={bin.week}>
-              <Rect x={x} y={94 - height} width={barWidth} height={height} rx={3} fill="#8BE0B0"/>
-              {index === 0 || index === bins.length - 1 || index === Math.floor(bins.length / 2) ? <SvgText x={x + barWidth / 2} y={116} fill="#B6C3BD" fontSize="9" textAnchor="middle">{dateLabel(bin.week, locale)}</SvgText> : null}
-              <SvgText x={x + barWidth / 2} y={Math.max(12, 87 - height)} fill="#F4F7F5" fontSize="9" textAnchor="middle">{bin.count.toLocaleString(locale === 'ar' ? 'ar-u-nu-arab' : locale === 'fr' ? 'fr-FR' : 'en-US')}</SvgText>
+              <Rect x={x} y={94 - height} width={barWidth} height={height} fill={colors.accent}/>
+              {index === 0 || index === bins.length - 1 || index === Math.floor(bins.length / 2) ? <SvgText x={x + barWidth / 2} y={116} fill={colors.muted} fontSize="9" textAnchor="middle">{dateLabel(bin.week, locale)}</SvgText> : null}
+              <SvgText x={x + barWidth / 2} y={Math.max(12, 87 - height)} fill={colors.text} fontSize="9" textAnchor="middle">{bin.count.toLocaleString(locale === 'ar' ? 'ar-u-nu-arab' : locale === 'fr' ? 'fr-FR' : 'en-US')}</SvgText>
             </React.Fragment>;
           })}
         </Svg>
         <Text style={styles.muted}>Sessions per week · {dateLabel(start, locale)} to {dateLabel(today, locale)}</Text>
-      </> : <Empty text="No completed workout sessions in this period."/>}
+      </Reveal> : <Empty text="No completed workout sessions in this period."/>}
     </Card>
     <Card>
       <Text style={styles.text}>Weight</Text>
@@ -102,8 +111,8 @@ export default function Progress() {
       {goalProgress !== null && <Text style={styles.muted}>Progress toward target: {goalProgress}%</Text>}
       {selectedWeights.length > 1 ? <>
         <Svg width="100%" height={112} viewBox="0 0 300 105" accessibilityLabel="Weight history for selected period">
-          <Polyline points={weightPoints} fill="none" stroke="#8BE0B0" strokeWidth={3}/>
-          {chronologicalWeights.map((entry, index) => <Circle key={entry.id} cx={10 + index * 280 / Math.max(1, chronologicalWeights.length - 1)} cy={90 - (entry.kg - weightMin) * 70 / Math.max(1, weightMax - weightMin)} r={3} fill="#8BE0B0"/>)}
+          <Polyline points={weightPoints} fill="none" stroke={colors.accent} strokeWidth={3}/>
+          {chronologicalWeights.map((entry, index) => <Circle key={entry.id} cx={10 + index * 280 / Math.max(1, chronologicalWeights.length - 1)} cy={90 - (entry.kg - weightMin) * 70 / Math.max(1, weightMax - weightMin)} r={3} fill={colors.accent}/>)}
         </Svg>
         <Text style={styles.muted}>{dateLabel(chronologicalWeights[0].day, locale)} · {chronologicalWeights[0].kg} kg → {dateLabel(chronologicalWeights.at(-1)!.day, locale)} · {chronologicalWeights.at(-1)!.kg} kg</Text>
       </> : <Empty text={selectedWeights.length ? 'Add another entry in this period to draw a trend.' : 'No weight entries in this period.'}/>}

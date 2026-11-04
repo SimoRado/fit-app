@@ -50,3 +50,6 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Clerk CLI temporary credentials
+.clerk-dev.env
