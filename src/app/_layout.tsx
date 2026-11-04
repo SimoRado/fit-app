@@ -13,6 +13,7 @@ import { setLocalAccount } from '../data/db';
 import { setActiveLanguage } from '../core/i18n';
 import { AppFonts } from '../ui/fonts';
 import { MotionProvider } from '../ui/motion';
+import { SubscriptionProvider } from '../state/subscriptions';
 import { colors } from '../ui/theme';
 
 const convexUrl = process.env.EXPO_PUBLIC_CONVEX_URL;
@@ -40,7 +41,7 @@ function Navigator() {
       <Stack.Screen name="habit-form"/><Stack.Screen name="habit-history"/><Stack.Screen name="workout-form"/>
       <Stack.Screen name="routine-form"/><Stack.Screen name="weight"/><Stack.Screen name="weight-form"/>
       <Stack.Screen name="measurement-form"/><Stack.Screen name="mission-form"/><Stack.Screen name="missions"/>
-      <Stack.Screen name="motivation"/><Stack.Screen name="reminders"/><Stack.Screen name="account"/>
+      <Stack.Screen name="motivation"/><Stack.Screen name="reminders"/><Stack.Screen name="account"/><Stack.Screen name="premium-test"/>
     </Stack.Protected>
   </Stack></>;
   return signedIn && userId ? <LocalAccount key={userId} userId={userId}>{stack}</LocalAccount> : stack;
@@ -48,6 +49,6 @@ function Navigator() {
 
 export default function Root() {
   return <SafeAreaProvider><AppFonts><MotionProvider><ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
-    <ConvexProviderWithClerk client={convex} useAuth={useAuth}><Navigator/></ConvexProviderWithClerk>
+    <ConvexProviderWithClerk client={convex} useAuth={useAuth}><SubscriptionProvider><Navigator/></SubscriptionProvider></ConvexProviderWithClerk>
   </ClerkProvider></MotionProvider></AppFonts></SafeAreaProvider>;
 }

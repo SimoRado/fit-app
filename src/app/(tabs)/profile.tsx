@@ -72,6 +72,7 @@ export default function ProfileScreen() {
       { label: 'Personal growth goals', detail: growth.join(' · '), icon: 'flag-outline' as const, action: () => setEditing(true) },
       { label: 'Language', detail: language === 'fr' ? 'Français' : language === 'ar' ? 'العربية' : 'English', icon: 'language-outline' as const, action: () => setEditing(true) },
       { label: 'Reminder settings', detail: '', icon: 'notifications-outline' as const, action: () => router.push('/reminders') },
+      { label: 'Premium — Test Subscriptions', detail: 'RevenueCat Test Store', icon: 'diamond-outline' as const, action: () => router.push('/premium-test') },
     ].map(item => <Pressable key={item.label} accessibilityRole="button" onPress={item.action} style={{ minHeight: 62, flexDirection: 'row', alignItems: 'center', gap: 13, borderBottomWidth: 1, borderBottomColor: colors.border }}><Ionicons name={item.icon} size={22} color={colors.accent}/><View style={{ flex: 1 }}><Text style={{ color: colors.text, fontWeight: '700' }}>{item.label}</Text>{!!item.detail && <Text numberOfLines={1} style={styles.muted}>{item.detail}</Text>}</View><Ionicons name="chevron-forward" size={18} color={colors.muted}/></Pressable>)}
     {editing && <Card>
       <Text style={styles.muted}>Fitness profile · stored on this device</Text>
