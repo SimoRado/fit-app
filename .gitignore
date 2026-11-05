@@ -53,3 +53,7 @@ yarn-error.*
 
 # Clerk CLI temporary credentials
 .clerk-dev.env
+
+# Local Android build artifacts
+builds/
+*.apk

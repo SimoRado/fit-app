@@ -16,6 +16,8 @@ import { SubscriptionProvider } from '../state/subscriptions';
 import { SyncProvider } from '../state/sync';
 import { clearAccountReminders } from '../services/reminders';
 import { colors } from '../ui/theme';
+import { authDiagnostic } from '../core/runtime';
+import { clerkGateState } from '../core/googleSession';
 
 const convexUrl = process.env.EXPO_PUBLIC_CONVEX_URL;
 const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
@@ -40,9 +42,11 @@ function LocalAccount({ userId, children }: { userId: string; children: React.Re
 
 function Navigator() {
   const { isLoaded, isSignedIn, userId } = useAuth();
+  useEffect(() => { authDiagnostic('Clerk auth state', { loaded: isLoaded, signedIn: Boolean(isSignedIn), hasUser: Boolean(userId) }); }, [isLoaded, isSignedIn, userId]);
   useEffect(() => { if (isLoaded && !isSignedIn) { setLocalAccount(null); setActiveLanguage('en'); clearAccountReminders().catch(() => undefined); } }, [isLoaded, isSignedIn]);
-  if (!isLoaded) return <Loading/>;
-  const signedIn = Boolean(isSignedIn && userId);
+  const gate = clerkGateState(isLoaded, isSignedIn, userId);
+  if (gate === 'loading') return <Loading/>;
+  const signedIn = gate === 'signed-in';
   const stack = <><StatusBar style="light"/><Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
     <Stack.Protected guard={!signedIn}><Stack.Screen name="(auth)"/></Stack.Protected>
     <Stack.Protected guard={signedIn} redirectTo="/(auth)/welcome">

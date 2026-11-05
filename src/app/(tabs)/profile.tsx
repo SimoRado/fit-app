@@ -15,6 +15,7 @@ import { SectionHeader } from '../../ui/visuals';
 import { useAuth, useUser } from '@clerk/expo';
 import { clearAccountReminders } from '../../services/reminders';
 import { ensureNoPendingBeforeLocalDelete } from '../../data/syncLocal';
+import { BirthDateField } from '../../ui/BirthDateField';
 
 export default function ProfileScreen() {
   const { user } = useUser();
@@ -79,7 +80,7 @@ export default function ProfileScreen() {
     {editing && <Card>
       <Text style={styles.muted}>Fitness profile · stored on this device</Text>
       <Field label="Display name" value={name} onChangeText={setName}/>
-      <Field label="Date of birth (YYYY-MM-DD)" value={birth} onChangeText={setBirth}/>
+      <BirthDateField value={birth} onChangeText={setBirth}/>
       <Field label="Height (cm)" value={height} onChangeText={setHeight} keyboardType="decimal-pad"/>
       <Field label="Target weight (kg, optional)" value={target} onChangeText={setTarget} keyboardType="decimal-pad"/>
       <Choices label="Experience" options={['Beginner', 'Intermediate', 'Advanced']} value={experience} onChange={setExperience}/>

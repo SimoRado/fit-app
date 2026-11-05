@@ -1,12 +1,12 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@clerk/expo';
-import Constants, { ExecutionEnvironment } from 'expo-constants';
 import Purchases, { type CustomerInfo, type PurchasesOffering, type PurchasesPackage } from 'react-native-purchases';
 import { activeEntitlements, isPurchaseCancelled, subscriptionPackages, visibleCustomerInfo } from '../services/subscriptionLogic';
+import { runtimeSignals } from '../core/runtime';
 
 const apiKey = process.env.EXPO_PUBLIC_REVENUECAT_TEST_KEY;
 const entitlementId = process.env.EXPO_PUBLIC_REVENUECAT_ENTITLEMENT_ID;
-const preview = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+const preview = runtimeSignals().kind === 'expo-go';
 let configured = false;
 let identityQueue: Promise<void> = Promise.resolve();
 function alignIdentity(userId: string) {
