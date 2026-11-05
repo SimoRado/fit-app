@@ -12,11 +12,13 @@ export function setLocalAccount(userId: string | null) {
   if (userId !== null) localDatabaseName(userId);
   if (activeAccount !== userId) { activeAccount = userId; promise = undefined; }
 }
+export function getLocalAccount() { return activeAccount; }
 
 export async function db() {
   if (!activeAccount) throw new Error('Sign in before accessing local fitness data');
+  const requestedAccount = activeAccount;
   if (!promise) promise = (async () => {
-    const d = await SQLite.openDatabaseAsync(localDatabaseName(activeAccount));
+    const d = await SQLite.openDatabaseAsync(localDatabaseName(requestedAccount));
     await d.execAsync('PRAGMA foreign_keys = ON');
     const row = await d.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
     for (let i = row?.user_version ?? 0; i < migrations.length; i++) {
@@ -25,6 +27,7 @@ export async function db() {
     await d.withExclusiveTransactionAsync(async tx => {
       for (const [id, name] of exerciseSeeds) await tx.runAsync('INSERT OR IGNORE INTO exercises VALUES (?,?,?,0)', id, name, id === 'plank' || id === 'running' ? 'duration' : id === 'pullup' ? 'reps' : 'weight_reps');
     });
+    if (activeAccount !== requestedAccount) throw new Error('Account changed while opening local data');
     return d;
   })();
   return promise;

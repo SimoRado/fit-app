@@ -41,6 +41,7 @@ export default function Onboarding() {
     <ProgressBar value={(step + 1) / 3}/>
     <Text style={styles.muted}>Progress over perfection. Become better, one day at a time.</Text>
     <Text style={styles.muted}>Any history from before sign-in is preserved separately on this device. It is not added to your account automatically.</Text>
+    <Button title="Restore from cloud or manage guest data" kind="ghost" onPress={() => router.push('/cloud-sync')}/>
     {step === 0 && <Card>
       <Choices label="Language" options={['en', 'fr', 'ar'] as const} value={language} onChange={nextLanguage => { setLanguage(nextLanguage); applyLanguage(nextLanguage); }}/>
       <Field label="Display name" value={name} onChangeText={setName}/>

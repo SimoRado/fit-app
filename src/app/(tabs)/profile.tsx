@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import * as Notifications from 'expo-notifications';
 import { Language } from '../../core/types';
 import { validateProfileValues } from '../../core/validation';
 import { repo } from '../../data/db';
@@ -14,6 +13,8 @@ import { weightSummary } from '../../core/logic';
 import { DisplayMetric } from '../../ui/DisplayMetric';
 import { SectionHeader } from '../../ui/visuals';
 import { useAuth, useUser } from '@clerk/expo';
+import { clearAccountReminders } from '../../services/reminders';
+import { ensureNoPendingBeforeLocalDelete } from '../../data/syncLocal';
 
 export default function ProfileScreen() {
   const { user } = useUser();
@@ -50,10 +51,10 @@ export default function ProfileScreen() {
   }
 
   function clear() {
-    confirm('Delete all local data?', async () => {
-      try { await Notifications.cancelAllScheduledNotificationsAsync(); await repo.clear(); await refresh(); router.replace('/onboarding'); }
+    confirm('Delete this account’s local data?', async () => {
+      try { await ensureNoPendingBeforeLocalDelete(); await clearAccountReminders(); await repo.clear(); await refresh(); router.replace('/onboarding'); }
       catch (error) { message(error); }
-    }, 'This removes your profile and all tracking records from this device.', 'Delete all data');
+    }, 'This permanently removes this account’s fitness profile and history from this device. It does not delete cloud records, your Clerk account, or cancel a RevenueCat subscription. Guest and other signed-in accounts’ local files remain.', 'Delete local data');
   }
 
   return <Page title="Profile">
@@ -66,13 +67,14 @@ export default function ProfileScreen() {
       ['Weight', summary.weight ?? '—', 'KG'], ['Height (cm)', profile?.height_cm ?? '—', 'CM'], ['Workouts', summary.workouts, ''], ['Habits', summary.habits, ''],
     ].map(([label, value, unit]) => <View key={label} style={{ width: '48.5%', minHeight: 110, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, padding: 14, gap: 5 }}><Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 10, textTransform: 'uppercase' }}>{label}</Text><DisplayMetric value={value} label={String(unit)} size={48}/></View>)}</View>
     <SectionHeader title="Settings"/>
-    <Card><Text style={styles.label}>Signed-in account</Text><Text style={styles.text}>{user?.fullName || user?.firstName || 'Account'}</Text><Text style={styles.muted}>{user?.primaryEmailAddress?.emailAddress ?? ''}</Text><Button title="Manage account" kind="ghost" onPress={() => router.push('/account')}/><Button title="Sign out" kind="ghost" onPress={async () => { try { await Notifications.cancelAllScheduledNotificationsAsync().catch(console.error); await signOut(); } catch (error) { message(error); } }}/></Card>
+    <Card><Text style={styles.label}>Signed-in account</Text><Text style={styles.text}>{user?.fullName || user?.firstName || 'Account'}</Text><Text style={styles.muted}>{user?.primaryEmailAddress?.emailAddress ?? ''}</Text><Button title="Manage account" kind="ghost" onPress={() => router.push('/account')}/><Button title="Sign out" kind="ghost" onPress={async () => { try { await signOut(); await clearAccountReminders(); } catch (error) { message(error); } }}/></Card>
     {[
       { label: 'Edit profile', detail: profile?.name ?? '', icon: 'person-outline' as const, action: () => setEditing(value => !value) },
       { label: 'Personal growth goals', detail: growth.join(' · '), icon: 'flag-outline' as const, action: () => setEditing(true) },
       { label: 'Language', detail: language === 'fr' ? 'Français' : language === 'ar' ? 'العربية' : 'English', icon: 'language-outline' as const, action: () => setEditing(true) },
       { label: 'Reminder settings', detail: '', icon: 'notifications-outline' as const, action: () => router.push('/reminders') },
       { label: 'Premium — Test Subscriptions', detail: 'RevenueCat Test Store', icon: 'diamond-outline' as const, action: () => router.push('/premium-test') },
+      { label: 'Data & Privacy', detail: 'Cloud sync and local data', icon: 'shield-checkmark-outline' as const, action: () => router.push('/cloud-sync') },
     ].map(item => <Pressable key={item.label} accessibilityRole="button" onPress={item.action} style={{ minHeight: 62, flexDirection: 'row', alignItems: 'center', gap: 13, borderBottomWidth: 1, borderBottomColor: colors.border }}><Ionicons name={item.icon} size={22} color={colors.accent}/><View style={{ flex: 1 }}><Text style={{ color: colors.text, fontWeight: '700' }}>{item.label}</Text>{!!item.detail && <Text numberOfLines={1} style={styles.muted}>{item.detail}</Text>}</View><Ionicons name="chevron-forward" size={18} color={colors.muted}/></Pressable>)}
     {editing && <Card>
       <Text style={styles.muted}>Fitness profile · stored on this device</Text>
@@ -86,6 +88,6 @@ export default function ProfileScreen() {
       <Choices label="Language" options={['en', 'fr', 'ar'] as const} value={language} onChange={setLanguage}/>
       <Button title="Save profile" onPress={save}/>
     </Card>}
-    <Button title="Delete all local data" kind="danger" onPress={clear}/>
+    <Button title="Delete this account’s local data" kind="danger" onPress={clear}/>
   </Page>;
 }

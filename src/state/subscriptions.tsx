@@ -2,12 +2,21 @@ import React, { createContext, useContext, useEffect, useRef, useState } from 'r
 import { useAuth } from '@clerk/expo';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import Purchases, { type CustomerInfo, type PurchasesOffering, type PurchasesPackage } from 'react-native-purchases';
-import { activeEntitlements, isPurchaseCancelled, subscriptionPackages } from '../services/subscriptionLogic';
+import { activeEntitlements, isPurchaseCancelled, subscriptionPackages, visibleCustomerInfo } from '../services/subscriptionLogic';
 
 const apiKey = process.env.EXPO_PUBLIC_REVENUECAT_TEST_KEY;
 const entitlementId = process.env.EXPO_PUBLIC_REVENUECAT_ENTITLEMENT_ID;
 const preview = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
 let configured = false;
+let identityQueue: Promise<void> = Promise.resolve();
+function alignIdentity(userId: string) {
+  const next = identityQueue.catch(() => undefined).then(async () => {
+    if (!configured) { Purchases.configure({ apiKey: apiKey!, appUserID: userId }); configured = true; }
+    else if (await Purchases.getAppUserID() !== userId) await Purchases.logIn(userId);
+  });
+  identityQueue = next;
+  return next;
+}
 
 type State = {
   ready: boolean; loading: boolean; busy: boolean; error: string | null;
@@ -28,13 +37,14 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   const [error, setError] = useState<string | null>(null);
   const [offering, setOffering] = useState<PurchasesOffering | null>(null);
   const [info, setInfo] = useState<CustomerInfo | null>(null);
+  const [identifiedUser, setIdentifiedUser] = useState<string | null>(null);
   const currentUser = useRef<string | null>(null);
   const generation = useRef(0);
   const busyRef = useRef(false);
 
   useEffect(() => {
     const seq = ++generation.current;
-    setReady(false); setInfo(null); setOffering(null); setError(null);
+    setReady(false); setInfo(null); setOffering(null); setError(null); setIdentifiedUser(null);
     if (!isLoaded || !userId) { currentUser.current = null; return; }
     if (!apiKey) { setError('RevenueCat Test Store key is missing.'); return; }
     if (!apiKey.startsWith('test_')) { setError('Only a RevenueCat Test Store public key is allowed here.'); return; }
@@ -44,15 +54,16 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     const start = async () => {
       setLoading(true);
       try {
-        if (!configured) { Purchases.configure({ apiKey, appUserID: userId }); configured = true; }
-        else if (await Purchases.getAppUserID() !== userId) await Purchases.logIn(userId);
+        await alignIdentity(userId);
         if (seq !== generation.current) return;
+        if (await Purchases.getAppUserID() !== userId) throw Error('Subscription account is still changing. Please retry.');
         currentUser.current = userId;
-        listener = next => { if (seq === generation.current && currentUser.current === userId) setInfo(next); };
+        listener = next => { void Purchases.getAppUserID().then(id => { if (id === userId && seq === generation.current && currentUser.current === userId) setInfo(next); }).catch(() => undefined); };
         Purchases.addCustomerInfoUpdateListener(listener);
         const [nextInfo, offers] = await Promise.all([Purchases.getCustomerInfo(), Purchases.getOfferings()]);
         if (seq !== generation.current) return;
-        setInfo(nextInfo); setOffering(offers.current); setReady(true);
+        if (await Purchases.getAppUserID() !== userId) throw Error('Subscription account is still changing. Please retry.');
+        setInfo(nextInfo); setOffering(offers.current); setIdentifiedUser(userId); setReady(true);
       } catch (cause) { if (seq === generation.current) setError(errorText(cause)); }
       finally { if (seq === generation.current) setLoading(false); }
     };
@@ -92,8 +103,10 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     catch (cause) { setError(errorText(cause)); throw cause; }
     finally { busyRef.current = false; setBusy(false); }
   }
-  const activeIds = activeEntitlements(info, entitlementId);
-  const value: State = { ready, loading, busy, error, offering, info, activeIds, isPremium: ready && !!entitlementId && activeIds.length > 0, entitlementId, refresh, purchase, restore };
+  const safeInfo = visibleCustomerInfo(info, userId, identifiedUser);
+  const safeReady = ready && !!safeInfo;
+  const activeIds = activeEntitlements(safeInfo, entitlementId);
+  const value: State = { ready: safeReady, loading, busy, error, offering: safeReady ? offering : null, info: safeInfo, activeIds, isPremium: safeReady && !!entitlementId && activeIds.length > 0, entitlementId, refresh, purchase, restore };
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }
 export function useSubscription() { const value = useContext(Context); if (!value) throw Error('SubscriptionProvider is missing'); return value; }

@@ -4,7 +4,7 @@ import { Platform } from 'react-native';
 import { dayKey } from '../core/date';
 import { Habit, Language, NotificationSchedule, Preference } from '../core/types';
 import { localize } from '../core/i18n';
-import { db, repo } from '../data/db';
+import { db, getLocalAccount, repo } from '../data/db';
 import { ReminderDefinition, reconcileScheduledReminders } from './reminderPlanner';
 
 Notifications.setNotificationHandler({
@@ -53,12 +53,21 @@ export function desiredReminders(habits: Habit[], preferences: Preference[], tod
 
 let reconcileTail: Promise<void> = Promise.resolve();
 export function reconcileReminders() {
-  const current = reconcileTail.then(reconcileRemindersNow, reconcileRemindersNow);
+  const account = getLocalAccount();
+  const current = reconcileTail.then(() => reconcileRemindersNow(account), () => reconcileRemindersNow(account));
   reconcileTail = current.then(() => undefined, () => undefined);
   return current;
 }
 
-async function reconcileRemindersNow() {
+export function clearAccountReminders() {
+  const current = reconcileTail.then(() => Notifications.cancelAllScheduledNotificationsAsync());
+  reconcileTail = current.then(() => undefined, () => undefined);
+  return current;
+}
+
+async function reconcileRemindersNow(account: string | null) {
+  const assertAccount = () => { if (!account || getLocalAccount() !== account) throw new Error('Account changed while scheduling reminders'); };
+  assertAccount();
   const database = await db();
   const [preferences, habits, existing, profile] = await Promise.all([
     repo.preferences(),
@@ -66,8 +75,10 @@ async function reconcileRemindersNow() {
     database.getAllAsync<NotificationSchedule>('SELECT * FROM notification_schedules'),
     repo.profile(),
   ]);
+  assertAccount();
   const permission = await Notifications.getPermissionsAsync();
   const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+  assertAccount();
   const scheduledIds = new Set(scheduled.map(item => item.identifier));
 
   const permitted = permission.granted || permission.ios?.status === IosAuthorizationStatus.PROVISIONAL;
@@ -77,14 +88,15 @@ async function reconcileRemindersNow() {
   }
 
   await reconcileScheduledReminders(desired, existing, scheduledIds, {
-    schedule: reminder => Notifications.scheduleNotificationAsync({
+    schedule: async reminder => { assertAccount(); const identifier = await Notifications.scheduleNotificationAsync({
       content: { title: reminder.title, body: reminder.body },
       trigger: reminder.weekday
         ? { type: Notifications.SchedulableTriggerInputTypes.WEEKLY, weekday: reminder.weekday, hour: reminder.hour, minute: reminder.minute, channelId: 'reminders' }
         : { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour: reminder.hour, minute: reminder.minute, channelId: 'reminders' },
-    }),
-    cancel: identifier => Notifications.cancelScheduledNotificationAsync(identifier),
+    }); if (getLocalAccount() !== account) { await Notifications.cancelScheduledNotificationAsync(identifier); assertAccount(); } return identifier; },
+    cancel: identifier => { assertAccount(); return Notifications.cancelScheduledNotificationAsync(identifier); },
     persist: async schedules => database.withExclusiveTransactionAsync(async tx => {
+      assertAccount();
       const keys = schedules.map(row => row.key);
       const prior = await tx.getAllAsync<{ key: string }>('SELECT key FROM notification_schedules');
       for (const row of prior) if (!keys.includes(row.key)) await tx.runAsync('DELETE FROM notification_schedules WHERE key=?', row.key);

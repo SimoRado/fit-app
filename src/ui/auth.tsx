@@ -27,8 +27,8 @@ export function AuthLink({ href, title }: { href: '/(auth)/welcome' | '/(auth)/s
 export function AuthError({ message }: { message: string }) { return message ? <Text accessibilityRole="alert" style={{ color: colors.danger, fontSize: 14 }}>{message}</Text> : null; }
 export function clerkMessage(error: unknown): string {
   if (error && typeof error === 'object') {
-    const item = error as { errors?: { longMessage?: string; message?: string }[]; message?: string };
-    return item.errors?.[0]?.longMessage ?? item.errors?.[0]?.message ?? item.message ?? 'Authentication failed. Please try again.';
+    const item = error as { errors?: { longMessage?: string; message?: string }[] };
+    return item.errors?.[0]?.longMessage ?? item.errors?.[0]?.message ?? 'Authentication failed. Please try again.';
   }
   return 'Authentication failed. Check your connection and try again.';
 }

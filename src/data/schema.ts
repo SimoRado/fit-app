@@ -1,3 +1,5 @@
+import { syncMigration } from './syncSchema';
+
 export const migrations = [
   `CREATE TABLE IF NOT EXISTS profile (id TEXT PRIMARY KEY, name TEXT NOT NULL, birth_date TEXT NOT NULL, height_cm REAL NOT NULL, start_weight REAL NOT NULL, target_weight REAL, experience TEXT NOT NULL, fitness_goal TEXT NOT NULL, growth_goals TEXT NOT NULL, language TEXT NOT NULL, completed_at TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS habits (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL REFERENCES profile(id) ON DELETE CASCADE, name TEXT NOT NULL, description TEXT NOT NULL, category TEXT NOT NULL, icon TEXT NOT NULL, frequency TEXT NOT NULL, days TEXT NOT NULL, weekly_target INTEGER NOT NULL, start_date TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0, reminder_time TEXT, created_at TEXT NOT NULL);
@@ -18,6 +20,7 @@ export const migrations = [
    CREATE TABLE IF NOT EXISTS notification_schedules (key TEXT PRIMARY KEY, notification_id TEXT NOT NULL);`,
   `ALTER TABLE notification_schedules ADD COLUMN config TEXT NOT NULL DEFAULT '';`,
   `ALTER TABLE workout_sets ADD COLUMN completed INTEGER NOT NULL DEFAULT 1;`,
+  syncMigration,
 ] as const;
 
 export const exerciseSeeds: readonly [string, string][] = [

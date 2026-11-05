@@ -18,4 +18,6 @@ export default defineSchema({
   restDays: indexed({ ...owned, day: v.string() }),
   favorites: indexed({ ...owned, cardId: v.string() }),
   preferences: indexed({ ...owned, key: v.string(), value: v.string() }),
+  syncRecords: defineTable({ owner: v.string(), kind: v.string(), clientId: v.string(), payload: v.union(v.string(), v.null()), revision: v.number(), deleted: v.boolean(), updatedAt: v.number() }).index('by_owner', ['owner']).index('by_owner_kind_id', ['owner', 'kind', 'clientId']),
+  syncOperations: defineTable({ owner: v.string(), operationId: v.string(), kind: v.optional(v.string()), clientId: v.optional(v.string()), payload: v.optional(v.union(v.string(), v.null())), revision: v.number() }).index('by_owner_operation', ['owner', 'operationId']),
 });
