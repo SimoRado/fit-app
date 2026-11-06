@@ -33,7 +33,8 @@ function LocalAccount({ userId, children }: { userId: string; children: React.Re
   useEffect(() => {
     let active = true;
     setLocalAccount(userId); setReady(false); setError(false);
-    void clearAccountReminders().then(() => { if (active) setReady(true); }).catch(() => { if (active) setError(true); });
+    authDiagnostic('local account preparation started', {}, 'NAVIGATION');
+    void clearAccountReminders().then(() => { if (active) { authDiagnostic('local account preparation complete', {}, 'NAVIGATION'); setReady(true); } }).catch(() => { if (active) { authDiagnostic('local account preparation failed', {}, 'NAVIGATION'); setError(true); } });
     return () => { active = false; setLocalAccount(null); };
   }, [userId, retry]);
   if (error) return <View style={{ flex: 1, backgroundColor: colors.bg, justifyContent: 'center', alignItems: 'center', gap: 20, padding: 24 }}><Text style={{ color: colors.text, textAlign: 'center' }}>Could not clear reminders from the previous account.</Text><Pressable accessibilityRole="button" onPress={() => setRetry(value => value + 1)}><Text style={{ color: colors.accent }}>Retry</Text></Pressable></View>;
@@ -42,12 +43,13 @@ function LocalAccount({ userId, children }: { userId: string; children: React.Re
 
 function Navigator() {
   const { isLoaded, isSignedIn, userId } = useAuth();
-  useEffect(() => { authDiagnostic('Clerk auth state', { loaded: isLoaded, signedIn: Boolean(isSignedIn), hasUser: Boolean(userId) }); }, [isLoaded, isSignedIn, userId]);
+  useEffect(() => { authDiagnostic('Clerk auth state', { loaded: isLoaded, signedIn: Boolean(isSignedIn), hasUser: Boolean(userId) }, 'NAVIGATION'); }, [isLoaded, isSignedIn, userId]);
   useEffect(() => { if (isLoaded && !isSignedIn) { setLocalAccount(null); setActiveLanguage('en'); clearAccountReminders().catch(() => undefined); } }, [isLoaded, isSignedIn]);
   const gate = clerkGateState(isLoaded, isSignedIn, userId);
+  useEffect(() => { authDiagnostic('protected route gate', { gate }, 'NAVIGATION'); }, [gate]);
   if (gate === 'loading') return <Loading/>;
   const signedIn = gate === 'signed-in';
-  const stack = <><StatusBar style="light"/><Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
+  const stack = <><StatusBar style="dark"/><Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
     <Stack.Protected guard={!signedIn}><Stack.Screen name="(auth)"/></Stack.Protected>
     <Stack.Protected guard={signedIn} redirectTo="/(auth)/welcome">
       <Stack.Screen name="index"/><Stack.Screen name="(tabs)"/><Stack.Screen name="onboarding"/>

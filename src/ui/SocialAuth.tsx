@@ -90,12 +90,12 @@ export function SocialAuth() {
       }
     } finally { inFlight.current = false; setBusy(null); }
   }
-  const button = (provider: 'google' | 'apple', enabled: boolean) => <Pressable key={provider} accessibilityRole="button" accessibilityLabel={`Continue with ${provider === 'google' ? 'Google' : 'Apple'}`} accessibilityState={{ disabled: busy !== null || !enabled }} disabled={busy !== null || !enabled} onPress={() => void start(provider)} style={{ minHeight: 54, borderWidth: 1, borderColor: colors.border, backgroundColor: provider === 'apple' ? '#000' : '#fff', flexDirection: 'row', gap: 12, alignItems: 'center', justifyContent: 'center', opacity: enabled ? 1 : .5 }}>
+  const button = (provider: 'google' | 'apple', enabled: boolean) => <Pressable key={provider} accessibilityRole="button" accessibilityLabel={`Continue with ${provider === 'google' ? 'Google' : 'Apple'}`} accessibilityState={{ disabled: busy !== null || !enabled }} disabled={busy !== null || !enabled} onPress={() => void start(provider)} style={{ minHeight: 56, borderWidth: provider === 'google' ? 1.5 : 0, borderColor: colors.borderStrong, borderRadius: 999, backgroundColor: provider === 'apple' ? colors.ink : colors.card, flexDirection: 'row', gap: 12, alignItems: 'center', justifyContent: 'center', opacity: enabled ? 1 : .5 }}>
     <Ionicons name={provider === 'google' ? 'logo-google' : 'logo-apple'} size={22} color={provider === 'google' ? '#4285F4' : '#fff'}/><Text style={{ color: provider === 'google' ? '#202124' : '#fff', fontSize: 16, fontWeight: '600' }}>{busy === provider ? 'Connecting…' : `Continue with ${provider === 'google' ? 'Google' : 'Apple'}`}</Text>
   </Pressable>;
   return <View style={{ gap: 10 }}>
     {(Platform.OS === 'android' || Platform.OS === 'ios') && button('google', canStartGoogleOAuth(runtime.kind, busy !== null))}
-    {Platform.OS === 'ios' && appleAvailable && <AppleAuthentication.AppleAuthenticationButton buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE} buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK} cornerRadius={4} style={{ height: 54, width: '100%' }} onPress={() => void start('apple')}/>}
+    {Platform.OS === 'ios' && appleAvailable && <AppleAuthentication.AppleAuthenticationButton buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE} buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK} cornerRadius={28} style={{ height: 56, width: '100%' }} onPress={() => void start('apple')}/>}
     {!nativeBuild && <Text style={{ color: colors.muted, fontSize: 12 }}>Google sign-in needs the Fitapp development build. Email sign-in works in Expo Go.</Text>}
     <AuthError message={error}/>
   </View>;

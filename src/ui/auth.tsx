@@ -9,11 +9,12 @@ import { colors, fonts, spacing } from './theme';
 export function AuthPage({ title, detail, children }: { title: string; detail: string; children: React.ReactNode }) {
   const insets = useSafeAreaInsets();
   return <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1, width: '100%', maxWidth: 620, alignSelf: 'center', paddingHorizontal: spacing.screen, paddingTop: insets.top + 54, paddingBottom: insets.bottom + 32, gap: 20 }}>
-      <Text style={{ color: colors.accent, fontFamily: fonts.mono, letterSpacing: 2, fontSize: 12 }}>BETTER EVERY DAY</Text>
-      <Text accessibilityRole="header" style={{ ...styles.title, fontSize: 58, lineHeight: 59 }}>{title}<Text style={{ color: colors.accent }}>.</Text></Text>
+    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1, width: '100%', maxWidth: 620, alignSelf: 'center', paddingHorizontal: spacing.screen, paddingTop: insets.top + 48, paddingBottom: insets.bottom + 32, gap: 18 }}>
+      <View pointerEvents="none" style={{ position: 'absolute', top: -90, right: -110, width: 280, height: 280, borderRadius: 140, backgroundColor: colors.lilac, opacity: .5 }}/>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}><View style={{ width: 28, height: 28, flexDirection: 'row', flexWrap: 'wrap', borderRadius: 7, overflow: 'hidden' }}>{[colors.sun, colors.coral, colors.accent, colors.mint].map(c => <View key={c} style={{ width: 14, height: 14, backgroundColor: c }}/>)}</View><Text style={{ color: colors.muted, fontFamily: fonts.bold, letterSpacing: .6, fontSize: 11 }}>FITNESS × GROWTH</Text></View>
+      <Text accessibilityRole="header" style={{ ...styles.title, fontSize: 44, lineHeight: 45, letterSpacing: -1.8, maxWidth: 330 }}>{title}<Text style={{ color: colors.coral }}>.</Text></Text>
       <Text style={styles.muted}>{detail}</Text>
-      <View style={{ gap: 16, marginTop: 10 }}>{children}</View>
+      <View style={{ gap: 16, marginTop: 12 }}>{children}</View>
     </ScrollView>
   </KeyboardAvoidingView>;
 }

@@ -1,4 +1,4 @@
-import { syncMigration } from './syncSchema';
+import { nutritionSyncTables, syncMigration, syncTriggers } from './syncSchema';
 
 export const migrations = [
   `CREATE TABLE IF NOT EXISTS profile (id TEXT PRIMARY KEY, name TEXT NOT NULL, birth_date TEXT NOT NULL, height_cm REAL NOT NULL, start_weight REAL NOT NULL, target_weight REAL, experience TEXT NOT NULL, fitness_goal TEXT NOT NULL, growth_goals TEXT NOT NULL, language TEXT NOT NULL, completed_at TEXT NOT NULL);
@@ -21,6 +21,22 @@ export const migrations = [
   `ALTER TABLE notification_schedules ADD COLUMN config TEXT NOT NULL DEFAULT '';`,
   `ALTER TABLE workout_sets ADD COLUMN completed INTEGER NOT NULL DEFAULT 1;`,
   syncMigration,
+  `CREATE TABLE IF NOT EXISTS nutrition_preferences (owner_id TEXT PRIMARY KEY REFERENCES profile(id) ON DELETE CASCADE, enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1)));
+   CREATE TABLE IF NOT EXISTS nutrition_targets (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL REFERENCES profile(id) ON DELETE CASCADE, effective_day TEXT NOT NULL, kcal REAL NOT NULL CHECK(kcal>0 AND kcal<=10000), protein REAL NOT NULL CHECK(protein>=0 AND protein<=2000), carbs REAL NOT NULL CHECK(carbs>=0 AND carbs<=2000), fat REAL NOT NULL CHECK(fat>=0 AND fat<=2000), created_at TEXT NOT NULL);
+   CREATE UNIQUE INDEX IF NOT EXISTS nutrition_targets_day ON nutrition_targets(owner_id,effective_day);
+   CREATE TABLE IF NOT EXISTS custom_foods (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL REFERENCES profile(id) ON DELETE CASCADE, name TEXT NOT NULL, kcal_100 REAL NOT NULL CHECK(kcal_100>=0 AND kcal_100<=10000), protein_100 REAL NOT NULL CHECK(protein_100>=0 AND protein_100<=2000), carbs_100 REAL NOT NULL CHECK(carbs_100>=0 AND carbs_100<=2000), fat_100 REAL NOT NULL CHECK(fat_100>=0 AND fat_100<=2000), created_at TEXT NOT NULL);
+   CREATE INDEX IF NOT EXISTS custom_foods_name ON custom_foods(owner_id,name);
+   CREATE TABLE IF NOT EXISTS food_entries (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL REFERENCES profile(id) ON DELETE CASCADE, food_id TEXT REFERENCES custom_foods(id) ON DELETE SET NULL, day TEXT NOT NULL, meal TEXT NOT NULL CHECK(meal IN ('breakfast','lunch','dinner','snacks')), name TEXT NOT NULL, grams REAL, kcal REAL NOT NULL CHECK(kcal>=0 AND kcal<=10000), protein REAL NOT NULL CHECK(protein>=0 AND protein<=2000), carbs REAL NOT NULL CHECK(carbs>=0 AND carbs<=2000), fat REAL NOT NULL CHECK(fat>=0 AND fat<=2000), kcal_100 REAL, protein_100 REAL, carbs_100 REAL, fat_100 REAL, created_at TEXT NOT NULL);
+   CREATE INDEX IF NOT EXISTS food_entries_day ON food_entries(owner_id,day);
+   ${syncTriggers(nutritionSyncTables)}`,
+  `ALTER TABLE workouts ADD COLUMN session_status TEXT NOT NULL DEFAULT 'draft' CHECK(session_status IN ('draft','running','paused','completed'));
+   ALTER TABLE workouts ADD COLUMN elapsed_seconds INTEGER NOT NULL DEFAULT 0 CHECK(elapsed_seconds>=0);
+   ALTER TABLE workouts ADD COLUMN running_since_ms INTEGER;
+   ALTER TABLE workouts ADD COLUMN paused_since_ms INTEGER;
+   ALTER TABLE workouts ADD COLUMN paused_seconds INTEGER NOT NULL DEFAULT 0 CHECK(paused_seconds>=0);
+   ALTER TABLE workouts ADD COLUMN finished_at_ms INTEGER;
+   UPDATE workouts SET session_status='completed', elapsed_seconds=max(0,COALESCE(duration_min,0))*60 WHERE completed=1;
+   CREATE UNIQUE INDEX IF NOT EXISTS one_open_workout_per_owner ON workouts(owner_id) WHERE session_status IN ('running','paused');`,
 ] as const;
 
 export const exerciseSeeds: readonly [string, string][] = [

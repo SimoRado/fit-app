@@ -11,8 +11,10 @@ export function Text({ children, style, ...props }: TextProps) {
   const flattened = StyleSheet.flatten(style);
   const weight = flattened?.fontWeight;
   const bold = weight === 'bold' || weight === '700' || weight === '800' || weight === '900';
-  const family = language === 'ar' ? (bold || flattened?.fontFamily === fonts.display || flattened?.fontFamily === fonts.displayHeavy ? fonts.arabicBold : fonts.arabic)
-    : flattened?.fontFamily ?? (bold ? fonts.bold : fonts.body);
+  const requested = flattened?.fontFamily;
+  const family = language === 'ar' ? (bold || requested === fonts.display || requested === fonts.displayHeavy ? fonts.arabicBold : fonts.arabic)
+    : requested === fonts.display || requested === fonts.displayHeavy ? requested
+    : bold ? fonts.bold : weight === '600' ? fonts.semibold : weight === '500' ? fonts.medium : requested ?? fonts.body;
   const localized = React.Children.map(children, child => {
     if (typeof child !== 'string' && typeof child !== 'number') return child;
     const original = String(child);

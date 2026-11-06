@@ -4,6 +4,7 @@ import { AuthAction, AuthError, AuthField, AuthLink, AuthPage, clerkMessage } fr
 import { SocialAuth } from '../../ui/SocialAuth';
 import { Text } from '../../ui/LocalizedText';
 import { styles } from '../../ui/components';
+import { authDiagnostic } from '../../core/runtime';
 
 export default function SignIn() {
   const { signIn } = useSignIn();
@@ -12,8 +13,10 @@ export default function SignIn() {
     if (busy) return;
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) || !password) { setError('Enter a valid email address and password.'); return; }
     setBusy(true); setError('');
+    authDiagnostic('sign-in initiated', { method: 'email_password' }, 'EMAIL');
     try {
       const result = await signIn.password({ emailAddress: email.trim(), password });
+      authDiagnostic('sign-in result', { success: !result.error, status: signIn.status ?? null }, 'EMAIL');
       if (result.error) { setError(clerkMessage(result.error)); return; }
       if (signIn.status === 'needs_client_trust' || signIn.status === 'needs_second_factor') {
         const sent = await signIn.mfa.sendEmailCode();
@@ -22,16 +25,19 @@ export default function SignIn() {
       }
       if (signIn.status !== 'complete') { setError('More verification is required for this account.'); return; }
       const final = await signIn.finalize();
+      authDiagnostic('sign-in activation result', { success: !final.error }, 'EMAIL');
       if (final.error) setError(clerkMessage(final.error));
-    } catch (cause) { setError(clerkMessage(cause)); } finally { setBusy(false); }
+    } catch (cause) { authDiagnostic('sign-in failed', {}, 'EMAIL'); setError(clerkMessage(cause)); } finally { setBusy(false); }
   }
   async function verify() {
     if (!code.trim()) { setError('Enter the verification code.'); return; }
     setBusy(true); setError('');
+    authDiagnostic('sign-in verification submitted', { digits: code.trim().length }, 'EMAIL');
     try {
       const result = await signIn.mfa.verifyEmailCode({ code: code.trim() });
+      authDiagnostic('sign-in verification result', { success: !result.error }, 'EMAIL');
       if (result.error) { setError(clerkMessage(result.error)); return; }
-      const final = await signIn.finalize(); if (final.error) setError(clerkMessage(final.error));
+      const final = await signIn.finalize(); authDiagnostic('sign-in verification activation result', { success: !final.error }, 'EMAIL'); if (final.error) setError(clerkMessage(final.error));
     } catch (cause) { setError(clerkMessage(cause)); } finally { setBusy(false); }
   }
   async function resend() { try { const result = await signIn.mfa.sendEmailCode(); if (result.error) setError(clerkMessage(result.error)); else setError(''); } catch (cause) { setError(clerkMessage(cause)); } }

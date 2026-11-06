@@ -5,6 +5,7 @@ import { AuthAction, AuthError, AuthField, AuthLink, AuthPage, clerkMessage } fr
 import { Text } from '../../ui/LocalizedText';
 import { styles } from '../../ui/components';
 import { SocialAuth } from '../../ui/SocialAuth';
+import { authDiagnostic } from '../../core/runtime';
 
 export default function SignUp() {
   const { signUp } = useSignUp();
@@ -14,13 +15,16 @@ export default function SignUp() {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { setError('Enter a valid email address.'); return; }
     if (!password) { setError('Enter a password.'); return; }
     setBusy(true); setError('');
+    authDiagnostic('signup initiated', { method: 'email_password' }, 'EMAIL');
     try {
       const result = await signUp.password({ emailAddress: email.trim(), password });
+      authDiagnostic('signup attempt result', { success: !result.error, status: signUp.status ?? null, missingFields: (signUp.missingFields ?? []).join(','), unverifiedFields: (signUp.unverifiedFields ?? []).join(','), hasSession: Boolean(signUp.createdSessionId) }, 'EMAIL');
       if (result.error) { setError(clerkMessage(result.error)); return; }
       const sent = await signUp.verifications.sendEmailCode();
+      authDiagnostic('verification code send result', { success: !sent.error }, 'EMAIL');
       if (sent.error) { setError(clerkMessage(sent.error)); return; }
       router.push('/(auth)/verify-email');
-    } catch (cause) { setError(clerkMessage(cause)); } finally { setBusy(false); }
+    } catch (cause) { authDiagnostic('signup request failed', { stage: 'initiation' }, 'EMAIL'); setError(clerkMessage(cause)); } finally { setBusy(false); }
   }
   return <AuthPage title="Create your account" detail="Your fitness profile comes after email verification.">
     <SocialAuth/><Text style={[styles.muted, { textAlign: 'center' }]}>OR CONTINUE WITH EMAIL</Text>

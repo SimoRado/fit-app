@@ -7,7 +7,7 @@ import { cloudUpsertSql } from './syncSql';
 export type SyncChoice = 'ask' | 'local' | 'enabled';
 export type { SyncKind, OutboxRow, CloudRow } from './syncOrder';
 const descriptors = Object.fromEntries(syncTables.map(t => [t.name, t])) as Record<SyncKind, typeof syncTables[number]>;
-const primary: Partial<Record<SyncKind, string>> = { rest_days: 'owner_id,day', favorites: 'owner_id,card_id', preferences: 'key' };
+const primary: Partial<Record<SyncKind, string>> = { rest_days: 'owner_id,day', favorites: 'owner_id,card_id', preferences: 'key', nutrition_preferences: 'owner_id' };
 
 export async function syncChoice(): Promise<SyncChoice> {
   const row = await (await db()).getFirstAsync<{ choice: SyncChoice }>('SELECT choice FROM sync_control WHERE id=1');
@@ -45,6 +45,7 @@ export async function pendingOperations() {
 
 function keyWhere(kind: SyncKind, id: string): { sql: string; args: string[] } {
   if (kind === 'preferences') return { sql: 'key=?', args: [id] };
+  if (kind === 'nutrition_preferences') return { sql: 'owner_id=?', args: [id] };
   if (kind === 'habit_completions' || kind === 'mission_completions') {
     const split = id.lastIndexOf(':');
     return { sql: `${kind === 'habit_completions' ? 'habit_id' : 'mission_id'}=? AND day=?`, args: [id.slice(0, split), id.slice(split + 1)] };

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { router } from 'expo-router';
 import { Text } from '../../ui/LocalizedText';
-import Svg, { Circle, Polyline, Rect, Text as SvgText } from 'react-native-svg';
+import Svg, { Circle, Line, Polyline, Rect, Text as SvgText } from 'react-native-svg';
 import { addDays, dayKey, weekStart } from '../../core/date';
 import { habitRate, habitStreak, missionProgress, missionRate, personalRecords, weightGoalProgress, weightSummary, workoutStats } from '../../core/logic';
 import { Exercise, Habit, HabitCompletion, Mission, MissionCompletion, WeightEntry, Workout, WorkoutExercise, WorkoutSet } from '../../core/types';
@@ -75,11 +75,16 @@ export default function Progress() {
   const weightChange = chronologicalWeights.length > 1 ? chronologicalWeights.at(-1)!.kg - chronologicalWeights[0].kg : null;
 
   return <Page title="Progress">
-    <View style={{ marginTop: 4 }}><DisplayMetric value={weightChange === null ? '—' : (weightChange > 0 ? '+' : '−') + Math.abs(weightChange).toFixed(1)} label="KG" size={118}/><Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 10, letterSpacing: 1.2, textTransform: 'uppercase' }}>{weightChange === null ? 'Add two weight entries to see your change' : 'Weight change in selected period'}</Text></View>
+    <View style={{ marginTop: 4 }}><DisplayMetric value={weightChange === null ? '—' : (weightChange > 0 ? '+' : '−') + Math.abs(weightChange).toFixed(1)} label="KG" size={118}/><Text style={{ color: colors.muted, fontFamily: fonts.bold, fontSize: 10, letterSpacing: .8, textTransform: 'uppercase' }}>{weightChange === null ? 'Add two weight entries to see your change' : 'Weight change in selected period'}</Text></View>
+    {chronologicalWeights.length > 1 && <View style={{ gap: 12 }}><Svg width="100%" height={190} viewBox="0 0 300 105" accessibilityLabel="Weight growth curve">
+      {profile?.target_weight != null && weightMax > weightMin && <Line x1={10} x2={290} y1={Math.max(5, Math.min(100, 90 - (profile.target_weight - weightMin) * 70 / (weightMax - weightMin)))} y2={Math.max(5, Math.min(100, 90 - (profile.target_weight - weightMin) * 70 / (weightMax - weightMin)))} stroke={colors.coral} strokeWidth={1.5} strokeDasharray="4 5"/>}
+      <Polyline points={weightPoints} fill="none" stroke={colors.accent} strokeWidth={4} strokeLinecap="round" strokeLinejoin="round"/>
+      {chronologicalWeights.map((entry, index) => <Circle key={entry.id} cx={10 + index * 280 / Math.max(1, chronologicalWeights.length - 1)} cy={90 - (entry.kg - weightMin) * 70 / Math.max(1, weightMax - weightMin)} r={index === chronologicalWeights.length - 1 ? 5 : 2} fill={index === chronologicalWeights.length - 1 ? colors.sun : colors.accent} stroke={index === chronologicalWeights.length - 1 ? colors.ink : 'none'} strokeWidth={2}/>)}
+    </Svg><View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><View><Text style={styles.label}>Day 1</Text><Text style={{ color: colors.ink, fontFamily: fonts.displayHeavy, fontSize: 25 }}>{chronologicalWeights[0].kg}</Text></View><View style={{ alignItems: 'flex-end' }}><Text style={styles.label}>Today</Text><Text style={{ color: colors.accent, fontFamily: fonts.displayHeavy, fontSize: 25 }}>{chronologicalWeights.at(-1)!.kg}</Text></View></View></View>}
     <Choices label="Activity period" options={['7', '30', '90'] as const} value={period} onChange={setPeriod} compact/>
     {goalProgress !== null && selectedWeight.latest && profile?.target_weight != null && <View style={{ paddingVertical: 14, gap: 10 }}><Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 10, letterSpacing: 1.2, textTransform: 'uppercase' }}>Progress toward target: {goalProgress}%</Text><TransformationRuler progress={goalProgress} start={profile.start_weight} current={selectedWeight.latest.kg} target={profile.target_weight}/></View>}
     <Card>
-      <Text style={{ color: colors.text, fontFamily: fonts.displayHeavy, fontSize: 30, textTransform: 'uppercase' }}>Habit completion</Text>
+      <Text style={{ color: colors.text, fontFamily: fonts.displayHeavy, fontSize: 28 }}>Habit completion</Text>
       <DisplayMetric value={selectedHabitRate.percent + '%'} size={96}/>
       <Text style={styles.muted}>{selectedHabitRate.done}/{selectedHabitRate.due} scheduled habit targets completed · {selectedHabitRate.percent}%</Text>
       <ProgressBar value={selectedHabitRate.percent / 100}/>
