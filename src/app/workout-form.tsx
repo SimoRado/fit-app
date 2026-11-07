@@ -15,6 +15,7 @@ import { ProgressBar, SectionHeader } from '../ui/visuals';
 import { WorkoutSetRow } from '../ui/WorkoutSetRow';
 import { colors, fonts } from '../ui/theme';
 import { DisplayMetric } from '../ui/DisplayMetric';
+import { ExerciseBrowser } from '../ui/ExerciseBrowser';
 
 const blankSet = (): DraftSet => ({ id: uid(), reps: '', weight: '', duration: '', note: '', completed: false });
 const emptyDraft = (): WorkoutDraft => ({ original: null, name: '', day: dayKey(), start: localTime(), duration: '', notes: '', completed: false, items: [], sessionStatus: 'draft', elapsedSeconds: 0, runningSinceMs: null, pausedSinceMs: null, pausedSeconds: 0, finishedAtMs: null });
@@ -364,7 +365,7 @@ export default function WorkoutForm() {
         {draft.original?.completed ? <Button title="Discard changes" kind="ghost" disabled={!ready || saving} onPress={() => router.back()}/> : <Button title="Discard changes" kind="ghost" disabled={!ready || saving} onPress={() => confirm('Discard workout changes?', () => router.back(), 'This removes unsaved changes only.', 'Discard')}/>}
       </>}
       <BottomSheet visible={picker} title="Add exercise" onClose={() => setPicker(false)}>{close => <>
-        {exercises.map(exercise => <Button key={exercise.id} title={exercise.name} kind="ghost" onPress={() => { chooseExercise(exercise); close(); }}/>) }
+        <ExerciseBrowser onSelect={exercise => { chooseExercise(exercise); close(); }}/>
         <Field label="Custom exercise name" value={custom} onChangeText={setCustom}/><Button title="Create custom exercise" onPress={() => createCustom(close)}/>
       </>}</BottomSheet>
       <BottomSheet visible={finishing} title={live ? 'Finish workout?' : 'Save workout'} onClose={() => setFinishing(false)}>{close => <>

@@ -46,9 +46,9 @@ export async function pendingOperations() {
 function keyWhere(kind: SyncKind, id: string): { sql: string; args: string[] } {
   if (kind === 'preferences') return { sql: 'key=?', args: [id] };
   if (kind === 'nutrition_preferences') return { sql: 'owner_id=?', args: [id] };
-  if (kind === 'habit_completions' || kind === 'mission_completions') {
+  if (kind === 'habit_completions' || kind === 'habit_progress' || kind === 'mission_completions') {
     const split = id.lastIndexOf(':');
-    return { sql: `${kind === 'habit_completions' ? 'habit_id' : 'mission_id'}=? AND day=?`, args: [id.slice(0, split), id.slice(split + 1)] };
+    return { sql: `${kind === 'mission_completions' ? 'mission_id' : 'habit_id'}=? AND day=?`, args: [id.slice(0, split), id.slice(split + 1)] };
   }
   if (kind === 'rest_days' || kind === 'favorites') {
     const split = id.indexOf(':');

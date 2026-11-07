@@ -8,6 +8,7 @@ export type ReminderDefinition = {
   hour: number;
   minute: number;
   weekday?: number;
+  habitId?: string;
 };
 
 type ReminderOperations = {

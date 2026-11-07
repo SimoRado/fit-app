@@ -1,10 +1,11 @@
 import * as SQLite from 'expo-sqlite';
-import { Exercise, Favorite, Habit, HabitCompletion, Measurement, Mission, MissionCompletion, Preference, Profile, Routine, RoutineExercise, WeightEntry, Workout, WorkoutExercise, WorkoutSet } from '../core/types';
+import { Exercise, Favorite, Habit, HabitCompletion, HabitProgress, Measurement, Mission, MissionCompletion, Preference, Profile, Routine, RoutineExercise, WeightEntry, Workout, WorkoutExercise, WorkoutSet } from '../core/types';
 import { addDays, dayKey, uid } from '../core/date';
 import { startWorkoutTimer } from '../core/workoutTimer';
 import { exerciseSeeds, migrations } from './schema';
 import { trainingWorkoutsQuery } from './queries';
 import { localDatabaseName } from './account';
+import { exerciseSearchQuery, importExerciseCatalog, normalizeExerciseText, type ExerciseDetail } from './exerciseCatalog';
 
 let promise: Promise<SQLite.SQLiteDatabase> | undefined;
 let activeAccount: string | null = null;
@@ -28,6 +29,7 @@ export async function db() {
     await d.withExclusiveTransactionAsync(async tx => {
       for (const [id, name] of exerciseSeeds) await tx.runAsync('INSERT OR IGNORE INTO exercises VALUES (?,?,?,0)', id, name, id === 'plank' || id === 'running' ? 'duration' : id === 'pullup' ? 'reps' : 'weight_reps');
     });
+    await importExerciseCatalog(d);
     if (activeAccount !== requestedAccount) throw new Error('Account changed while opening local data');
     return d;
   })();
@@ -54,9 +56,40 @@ export const repo = {
   profile: async () => (await db()).getFirstAsync<Profile>('SELECT * FROM profile LIMIT 1'),
   saveProfile: async (p: Profile) => put('profile', p),
   createProfile: async (p: Profile) => { const d=await db(); await d.withExclusiveTransactionAsync(async tx=>{await tx.runAsync('INSERT INTO profile VALUES (?,?,?,?,?,?,?,?,?,?,?)',p.id,p.name,p.birth_date,p.height_cm,p.start_weight,p.target_weight,p.experience,p.fitness_goal,p.growth_goals,p.language,p.completed_at);await tx.runAsync('INSERT INTO weights VALUES (?,?,?,?,?,?)',uid(),p.id,dayKey(),p.start_weight,'Starting weight from onboarding',p.completed_at);}); },
-  habits: () => all<Habit>('habits', 'ORDER BY created_at DESC'),
+  habits: () => all<Habit>('habits', 'ORDER BY sort_order, created_at DESC'),
   completions: () => all<HabitCompletion>('habit_completions'),
-  saveHabit: (h: Habit) => put('habits', h),
+  habitProgress: () => all<HabitProgress>('habit_progress'),
+  saveHabit: async (h: Habit) => {
+    const d = await db();
+    const existing = await d.getFirstAsync<{ sort_order: number }>('SELECT sort_order FROM habits WHERE id=? AND owner_id=?', h.id, h.owner_id);
+    const next = existing ? existing.sort_order : (await d.getFirstAsync<{ n: number }>('SELECT COALESCE(MAX(sort_order),-1)+1 AS n FROM habits WHERE owner_id=?', h.owner_id))?.n ?? 0;
+    await put('habits', { ...h, habit_type: h.habit_type ?? 'boolean', target_value: h.target_value ?? 1, unit: h.unit ?? '', increment: h.increment ?? 1, reminder_enabled: h.reminder_enabled ?? Number(!!h.reminder_time), reminder_times: h.reminder_times ?? JSON.stringify(h.reminder_time ? [h.reminder_time] : []), sort_order: h.sort_order ?? next });
+  },
+  moveHabit: async (id: string, direction: -1 | 1) => {
+    const d = await db();
+    await d.withExclusiveTransactionAsync(async tx => {
+      const current = await tx.getFirstAsync<{ id: string; sort_order: number; owner_id: string }>('SELECT id,sort_order,owner_id FROM habits WHERE id=?', id);
+      if (!current) return;
+      const neighbor = await tx.getFirstAsync<{ id: string; sort_order: number }>(`SELECT id,sort_order FROM habits WHERE owner_id=? AND id<>? AND sort_order ${direction < 0 ? '<' : '>'} ? ORDER BY sort_order ${direction < 0 ? 'DESC' : 'ASC'} LIMIT 1`, current.owner_id, id, current.sort_order);
+      if (!neighbor) return;
+      await tx.runAsync('UPDATE habits SET sort_order=? WHERE id=?', neighbor.sort_order, id);
+      await tx.runAsync('UPDATE habits SET sort_order=? WHERE id=?', current.sort_order, neighbor.id);
+    });
+  },
+  setHabitAmount: async (habitId: string, day: string, amount: number) => {
+    if (!Number.isFinite(amount) || amount < 0 || amount > 100000000) throw Error('Enter a valid nonnegative amount.');
+    const d = await db();
+    await d.withExclusiveTransactionAsync(async tx => {
+      const habit = await tx.getFirstAsync<Habit>('SELECT * FROM habits WHERE id=?', habitId);
+      if (!habit || habit.habit_type !== 'quantity') throw Error('Measurable habit not found.');
+      const prior = await tx.getFirstAsync<HabitProgress>('SELECT * FROM habit_progress WHERE habit_id=? AND day=?', habitId, day);
+      const target = prior?.target_snapshot ?? habit.target_value ?? 1;
+      if (amount === 0) await tx.runAsync('DELETE FROM habit_progress WHERE habit_id=? AND day=?', habitId, day);
+      else await tx.runAsync('INSERT INTO habit_progress (id,habit_id,day,amount,target_snapshot,unit_snapshot,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT(habit_id,day) DO UPDATE SET amount=excluded.amount,updated_at=excluded.updated_at', `${habitId}:${day}`, habitId, day, amount, target, prior?.unit_snapshot ?? habit.unit ?? '', new Date().toISOString());
+      if (amount >= target) await tx.runAsync('INSERT OR IGNORE INTO habit_completions VALUES (?,?,?,?)', uid(), habitId, day, new Date().toISOString());
+      else await tx.runAsync('DELETE FROM habit_completions WHERE habit_id=? AND day=?', habitId, day);
+    });
+  },
   toggleHabit: async (id: string, day: string) => { const d = await db(); await d.withExclusiveTransactionAsync(async tx => { const exists = await tx.getFirstAsync('SELECT id FROM habit_completions WHERE habit_id=? AND day=?', id, day); if (exists) await tx.runAsync('DELETE FROM habit_completions WHERE habit_id=? AND day=?', id, day); else await tx.runAsync('INSERT INTO habit_completions VALUES (?,?,?,?)', uid(), id, day, new Date().toISOString()); }); },
   setHabitCompletion: async (id: string, day: string, completed: boolean) => { const d = await db(); if (completed) await d.runAsync('INSERT OR IGNORE INTO habit_completions VALUES (?,?,?,?)', uid(), id, day, new Date().toISOString()); else await d.runAsync('DELETE FROM habit_completions WHERE habit_id=? AND day=?', id, day); },
   missions: () => all<Mission>('missions', 'ORDER BY created_at DESC'),
@@ -70,6 +103,17 @@ export const repo = {
   measurements: () => all<Measurement>('measurements', 'ORDER BY day DESC'),
   saveMeasurement: (m: Measurement) => put('measurements', m),
   exercises: () => all<Exercise>('exercises', 'ORDER BY custom, name'),
+  searchExercises: async (search = '', muscle = '', equipment = '', category = '', limit = 60) => {
+    const d = await db();
+    const term = normalizeExerciseText(search);
+    return d.getAllAsync<Exercise & { muscle_group: string | null; equipment: string | null; category: string | null }>(exerciseSearchQuery, term, term, muscle, muscle, equipment, equipment, category, category, limit);
+  },
+  exerciseFilters: async () => {
+    const d = await db();
+    const rows = await d.getAllAsync<{ muscle_group_key: string; equipment_key: string; category: string }>('SELECT DISTINCT muscle_group_key,equipment_key,category FROM exercise_catalog');
+    return { muscles: [...new Set(rows.map(row => row.muscle_group_key))].sort(), equipment: [...new Set(rows.map(row => row.equipment_key))].sort(), categories: [...new Set(rows.map(row => row.category))].sort() };
+  },
+  exerciseDetail: async (id: string) => (await db()).getFirstAsync<ExerciseDetail>('SELECT * FROM exercise_catalog WHERE exercise_id=?', id),
   saveExercise: (e: Exercise) => put('exercises', e),
   workouts: () => all<Workout>('workouts', 'ORDER BY day DESC, created_at DESC'),
   trainingWorkouts: async () => (await db()).getAllAsync<Workout>(trainingWorkoutsQuery),

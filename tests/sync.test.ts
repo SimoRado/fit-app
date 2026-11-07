@@ -37,7 +37,7 @@ describe('durable SQLite queue', () => {
     db.exec("UPDATE sync_control SET choice='enabled' WHERE id=1");
     db.prepare('UPDATE profile SET name=? WHERE id=?').run('Updated', profile.id);
     expect(db.prepare('SELECT action FROM sync_outbox WHERE kind=? AND record_id=?').get('profile', profile.id)?.action).toBe('upsert');
-    db.prepare('INSERT INTO habits VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)').run(...Object.values(habit));
+    db.prepare('INSERT INTO habits (id,owner_id,name,description,category,icon,frequency,days,weekly_target,start_date,archived,reminder_time,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)').run(...Object.values(habit));
     db.prepare('INSERT INTO habit_completions VALUES (?,?,?,?)').run('completion-1', habit.id, '2026-11-05', '2026-11-05T00:00:00.000Z');
     db.prepare('DELETE FROM habits WHERE id=?').run(habit.id);
     expect(db.prepare('SELECT action FROM sync_outbox WHERE kind=? AND record_id=?').get('habits', habit.id)?.action).toBe('delete');
@@ -99,5 +99,26 @@ describe('authenticated cloud sync', () => {
     const id = `${habit.id}:${event.day}`;
     expect(await user.mutation(api.sync.apply, { kind: 'habit_completions', clientId: id, payload: JSON.stringify(event), expectedRevision: 0, operationId: op(9) })).toEqual({ status: 'applied', revision: 1 });
     expect(await user.mutation(api.sync.apply, { kind: 'habit_completions', clientId: id, payload: JSON.stringify({ ...event, id: 'device-b' }), expectedRevision: 0, operationId: op(10) })).toEqual({ status: 'applied', revision: 1 });
+  });
+  it('queues measured progress only with consent and protects its cloud owner', async () => {
+    const db = new DatabaseSync(':memory:');
+    db.exec('PRAGMA foreign_keys=ON');
+    for (const migration of migrations) db.exec(migration);
+    db.prepare('INSERT INTO profile VALUES (?,?,?,?,?,?,?,?,?,?,?)').run(...Object.values(profile));
+    db.prepare('INSERT INTO habits (id,owner_id,name,description,category,icon,frequency,days,weekly_target,start_date,archived,reminder_time,created_at,habit_type,target_value,unit,increment) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(...Object.values(habit), 'quantity', 4, 'L', 0.5);
+    const progress = { id: `${habit.id}:2026-11-05`, habit_id: habit.id, day: '2026-11-05', amount: 2, target_snapshot: 4, unit_snapshot: 'L', updated_at: '2026-11-05T12:00:00.000Z' };
+    db.prepare('INSERT INTO habit_progress (id,habit_id,day,amount,target_snapshot,unit_snapshot,updated_at) VALUES (?,?,?,?,?,?,?)').run(...Object.values(progress));
+    expect(db.prepare("SELECT count(*) AS n FROM sync_outbox WHERE kind='habit_progress'").get()?.n).toBe(0);
+    db.exec("UPDATE sync_control SET choice='enabled' WHERE id=1");
+    db.prepare('UPDATE habit_progress SET amount=3 WHERE id=?').run(progress.id);
+    expect(db.prepare('SELECT action FROM sync_outbox WHERE kind=? AND record_id=?').get('habit_progress', progress.id)?.action).toBe('upsert');
+    db.close();
+    const t = convexTest(schema, modules);
+    const alice = t.withIdentity({ subject: 'user_A', issuer: 'https://clerk.example' });
+    const bob = t.withIdentity({ subject: 'user_B', issuer: 'https://clerk.example' });
+    await alice.mutation(api.sync.apply, { kind: 'profile', clientId: profile.id, payload: JSON.stringify(profile), expectedRevision: 0, operationId: op(11) });
+    await alice.mutation(api.sync.apply, { kind: 'habits', clientId: habit.id, payload: JSON.stringify(habit), expectedRevision: 0, operationId: op(12) });
+    await expect(bob.mutation(api.sync.apply, { kind: 'habit_progress', clientId: progress.id, payload: JSON.stringify(progress), expectedRevision: 0, operationId: op(13) })).rejects.toThrow('Parent record is not synchronized');
+    expect(await alice.mutation(api.sync.apply, { kind: 'habit_progress', clientId: progress.id, payload: JSON.stringify(progress), expectedRevision: 0, operationId: op(14) })).toEqual({ status: 'applied', revision: 1 });
   });
 });

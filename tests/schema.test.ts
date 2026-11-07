@@ -27,6 +27,17 @@ function addProfile(database: DatabaseSync) {
 }
 
 describe('SQLite persistence schema', () => {
+  it('migrates existing habits and reminder times without dropping completion history', () => {
+    const database = open();
+    for (let index = 0; index < 6; index++) database.exec(migrations[index]);
+    addProfile(database);
+    database.prepare('INSERT INTO habits (id,owner_id,name,description,category,icon,frequency,days,weekly_target,start_date,archived,reminder_time,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)').run('old', 'p', 'Read', '', '', '✓', 'daily', '', 7, '2026-11-02', 0, '21:00', 'now');
+    database.prepare('INSERT INTO habit_completions VALUES (?,?,?,?)').run('done', 'old', '2026-11-02', 'now');
+    database.exec(migrations[6]);
+    expect(database.prepare('SELECT category,reminder_enabled,reminder_times,habit_type FROM habits WHERE id=?').get('old')).toEqual({ category: 'Other', reminder_enabled: 1, reminder_times: '["21:00"]', habit_type: 'boolean' });
+    expect((database.prepare('SELECT COUNT(*) AS n FROM habit_completions').get() as { n: number }).n).toBe(1);
+    database.close();
+  });
   it('initializes the current schema once and seeds only static exercise definitions', () => {
     const database = open();
     migrate(database);
@@ -66,7 +77,7 @@ describe('SQLite persistence schema', () => {
     database.prepare('INSERT INTO weights VALUES (?,?,?,?,?,?)').run('w', 'p', '2026-11-02', 80, '', 'now');
     database.prepare('UPDATE weights SET kg=? WHERE id=?').run(79.5, 'w');
     expect((database.prepare('SELECT kg FROM weights WHERE id=?').get('w') as { kg: number }).kg).toBe(79.5);
-    database.prepare('INSERT INTO habits VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)').run('h', 'p', 'Read', '', 'Learning', '✓', 'daily', '', 7, '2026-11-02', 0, null, 'now');
+    database.prepare('INSERT INTO habits (id,owner_id,name,description,category,icon,frequency,days,weekly_target,start_date,archived,reminder_time,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)').run('h', 'p', 'Read', '', 'Learning', '✓', 'daily', '', 7, '2026-11-02', 0, null, 'now');
     database.prepare('INSERT INTO habit_completions VALUES (?,?,?,?)').run('c', 'h', '2026-11-02', 'now');
     expect(() => database.prepare('INSERT INTO habit_completions VALUES (?,?,?,?)').run('c2', 'h', '2026-11-02', 'now')).toThrow();
     database.prepare('DELETE FROM habits WHERE id=?').run('h');
@@ -143,14 +154,14 @@ describe('SQLite persistence schema', () => {
 
   it('adds timer fields without converting old unfinished records into active sessions', () => {
     const database = open(); database.exec('PRAGMA foreign_keys=ON');
-    for (let index = 0; index < migrations.length - 1; index++) {
+    for (let index = 0; index < 5; index++) {
       database.exec('BEGIN'); database.exec(migrations[index]); database.exec(`PRAGMA user_version=${index + 1}`); database.exec('COMMIT');
     }
     addProfile(database);
     const insert = database.prepare('INSERT INTO workouts (id,owner_id,name,day,started_at,duration_min,notes,completed,created_at) VALUES (?,?,?,?,?,?,?,?,?)');
     insert.run('old-done', 'p', 'Saved history', '2026-11-02', '2026-11-02T12:00:00Z', 32, '', 1, 'now');
     insert.run('old-draft', 'p', 'Unfinished manual draft', '2026-11-03', '2026-11-03T12:00:00Z', null, '', 0, 'now');
-    database.exec(migrations[migrations.length - 1]);
+    database.exec(migrations[5]);
     const rows = database.prepare('SELECT id,session_status,elapsed_seconds FROM workouts ORDER BY id').all();
     expect(rows).toEqual([
       { id: 'old-done', session_status: 'completed', elapsed_seconds: 1920 },

@@ -1,4 +1,4 @@
-import { nutritionSyncTables, syncMigration, syncTriggers } from './syncSchema';
+import { habitProgressSyncTables, nutritionSyncTables, syncMigration, syncTriggers } from './syncSchema';
 
 export const migrations = [
   `CREATE TABLE IF NOT EXISTS profile (id TEXT PRIMARY KEY, name TEXT NOT NULL, birth_date TEXT NOT NULL, height_cm REAL NOT NULL, start_weight REAL NOT NULL, target_weight REAL, experience TEXT NOT NULL, fitness_goal TEXT NOT NULL, growth_goals TEXT NOT NULL, language TEXT NOT NULL, completed_at TEXT NOT NULL);
@@ -37,6 +37,25 @@ export const migrations = [
    ALTER TABLE workouts ADD COLUMN finished_at_ms INTEGER;
    UPDATE workouts SET session_status='completed', elapsed_seconds=max(0,COALESCE(duration_min,0))*60 WHERE completed=1;
    CREATE UNIQUE INDEX IF NOT EXISTS one_open_workout_per_owner ON workouts(owner_id) WHERE session_status IN ('running','paused');`,
+  `ALTER TABLE habits ADD COLUMN habit_type TEXT NOT NULL DEFAULT 'boolean' CHECK(habit_type IN ('boolean','quantity'));
+   ALTER TABLE habits ADD COLUMN target_value REAL NOT NULL DEFAULT 1 CHECK(target_value>0 AND target_value<=1000000);
+   ALTER TABLE habits ADD COLUMN unit TEXT NOT NULL DEFAULT '';
+   ALTER TABLE habits ADD COLUMN increment REAL NOT NULL DEFAULT 1 CHECK(increment>0 AND increment<=1000000);
+   ALTER TABLE habits ADD COLUMN reminder_enabled INTEGER NOT NULL DEFAULT 0 CHECK(reminder_enabled IN (0,1));
+   ALTER TABLE habits ADD COLUMN reminder_times TEXT NOT NULL DEFAULT '[]';
+   ALTER TABLE habits ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0;
+   UPDATE habits SET reminder_enabled=1,reminder_times=json_array(reminder_time) WHERE reminder_time IS NOT NULL AND reminder_time<>'';
+   UPDATE habits SET category='Other' WHERE trim(category)='';
+   UPDATE habits SET sort_order=(SELECT count(*) FROM habits AS older WHERE older.owner_id=habits.owner_id AND (older.created_at>habits.created_at OR (older.created_at=habits.created_at AND older.id>habits.id)));
+   CREATE TABLE habit_progress (id TEXT PRIMARY KEY,habit_id TEXT NOT NULL REFERENCES habits(id) ON DELETE CASCADE,day TEXT NOT NULL,amount REAL NOT NULL CHECK(amount>=0 AND amount<=100000000),target_snapshot REAL NOT NULL CHECK(target_snapshot>0),unit_snapshot TEXT NOT NULL,updated_at TEXT NOT NULL,UNIQUE(habit_id,day));
+   CREATE INDEX habit_progress_day ON habit_progress(habit_id,day);
+   ${syncTriggers(habitProgressSyncTables)}`,
+  `CREATE TABLE IF NOT EXISTS exercise_catalog (exercise_id TEXT PRIMARY KEY REFERENCES exercises(id), source_id TEXT NOT NULL UNIQUE, category TEXT NOT NULL, body_part TEXT NOT NULL, equipment TEXT NOT NULL, equipment_key TEXT NOT NULL, muscle_group TEXT NOT NULL, muscle_group_key TEXT NOT NULL, target_muscle TEXT NOT NULL, secondary_muscles TEXT NOT NULL, instructions TEXT NOT NULL, instruction_steps TEXT NOT NULL, search_text TEXT NOT NULL, media_uri TEXT);
+   CREATE INDEX IF NOT EXISTS exercise_catalog_muscle ON exercise_catalog(muscle_group_key);
+   CREATE INDEX IF NOT EXISTS exercise_catalog_equipment ON exercise_catalog(equipment_key);
+   CREATE INDEX IF NOT EXISTS exercise_catalog_category ON exercise_catalog(category);
+   CREATE TABLE IF NOT EXISTS exercise_catalog_sources (source_id TEXT PRIMARY KEY, exercise_id TEXT NOT NULL REFERENCES exercises(id));
+   CREATE TABLE IF NOT EXISTS exercise_catalog_imports (source TEXT PRIMARY KEY, version TEXT NOT NULL);`,
 ] as const;
 
 export const exerciseSeeds: readonly [string, string][] = [
