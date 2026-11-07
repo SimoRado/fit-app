@@ -61,3 +61,12 @@ builds/
 # User-provided source archive contains separately licensed media; only the
 # generated metadata in src/data/catalog belongs in the app bundle.
 /exercises-dataset-main/
+
+# Generated Expo exports
+.expo-auth-android/
+.expo-motion-android-export/
+.expo-motion-ios-export/
+.expo-nutrition-android/
+.expo-nutrition-ios/
+.expo-v4-android/
+.expo-v4-ios/
