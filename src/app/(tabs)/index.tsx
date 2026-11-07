@@ -9,11 +9,15 @@ import { habitRate, habitStreak, missionProgress, scheduled, weightSummary } fro
 import { Habit, HabitCompletion, Mission, MissionCompletion, Routine, WeightEntry, Workout } from '../../core/types';
 import { repo } from '../../data/db';
 import { useApp } from '../../state/app';
-import { AngularBackground, Button, Card, Page, styles, message } from '../../ui/components';
-import { Artwork, HabitCheck, MotivationCard, SectionHeader, TickDial } from '../../ui/visuals';
+import { Button, Card, Page, styles, message } from '../../ui/components';
+import { HabitCheck, MotivationCard, SectionHeader, TickDial } from '../../ui/visuals';
 import { colors, fonts } from '../../ui/theme';
 import { cards } from '../../core/cards';
 import { DisplayMetric } from '../../ui/DisplayMetric';
+import { foodEntries, nutritionEnabled, nutritionTarget } from '../../data/nutrition';
+import { calorieBalance, sumNutrients, type Nutrients } from '../../core/nutrition';
+import { WorkoutInProgressCard } from '../../ui/WorkoutInProgressCard';
+import type { OpenWorkout } from '../../data/db';
 
 export default function Home() {
   const { width } = useWindowDimensions();
@@ -25,11 +29,18 @@ export default function Home() {
   const [training, setTraining] = useState<Workout[]>([]);
   const [weights, setWeights] = useState<WeightEntry[]>([]);
   const [routines, setRoutines] = useState<Routine[]>([]);
+  const [openWorkout, setOpenWorkout] = useState<OpenWorkout | null>(null);
   const [quote, setQuote] = useState(0);
+  const [nutrition, setNutrition] = useState<{ enabled: boolean; target: Nutrients | null; consumed: Nutrients } | null>(null);
 
   useEffect(() => {
-    Promise.all([repo.habits(), repo.completions(), repo.missions(), repo.manual(), repo.trainingWorkouts(), repo.weights(), repo.routines()])
-      .then(([h, c, m, mc, w, wt, r]) => { setHabits(h); setCompletions(c); setMissions(m); setManual(mc); setTraining(w); setWeights(wt); setRoutines(r); }).catch(message);
+    if (!profile?.id) return;
+    Promise.all([repo.habits(), repo.completions(), repo.missions(), repo.manual(), repo.trainingWorkouts(), repo.weights(), repo.routines(), repo.openWorkoutSession(profile.id)])
+      .then(([h, c, m, mc, w, wt, r, open]) => { setHabits(h); setCompletions(c); setMissions(m); setManual(mc); setTraining(w); setWeights(wt); setRoutines(r); setOpenWorkout(open); }).catch(message);
+  }, [revision, profile?.id]);
+  useEffect(() => {
+    const day = dayKey();
+    Promise.all([nutritionEnabled(), nutritionTarget(day), foodEntries(day, day)]).then(([enabled, target, entries]) => setNutrition({ enabled, target, consumed: sumNutrients(entries) })).catch(message);
   }, [revision]);
 
   const today = dayKey();
@@ -59,33 +70,35 @@ export default function Home() {
 
   return <Page title="">
     <View style={[styles.row, { marginBottom: 4 }]}>
-      <Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 11, letterSpacing: 1 }}>{'×  ' + date}</Text>
-      <Pressable accessibilityRole="button" accessibilityLabel="Profile" onPress={() => router.push('/(tabs)/profile')} style={{ width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card2 }}>
-        <Text style={{ color: colors.accent, fontWeight: '800', fontSize: 20 }}>{profile?.name?.slice(0, 1).toUpperCase() ?? '×'}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}><View style={{ width: 28, height: 28, flexDirection: 'row', flexWrap: 'wrap', borderRadius: 7, overflow: 'hidden' }}>{[colors.sun, colors.coral, colors.accent, colors.mint].map(c => <View key={c} style={{ width: 14, height: 14, backgroundColor: c }}/>)}</View><Text style={{ color: colors.muted, fontFamily: fonts.bold, fontSize: 11, letterSpacing: .5, textTransform: 'uppercase' }}>{date}</Text></View>
+      <Pressable accessibilityRole="button" accessibilityLabel="Profile" onPress={() => router.push('/(tabs)/profile')} style={{ width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.lilac }}>
+        <Text style={{ color: colors.ink, fontFamily: fonts.displayHeavy, fontSize: 18 }}>{profile?.name?.slice(0, 1).toUpperCase() ?? 'M'}</Text>
       </Pressable>
     </View>
-    <Text accessibilityRole="header" style={{ color: colors.text, fontFamily: fonts.displayHeavy, fontSize: width < 375 ? 44 : 58, lineHeight: width < 375 ? 43 : 54, textTransform: 'uppercase', includeFontPadding: false }}>{greeting + ','}{'\n'}{profile?.name ?? 'friend'}</Text>
+    <Text accessibilityRole="header" style={{ color: colors.text, fontFamily: fonts.displayHeavy, fontSize: width < 375 ? 34 : 40, lineHeight: width < 375 ? 35 : 40, letterSpacing: -1.4, includeFontPadding: false }}>{greeting + ','}{'\n'}{profile?.name ?? 'friend'}</Text>
     <Text style={styles.muted}>{total ? total - done + ' left today. Keep going.' : 'Progress over perfection.'}</Text>
     <TickDial value={percent} label="Daily progress"/>
-    <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 12, borderTopWidth: 1, borderBottomWidth: 1, borderColor: colors.border, paddingVertical: 10 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 12, borderRadius: 28, backgroundColor: colors.sun, padding: 16 }}>
       <DisplayMetric value={streak} size={58}/>
-      <View style={{ flex: 1, gap: 3, paddingBottom: 6 }}><Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 10, letterSpacing: 1.4, textTransform: 'uppercase' }}>Day streak</Text><Text style={{ color: colors.muted, fontSize: 12 }}>{done === total && total > 0 ? 'Today is complete' : 'Finish today to extend it'}</Text></View>
-      <View style={{ width: 106, height: 44, flexDirection: 'row', alignItems: 'flex-end', gap: 2 }}>{streakBars.map((complete, index) => <View key={index} style={{ flex: 1, height: 12 + ((index * 17) % 29), backgroundColor: complete ? colors.accent : colors.elevated }}/>)}</View>
+      <View style={{ flex: 1, gap: 3, paddingBottom: 6 }}><Text style={{ color: colors.ink, fontFamily: fonts.bold, fontSize: 10, letterSpacing: .7, textTransform: 'uppercase' }}>Day streak</Text><Text style={{ color: colors.ink, fontSize: 12 }}>{done === total && total > 0 ? 'Today is complete' : 'Finish today to extend it'}</Text></View>
+      <View style={{ width: 80, height: 44, flexDirection: 'row', alignItems: 'flex-end', gap: 2 }}>{streakBars.map((complete, index) => <View key={index} style={{ flex: 1, height: 12 + ((index * 17) % 29), borderRadius: 3, backgroundColor: complete ? colors.ink : 'rgba(30,27,46,.2)' }}/>)}</View>
     </View>
+    {openWorkout && <WorkoutInProgressCard workout={openWorkout}/>}
+    {nutrition?.enabled && (nutrition.target || nutrition.consumed.kcal > 0) && <Pressable accessibilityRole="button" accessibilityLabel="Open nutrition" onPress={() => router.push('/(tabs)/nutrition')} style={{ minHeight: 120, borderRadius: 28, backgroundColor: colors.card, padding: 18, flexDirection: 'row', alignItems: 'center', gap: 16 }}><View style={{ width: 62, height: 62, borderRadius: 31, backgroundColor: colors.coral, alignItems: 'center', justifyContent: 'center' }}><Ionicons name="restaurant-outline" size={28} color={colors.ink}/></View><View style={{ flex: 1 }}><Text style={{ color: colors.muted, fontFamily: fonts.bold, fontSize: 11, letterSpacing: .6 }}>NUTRITION TODAY</Text><Text style={{ color: colors.ink, fontFamily: fonts.displayHeavy, fontSize: 29 }}>{Math.round(calorieBalance(nutrition.target?.kcal ?? null, nutrition.consumed.kcal).amount)} <Text style={{ fontSize: 12 }}>{calorieBalance(nutrition.target?.kcal ?? null, nutrition.consumed.kcal).label}</Text></Text><Text style={{ color: colors.muted, fontSize: 12 }}>Protein {Math.round(nutrition.consumed.protein)} g{nutrition.target?.protein ? ` / ${nutrition.target.protein} g` : ''}</Text></View><Ionicons name="arrow-forward" size={20} color={colors.ink}/></Pressable>}
     <View style={{ height: 18 }}/>
-    <View style={{ minHeight: 350, padding: 22, justifyContent: 'flex-end', gap: 12, overflow: 'hidden' }}>
-      <AngularBackground color={colors.card2} cut={44} border={colors.border}/>
-      <View pointerEvents="none" style={{ position: 'absolute', right: 0, top: 44, width: '100%', height: 250, opacity: .7 }}><Artwork category="Fitness"/></View>
-      <Text style={{ color: colors.accent, fontFamily: fonts.mono, fontSize: 10, letterSpacing: 1.3, textTransform: 'uppercase' }}>{todayWorkout ? 'Completed today' : 'Featured workout'}</Text>
-      <Text style={{ color: colors.text, fontFamily: fonts.displayHeavy, fontSize: 56, lineHeight: 51, textTransform: 'uppercase', includeFontPadding: false }}>{todayWorkout?.name ?? routines[0]?.name ?? 'Log workout'}</Text>
+    <View style={{ minHeight: 310, padding: 22, justifyContent: 'flex-end', gap: 12, overflow: 'hidden', borderRadius: 38, backgroundColor: colors.lilac }}>
+      <View pointerEvents="none" style={{ position: 'absolute', right: -32, top: -55, width: 210, height: 210, borderRadius: 110, backgroundColor: colors.sun }}/>
+      <View pointerEvents="none" style={{ position: 'absolute', right: 45, top: 30, width: 95, height: 95, borderRadius: 48, backgroundColor: colors.coral, opacity: .75 }}/>
+      <Text style={{ color: colors.ink, fontFamily: fonts.bold, fontSize: 11, letterSpacing: .7, textTransform: 'uppercase' }}>{todayWorkout ? 'Completed today' : 'Featured workout'}</Text>
+      <Text style={{ color: colors.text, fontFamily: fonts.displayHeavy, fontSize: 44, lineHeight: 43, letterSpacing: -1.2, includeFontPadding: false }}>{todayWorkout?.name ?? routines[0]?.name ?? 'Log workout'}</Text>
       <Text style={{ color: colors.muted, fontSize: 13 }}>{todayWorkout ? 'Open your saved session' : routines[0] ? 'Ready when you are' : 'Build your next session'}</Text>
       <View style={{ alignSelf: 'flex-start', minWidth: 170 }}><Button title={todayWorkout ? 'View log' : 'Start workout'} onPress={startWorkout}/></View>
     </View>
     <SectionHeader title="Today's missions" action="See all" onPress={() => router.push('/missions')}/>
     {activeMissions.length ? <View style={{ paddingBottom: 4 }}>{activeMissions.slice(0, 3).map((mission, index) => {
       const result = missionResults[index];
-      const fill = index === 0 ? colors.accent : index === 1 ? '#EDEBE4' : colors.card2;
-      const ink = index < 2 ? colors.accentText : colors.text;
+      const fill = index === 0 ? colors.coral : index === 1 ? colors.lilac : colors.mint;
+      const ink = colors.ink;
       const doneMission = result.done;
       return <Pressable key={mission.id} accessibilityRole="button" accessibilityLabel={mission.title + ' ' + result.value + '/' + result.target} onPress={async () => {
         if (mission.type !== 'manual') { router.push('/missions'); return; }
@@ -93,7 +106,7 @@ export default function Home() {
       }} style={{ minHeight: 112, borderRadius: 24, backgroundColor: fill, marginBottom: index < Math.min(2, activeMissions.length - 1) ? -15 : 0, paddingHorizontal: 18, paddingTop: 17, paddingBottom: 29, zIndex: index, flexDirection: 'row', alignItems: 'center', gap: 14, elevation: 2 + index }}>
         <Svg width={48} height={48} viewBox="0 0 48 48"><Circle cx={24} cy={24} r={21} fill="none" stroke={index < 2 ? 'rgba(27,10,2,.2)' : colors.border} strokeWidth={2.5}/><Circle cx={24} cy={24} r={21} fill="none" stroke={ink} strokeWidth={2.5} strokeDasharray={132} strokeDashoffset={132 * (1 - Math.min(1, result.value / Math.max(1, result.target)))} rotation={-90} origin="24,24"/></Svg>
         <View style={{ position: 'absolute', left: 30, top: 29 }}><Ionicons name={doneMission ? 'checkmark' : mission.type === 'manual' ? 'add' : 'ellipse-outline'} size={22} color={ink}/></View>
-        <View style={{ flex: 1, minWidth: 0 }}><Text numberOfLines={2} style={{ color: ink, fontFamily: fonts.displayHeavy, fontSize: 27, lineHeight: 27, textTransform: 'uppercase', includeFontPadding: false }}>{mission.title}</Text><Text style={{ color: index === 1 ? '#555B63' : index === 0 ? 'rgba(27,10,2,.7)' : colors.muted, fontSize: 12 }}>{result.value}/{result.target} · {doneMission ? 'Done' : 'In progress'}</Text></View>
+        <View style={{ flex: 1, minWidth: 0 }}><Text numberOfLines={2} style={{ color: ink, fontFamily: fonts.displayHeavy, fontSize: 25, lineHeight: 27, letterSpacing: -.5, includeFontPadding: false }}>{mission.title}</Text><Text style={{ color: colors.ink, fontSize: 12, opacity: .7 }}>{result.value}/{result.target} · {doneMission ? 'Done' : 'In progress'}</Text></View>
         <Ionicons name={doneMission ? 'checkmark' : 'arrow-forward'} size={20} color={ink}/>
       </Pressable>;
     })}</View> : <Card><Text style={styles.muted}>Create a manual or activity-based mission.</Text></Card>}

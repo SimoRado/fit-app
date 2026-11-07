@@ -13,6 +13,8 @@ import type * as health from "../health.js";
 import type * as identity from "../identity.js";
 import type * as profile from "../profile.js";
 import type * as records from "../records.js";
+import type * as security from "../security.js";
+import type * as sync from "../sync.js";
 import type * as weights from "../weights.js";
 
 import type {
@@ -27,6 +29,8 @@ declare const fullApi: ApiFromModules<{
   identity: typeof identity;
   profile: typeof profile;
   records: typeof records;
+  security: typeof security;
+  sync: typeof sync;
   weights: typeof weights;
 }>;
 

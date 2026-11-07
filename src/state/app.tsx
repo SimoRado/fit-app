@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { AppState } from 'react-native';
 import { repo } from '../data/db';
 import { Language, Profile } from '../core/types';
 import { setActiveLanguage } from '../core/i18n';
@@ -11,6 +12,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { setActiveLanguage(language); }, [language]);
   useEffect(() => { refresh().catch(console.error); }, [refresh]);
   useEffect(() => { if (ready && profile) reconcileReminders().catch(console.error); }, [ready, profile]);
+  useEffect(() => { if (!ready || !profile) return; const listener = AppState.addEventListener('change', state => { if (state === 'active') reconcileReminders().catch(console.error); }); return () => listener.remove(); }, [ready, profile]);
   return <Context.Provider value={{ ready, profile, language, setLanguage, revision, refresh, changed: () => setRevision(x => x + 1) }}>{children}</Context.Provider>;
 }
 export const useApp = () => useContext(Context);

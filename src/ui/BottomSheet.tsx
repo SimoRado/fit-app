@@ -30,12 +30,12 @@ export function BottomSheet({ visible, title, onClose, children }: { visible: bo
   }
   return <Modal visible={visible} transparent animationType="none" onRequestClose={() => close()} statusBarTranslucent>
     <KeyboardAvoidingView style={{ flex: 1, justifyContent: 'flex-end' }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      <Animated.View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: '#000', opacity: progress.interpolate({ inputRange: [0, 1], outputRange: [0, .68] }) }}/>
+      <Animated.View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: colors.ink, opacity: progress.interpolate({ inputRange: [0, 1], outputRange: [0, .42] }) }}/>
       <Pressable accessibilityRole="button" accessibilityLabel={localize('Cancel', language)} onPress={() => close()} style={{ flex: 1 }}/>
-      <Animated.View style={{ maxHeight: '85%', width: '100%', maxWidth: 620, alignSelf: 'center', backgroundColor: colors.card, borderTopLeftRadius: 22, borderTopRightRadius: 22, overflow: 'hidden', borderTopColor: colors.accent, borderTopWidth: 2, transform: [{ translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [height, 0] }) }] }}>
+      <Animated.View style={{ maxHeight: '85%', width: '100%', maxWidth: 620, alignSelf: 'center', backgroundColor: colors.bg, borderTopLeftRadius: 36, borderTopRightRadius: 36, overflow: 'hidden', transform: [{ translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [height, 0] }) }] }}>
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 14, paddingBottom: Math.max(24, insets.bottom + 12), gap: 16, direction: language === 'ar' ? 'rtl' : 'ltr' }}>
-          <View style={{ width: 42, height: 3, backgroundColor: colors.border, alignSelf: 'center' }}/>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}><Text style={{ flex: 1, color: colors.text, fontFamily: fonts.displayHeavy, fontSize: 36, lineHeight: 38, textTransform: 'uppercase' }}>{title}</Text><Pressable accessibilityRole="button" accessibilityLabel={localize('Cancel', language)} onPress={() => close()} style={{ width: 48, height: 48, alignItems: 'center', justifyContent: 'center' }}><Ionicons name="close" size={25} color={colors.text}/></Pressable></View>
+          <View style={{ width: 42, height: 4, borderRadius: 2, backgroundColor: colors.line3, alignSelf: 'center' }}/>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}><Text style={{ flex: 1, color: colors.text, fontFamily: fonts.displayHeavy, fontSize: 32, lineHeight: 36 }}>{title}</Text><Pressable accessibilityRole="button" accessibilityLabel={localize('Cancel', language)} onPress={() => close()} style={{ width: 48, height: 48, alignItems: 'center', justifyContent: 'center', borderRadius: 24, backgroundColor: colors.card }}><Ionicons name="close" size={25} color={colors.text}/></Pressable></View>
           {children(close)}
         </ScrollView>
       </Animated.View>

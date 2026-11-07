@@ -6,9 +6,10 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "usesAppleSignIn": true
     },
     "android": {
       "package": "com.bettereveryday.fitness",
@@ -29,7 +30,20 @@
       "expo-notifications",
       "expo-font",
       "@clerk/expo",
-      "expo-secure-store"
-    ]
+      "expo-secure-store",
+      "expo-apple-authentication",
+      "expo-web-browser"
+    ],
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "projectId": "22095eb3-4992-4c1e-8fda-7658b7dbaa64"
+      }
+    },
+    "owner": "simorado"
   }
 }

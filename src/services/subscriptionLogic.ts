@@ -13,3 +13,7 @@ export function activeEntitlements(info: CustomerInfo | null, entitlementId?: st
 export function isPurchaseCancelled(error: unknown): boolean {
   return !!error && typeof error === 'object' && 'userCancelled' in error && error.userCancelled === true;
 }
+
+export function visibleCustomerInfo<T>(info: T | null, clerkUserId: string | null | undefined, revenueCatUserId: string | null): T | null {
+  return clerkUserId && clerkUserId === revenueCatUserId ? info : null;
+}

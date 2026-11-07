@@ -53,3 +53,11 @@ yarn-error.*
 
 # Clerk CLI temporary credentials
 .clerk-dev.env
+
+# Local Android build artifacts
+builds/
+*.apk
+
+# User-provided source archive contains separately licensed media; only the
+# generated metadata in src/data/catalog belongs in the app bundle.
+/exercises-dataset-main/
