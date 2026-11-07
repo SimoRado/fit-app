@@ -70,3 +70,14 @@ builds/
 .expo-nutrition-ios/
 .expo-v4-android/
 .expo-v4-ios/
+
+# Local Android builds
+builds/
+*.apk
+*.aab
+
+# Generated Expo exports
+.expo-*-android/
+.expo-*-ios/
+.expo-*-android-export/
+.expo-*-ios-export/
