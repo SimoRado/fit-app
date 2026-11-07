@@ -6,6 +6,7 @@ import { getLocalAccount } from '../data/db';
 import { acknowledge, applyCloud, chooseSync, localPayload, localRevision, localSyncStatus, markConflict, pendingOperations, type SyncChoice } from '../data/syncLocal';
 import { runSyncCycle } from '../services/syncEngine';
 import { useApp } from './app';
+import { reportFailure } from '../core/monitoring';
 
 type Phase = 'local' | 'waiting' | 'syncing' | 'synced' | 'offline' | 'error' | 'conflict';
 type State = { phase: Phase; choice: SyncChoice; pending: number; conflicts: number; error: string | null; enable: () => Promise<void>; keepLocal: () => Promise<void>; retry: () => void };
@@ -52,6 +53,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
         if (current()) {
           const detail = cause instanceof Error ? cause.message : '';
           const offline = /network|fetch|connection|offline/i.test(detail);
+          if (!offline) reportFailure('cloud-sync', cause);
           setError(offline ? 'Connection unavailable. Changes remain on this device.' : 'Sync paused after an error. Changes remain on this device.');
           setPhase(offline ? 'offline' : 'error');
         }

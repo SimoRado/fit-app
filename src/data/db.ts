@@ -6,15 +6,35 @@ import { exerciseSeeds, migrations } from './schema';
 import { trainingWorkoutsQuery } from './queries';
 import { localDatabaseName } from './account';
 import { exerciseSearchQuery, importExerciseCatalog, normalizeExerciseText, type ExerciseDetail } from './exerciseCatalog';
+import { reportFailure } from '../core/monitoring';
 
 let promise: Promise<SQLite.SQLiteDatabase> | undefined;
 let activeAccount: string | null = null;
+const connections = new Map<string, Promise<SQLite.SQLiteDatabase>>();
+const removals = new Map<string, Promise<void>>();
 
 export function setLocalAccount(userId: string | null) {
   if (userId !== null) localDatabaseName(userId);
-  if (activeAccount !== userId) { activeAccount = userId; promise = undefined; }
+  if (activeAccount !== userId) { activeAccount = userId; promise = userId ? connections.get(userId) : undefined; }
 }
 export function getLocalAccount() { return activeAccount; }
+
+async function removeAccountDatabase(userId: string) {
+  const name = localDatabaseName(userId);
+  if (activeAccount === userId) { activeAccount = null; promise = undefined; }
+  const connection = connections.get(userId);
+  connections.delete(userId);
+  if (connection) await (await connection).closeAsync();
+  await SQLite.deleteDatabaseAsync(name);
+}
+
+export function removeLocalAccountData(userId: string) {
+  const existing = removals.get(userId);
+  if (existing) return existing;
+  const removal = removeAccountDatabase(userId).finally(() => { removals.delete(userId); });
+  removals.set(userId, removal);
+  return removal;
+}
 
 export async function db() {
   if (!activeAccount) throw new Error('Sign in before accessing local fitness data');
@@ -32,7 +52,8 @@ export async function db() {
     await importExerciseCatalog(d);
     if (activeAccount !== requestedAccount) throw new Error('Account changed while opening local data');
     return d;
-  })();
+  })().catch(cause => { reportFailure('database-initialization', cause); throw cause; });
+  connections.set(requestedAccount, promise);
   return promise;
 }
 export async function all<T>(table: string, order = ''): Promise<T[]> { return (await db()).getAllAsync<T>(`SELECT * FROM ${table} ${order}`); }

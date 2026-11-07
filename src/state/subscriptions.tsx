@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@clerk/expo';
 import Purchases, { type CustomerInfo, type PurchasesOffering, type PurchasesPackage } from 'react-native-purchases';
+import { reportFailure } from '../core/monitoring';
 import { activeEntitlements, isPurchaseCancelled, subscriptionPackages, visibleCustomerInfo } from '../services/subscriptionLogic';
 import { runtimeSignals } from '../core/runtime';
 
@@ -64,7 +65,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
         if (seq !== generation.current) return;
         if (await Purchases.getAppUserID() !== userId) throw Error('Subscription account is still changing. Please retry.');
         setInfo(nextInfo); setOffering(offers.current); setIdentifiedUser(userId); setReady(true);
-      } catch (cause) { if (seq === generation.current) setError(errorText(cause)); }
+      } catch (cause) { if (seq === generation.current) { reportFailure('subscriptions-initialization', cause); setError(errorText(cause)); } }
       finally { if (seq === generation.current) setLoading(false); }
     };
     void start();

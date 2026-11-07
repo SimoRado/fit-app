@@ -10,9 +10,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false), [profile, setProfile] = useState<Profile | null>(null), [language, setLanguage] = useState<Language>('en'), [revision, setRevision] = useState(0);
   const refresh = useCallback(async () => { const next = await repo.profile(); setProfile(next); setLanguage(next?.language ?? 'en'); setRevision(x => x + 1); setReady(true); }, []);
   useEffect(() => { setActiveLanguage(language); }, [language]);
-  useEffect(() => { refresh().catch(console.error); }, [refresh]);
-  useEffect(() => { if (ready && profile) reconcileReminders().catch(console.error); }, [ready, profile]);
-  useEffect(() => { if (!ready || !profile) return; const listener = AppState.addEventListener('change', state => { if (state === 'active') reconcileReminders().catch(console.error); }); return () => listener.remove(); }, [ready, profile]);
+  useEffect(() => { refresh().catch(() => console.warn('Profile refresh failed')); }, [refresh]);
+  useEffect(() => { if (ready && profile) reconcileReminders().catch(() => console.warn('Reminder update failed')); }, [ready, profile]);
+  useEffect(() => { if (!ready || !profile) return; const listener = AppState.addEventListener('change', state => { if (state === 'active') reconcileReminders().catch(() => console.warn('Reminder update failed')); }); return () => listener.remove(); }, [ready, profile]);
   return <Context.Provider value={{ ready, profile, language, setLanguage, revision, refresh, changed: () => setRevision(x => x + 1) }}>{children}</Context.Provider>;
 }
 export const useApp = () => useContext(Context);

@@ -125,7 +125,7 @@ export const apply = mutation({ args: { kind, clientId: v.string(), payload: v.u
       const food = await ownedRecord(ctx, owner, 'custom_foods', String(row.food_id));
       if (!food || food.deleted) throw Error('Custom food is not synchronized');
     }
-    if ((args.kind === 'routine_exercises' || args.kind === 'workout_exercises') && !seedExercises.has(String(row.exercise_id))) {
+    if ((args.kind === 'routine_exercises' || args.kind === 'workout_exercises') && !seedExercises.has(String(row.exercise_id)) && !/^catalog:\d{4}$/.test(String(row.exercise_id))) {
       const exercise = await ownedRecord(ctx, owner, 'exercises', String(row.exercise_id));
       if (!exercise || exercise.deleted) throw Error('Exercise is not synchronized');
     }

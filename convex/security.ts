@@ -1,8 +1,10 @@
 import type { MutationCtx, QueryCtx } from './_generated/server';
 
-export async function requireOwner(ctx: Pick<QueryCtx | MutationCtx, 'auth'>): Promise<string> {
+export async function requireOwner(ctx: Pick<QueryCtx | MutationCtx, 'auth' | 'db'>): Promise<string> {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) throw new Error('Authentication required');
+  const deletion = await ctx.db.query('deletionJobs').withIndex('by_owner', q => q.eq('owner', identity.tokenIdentifier)).first();
+  if (deletion) throw new Error('Account deletion in progress');
   return identity.tokenIdentifier;
 }
 

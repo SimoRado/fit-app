@@ -33,7 +33,7 @@ export default function CloudSync() {
     </Card>
     <Card><Text style={styles.label}>Manage Local Data</Text><Text style={styles.muted}>This account has a separate SQLite file. The original guest file and other signed-in accounts remain separate. Local deletion is available on Profile and is blocked while unsynced changes or conflicts remain. Deleting local records does not delete the cloud copy.</Text></Card>
     {!profile && sync.choice !== 'enabled' && <Button title="Import preserved guest history" kind="ghost" onPress={importGuest}/>}
-    <Card><Text style={styles.label}>Delete Account</Text><Text style={styles.muted}>Complete account deletion is unavailable. It must remove your Convex records before deleting your Clerk account, then clear this device&apos;s data. RevenueCat subscriptions must be managed separately. No partial deletion will be started from this screen.</Text></Card>
+    <Card><Text style={styles.label}>Delete Account</Text><Text style={styles.muted}>Permanently remove this account and its personal data. Subscription cancellation is handled separately by your app store.</Text><Button title="Delete Account" kind="danger" onPress={() => router.push('/delete-account')}/></Card>
     <Button title={profile ? 'Open Fitapp' : 'Continue to fitness onboarding'} kind="ghost" onPress={() => router.replace(profile ? '/(tabs)' : '/onboarding')}/>
   </Page>;
 }

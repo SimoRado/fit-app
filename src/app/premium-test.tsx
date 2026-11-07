@@ -8,6 +8,7 @@ import { useSubscription } from '../state/subscriptions';
 import { Button, Card, Page, styles } from '../ui/components';
 import { Text } from '../ui/LocalizedText';
 import { colors, fonts } from '../ui/theme';
+import { sendDevelopmentTestEvent } from '../core/monitoring';
 
 export default function PremiumTest() {
   const { userId } = useAuth();
@@ -52,6 +53,7 @@ export default function PremiumTest() {
     </>}
     {!!subscription.error && subscription.ready && <Text style={{ color: colors.danger }}>{subscription.error} Status may be cached until RevenueCat reconnects.</Text>}
     {!!notice && <Text style={styles.muted}>{notice}</Text>}
+    {__DEV__ && <Button title="Send handled Sentry test event" kind="ghost" onPress={() => setNotice(sendDevelopmentTestEvent() ? 'Test event sent. Check the development Sentry project.' : 'Configure the Sentry DSN first.')}/>}
     <Button title="Close / Back" kind="ghost" onPress={() => router.canGoBack() ? router.back() : router.replace('/(tabs)/profile')}/>
   </Page>;
 }

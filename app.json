@@ -32,7 +32,8 @@
       "@clerk/expo",
       "expo-secure-store",
       "expo-apple-authentication",
-      "expo-web-browser"
+      "expo-web-browser",
+      ["@sentry/react-native/expo", { "organization": "mohamed-dev-apps", "project": "fit-app" }]
     ],
     "extra": {
       "router": {
