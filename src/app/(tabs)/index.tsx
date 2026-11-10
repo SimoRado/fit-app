@@ -71,7 +71,7 @@ export default function Home() {
   return <Page title="">
     <View style={[styles.row, { marginBottom: 4 }]}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}><View style={{ width: 28, height: 28, flexDirection: 'row', flexWrap: 'wrap', borderRadius: 7, overflow: 'hidden' }}>{[colors.sun, colors.coral, colors.accent, colors.mint].map(c => <View key={c} style={{ width: 14, height: 14, backgroundColor: c }}/>)}</View><Text style={{ color: colors.muted, fontFamily: fonts.bold, fontSize: 11, letterSpacing: .5, textTransform: 'uppercase' }}>{date}</Text></View>
-      <Pressable accessibilityRole="button" accessibilityLabel="Profile" onPress={() => router.push('/(tabs)/profile')} style={{ width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.lilac }}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Account" hitSlop={8} onPress={() => router.push('/account')} style={{ width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.lilac }}>
         <Text style={{ color: colors.ink, fontFamily: fonts.displayHeavy, fontSize: 18 }}>{profile?.name?.slice(0, 1).toUpperCase() ?? 'M'}</Text>
       </Pressable>
     </View>

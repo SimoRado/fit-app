@@ -6,9 +6,9 @@ Fitapp keeps its existing Clerk application, Convex provider, account-specific S
 
 The Welcome, Sign In, and Sign Up screens call Clerk `useSSO().startSSOFlow({ strategy: 'oauth_google' })`. The browser return URL is derived from the configured `betterday` scheme and fixed `oauth-callback` route: `betterday://oauth-callback`. Expo AuthSession also generates its native return URL for comparison; the stable app URI is passed to Clerk so a Metro host address cannot enter the allowlist requirement. Clerk creates or finds the Google-linked account. After Clerk returns a session ID, the app calls `setActive`; Expo Router's protected screens then navigate through the existing profile check. A new account sees fitness onboarding; a returning account with a local profile skips it. No Google password or separate email OTP is requested.
 
-The browser flow uses Clerk's existing Google social connection. It does **not** need `EXPO_PUBLIC_CLERK_GOOGLE_WEB_CLIENT_ID` or `EXPO_PUBLIC_CLERK_GOOGLE_ANDROID_CLIENT_ID` in Fitapp, and no Google Cloud credentials are stored in the Expo bundle. If Clerk's shared development Google credentials are enabled for the selected development instance, no new Google Cloud client is needed. The Clerk dashboard must allow the actual return URL under Redirect URLs. Its exact connection/allowlist state was not independently readable through the available browser automation, so verify it before device testing.
+The browser flow uses Clerk's existing Google social connection. It does **not** need `EXPO_PUBLIC_CLERK_GOOGLE_WEB_CLIENT_ID` or `EXPO_PUBLIC_CLERK_GOOGLE_ANDROID_CLIENT_ID` in Fitapp, and no Google Cloud credentials are stored in the Expo bundle. If Clerk's shared development Google credentials are enabled for the selected development instance, no new Google Cloud client is needed. The Clerk dashboard must allow the actual return URL (`betterday://oauth-callback`) under **Native applications → Allowlist for mobile SSO redirect**. Its exact connection/allowlist state was not independently readable through the available browser automation, so verify it before device testing.
 
-For reliable redirect testing, install a development build with the `betterday` scheme and the `expo-web-browser` plugin. Expo Go cannot register this app-specific return scheme. Android package remains `com.bettereveryday.fitness`. The previously identified local debug SHA-1 `04:C7:C0:2F:F8:CD:68:A4:36:F0:8F:9D:55:0B:99:AB:32:39:49:16` matters only if switching back to **native** Google sign-in; it is not a prerequisite for this Clerk-managed browser OAuth flow. There is no `eas.json` development profile in the repository.
+For reliable redirect testing, install a development build with the `betterday` scheme and the `expo-web-browser` plugin. Expo Go cannot register this app-specific return scheme. Android package remains `com.bettereveryday.fitness`. The previously identified local debug SHA-1 `04:C7:C0:2F:F8:CD:68:A4:36:F0:8F:9D:55:0B:99:AB:32:39:49:16` matters only if switching back to **native** Google sign-in; it is not a prerequisite for this Clerk-managed browser OAuth flow. The existing EAS development profile builds an Android APK and can be used for an iOS development build after Apple signing is configured.
 
 ### Android diagnosis and retest
 
@@ -20,7 +20,7 @@ If the browser returns but `createdSession` stays false, inspect the non-secret 
 
 ## Apple and email
 
-Apple still uses Clerk's native Apple hook on supported iOS devices and was not changed for this Google correction. The repository has no fixed iOS bundle identifier, so Apple device setup remains separate. Email registration, verification, sign-in, and password recovery were not changed in this correction.
+Apple now uses Clerk's native Apple hook on configured iOS development builds and Clerk browser OAuth on configured Android development builds. Both stay disabled until their Clerk configuration is confirmed. See [APPLE_AUTH_SETUP.md](APPLE_AUTH_SETUP.md) for the current implementation and platform-specific setup steps. Email registration, verification, sign-in, and password recovery are unchanged.
 
 ## Verification limits
 

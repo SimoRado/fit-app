@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
-import { useUser } from '@clerk/expo';
+import { useAuth, useUser } from '@clerk/expo';
 import { useConvexAuth, useQuery } from 'convex/react';
+import { router } from 'expo-router';
 import { api } from '../../convex/_generated/api';
+import { clearAccountReminders } from '../services/reminders';
 import { Button, Card, Field, message, Page, styles } from '../ui/components';
 import { Text } from '../ui/LocalizedText';
 
 export default function Account() {
   const { user } = useUser();
+  const { signOut } = useAuth();
   const { isAuthenticated, isLoading } = useConvexAuth();
   const identity = useQuery(api.identity.current, isAuthenticated ? {} : 'skip');
   const [name, setName] = useState(user?.firstName ?? '');
@@ -19,5 +22,11 @@ export default function Account() {
     </Card>
     <Card><Text style={styles.label}>Cloud connection</Text><Text style={styles.text}>{connected ? 'Connected to your account' : isLoading ? 'Connecting…' : 'Offline or awaiting authentication'}</Text>
       <Text style={styles.muted}>Your existing local fitness history stays on this device. Cloud upload is not enabled.</Text></Card>
+    <Card><Text style={styles.label}>Account settings</Text>
+      <Button title="Fitness profile" kind="ghost" onPress={() => router.push('/(tabs)/profile')}/>
+      <Button title="Premium — Test Subscriptions" kind="ghost" onPress={() => router.push('/premium-test')}/>
+      <Button title="Data & Privacy" kind="ghost" onPress={() => router.push('/cloud-sync')}/>
+      <Button title="Sign out" kind="ghost" onPress={async () => { try { await signOut(); await clearAccountReminders(); } catch (error) { message(error); } }}/>
+    </Card>
   </Page>;
 }

@@ -3,7 +3,7 @@ export function clerkGateState(isLoaded: boolean, isSignedIn: boolean | undefine
   return isSignedIn && userId ? 'signed-in' : 'signed-out';
 }
 
-export async function activateGoogleSession(result: {
+export async function activateClerkSession(result: {
   createdSessionId: string | null;
   setActive?: ((params: { session: string }) => Promise<unknown>) | null;
 }) {
@@ -11,3 +11,5 @@ export async function activateGoogleSession(result: {
   await result.setActive({ session: result.createdSessionId });
   return true;
 }
+
+export const activateGoogleSession = activateClerkSession;

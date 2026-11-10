@@ -27,7 +27,7 @@ export default function SignUp() {
     } catch (cause) { authDiagnostic('signup request failed', { stage: 'initiation' }, 'EMAIL'); setError(clerkMessage(cause)); } finally { setBusy(false); }
   }
   return <AuthPage title="Create your account" detail="Your fitness profile comes after email verification.">
-    <SocialAuth/><Text style={[styles.muted, { textAlign: 'center' }]}>OR CONTINUE WITH EMAIL</Text>
+    <SocialAuth/><Text style={[styles.muted, { textAlign: 'center' }]}>OR USE EMAIL</Text>
     <AuthField label="Email address" value={email} onChangeText={setEmail} email/>
     <AuthField label="Password" value={password} onChangeText={setPassword} secure/>
     <Text style={styles.muted}>Choose a password that meets your account’s security requirements.</Text>

@@ -15,6 +15,6 @@ export function runtimeSignals() {
   };
 }
 
-export function authDiagnostic(event: string, details: Record<string, string | boolean | null | number> = {}, category: 'GOOGLE' | 'EMAIL' | 'NAVIGATION' = 'GOOGLE') {
+export function authDiagnostic(event: string, details: Record<string, string | boolean | null | number> = {}, category: 'GOOGLE' | 'APPLE' | 'EMAIL' | 'NAVIGATION' = 'GOOGLE') {
   if (__DEV__) console.info(`[Fitapp auth][${category}]`, event, details);
 }

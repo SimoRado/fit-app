@@ -6,7 +6,7 @@ import { authDiagnostic } from '../../core/runtime';
 
 export default function OAuthCallback() {
   useEffect(() => { authDiagnostic('callback route opened'); }, []);
-  return <AuthPage title="Finishing sign in" detail="Returning to Fitapp after Google authentication.">
+  return <AuthPage title="Finishing sign in" detail="Returning to Fitapp after authentication.">
     <View style={{ alignItems: 'center', paddingVertical: 20 }}><ActivityIndicator color={colors.accent}/></View>
     <AuthLink href="/(auth)/welcome" title="Return to sign in"/>
   </AuthPage>;
