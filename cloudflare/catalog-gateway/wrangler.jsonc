@@ -1,0 +1,32 @@
+{
+  "account_id": "7e914913bbd0ef9b43da98cf15e32abd",
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "cubyfit-catalog-gateway",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-11",
+  "workers_dev": true,
+  "r2_buckets": [
+    { "binding": "CATALOG_BUCKET", "bucket_name": "cubyfit-assets" }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "LIMITER", "class_name": "CatalogLimiter" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["CatalogLimiter"] }],
+  "ratelimits": [
+    { "name": "IP_RATE_LIMITER", "namespace_id": "83140001", "simple": { "limit": 120, "period": 60 } }
+  ],
+  "vars": {
+    "CLERK_ISSUER": "https://supreme-civet-424.clerk.accounts.dev",
+    "CATALOG_VERSION": "v4",
+    "CATALOG_OBJECT_KEY": "nutrition/full/foods-full-v4.sqlite.gz",
+    "CATALOG_MANIFEST_KEY": "nutrition/manifest-v4.json",
+    "CATALOG_SIZE_BYTES": "85427860",
+    "CATALOG_AUTH_REQUESTS_PER_HOUR": "10",
+    "CATALOG_MANIFEST_REQUESTS_PER_HOUR": "30",
+    "CATALOG_TRANSFERS_PER_HOUR": "20",
+    "CATALOG_NEW_AUTHORIZATIONS_PER_24H": "2",
+    "CATALOG_NEW_AUTHORIZATIONS_PER_7D": "5",
+    "CATALOG_SESSION_TTL_SECONDS": "172800",
+    "CATALOG_SESSION_BYTE_MULTIPLIER": "2"
+  }
+}

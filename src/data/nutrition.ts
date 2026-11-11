@@ -4,8 +4,8 @@ import { FoodInput, Meal, Nutrients, validateFood } from '../core/nutrition';
 
 export type NutritionTarget = Nutrients & { id: string; owner_id: string; effective_day: string; created_at: string };
 export type CustomFood = { id: string; owner_id: string; name: string; kcal_100: number; protein_100: number; carbs_100: number; fat_100: number; created_at: string };
-export type FoodEntry = Nutrients & { id: string; owner_id: string; food_id: string | null; day: string; meal: Meal; name: string; grams: number | null; kcal_100: number | null; protein_100: number | null; carbs_100: number | null; fat_100: number | null; created_at: string };
-export type ReusableFood = { key: string; name: string; basis: '100g' | 'serving'; nutrients: Nutrients; foodId: string | null; grams: number | null };
+export type FoodEntry = Nutrients & { id: string; owner_id: string; food_id: string | null; catalog_food_id: string | null; day: string; meal: Meal; name: string; grams: number | null; kcal_100: number | null; protein_100: number | null; carbs_100: number | null; fat_100: number | null; created_at: string };
+export type ReusableFood = { key: string; name: string; basis: '100g' | 'serving'; nutrients: Nutrients; foodId: string | null; catalogId?: string | null; category?: string | null; servingName?: string | null; servingQuantity?: number | null; servingGrams?: number | null; missing?: string[]; fiber?: number | null; sugar?: number | null; sodium?: number | null; sourceLabel?: string | null; sourceUrl?: string | null; grams: number | null };
 
 async function owner() {
   const profile = await (await db()).getFirstAsync<{ id: string }>('SELECT id FROM profile LIMIT 1');
@@ -41,7 +41,7 @@ export async function foodEntries(start: string, end: string): Promise<FoodEntry
   const id = await owner();
   return (await db()).getAllAsync<FoodEntry>('SELECT * FROM food_entries WHERE owner_id=? AND day BETWEEN ? AND ? ORDER BY day DESC, created_at DESC', id, start, end);
 }
-export async function saveFoodEntry(input: FoodInput, options: { id?: string; foodId?: string | null; per100?: Nutrients | null; saveCustom?: boolean } = {}) {
+export async function saveFoodEntry(input: FoodInput, options: { id?: string; foodId?: string | null; catalogId?: string | null; per100?: Nutrients | null; saveCustom?: boolean } = {}) {
   const valid = validateFood(input);
   const id = await owner();
   const d = await db();
@@ -58,7 +58,7 @@ export async function saveFoodEntry(input: FoodInput, options: { id?: string; fo
       foodId = uid();
       await tx.runAsync('INSERT INTO custom_foods VALUES (?,?,?,?,?,?,?,?)', foodId, id, valid.name, reference.kcal, reference.protein, reference.carbs, reference.fat, now);
     }
-    await tx.runAsync('INSERT INTO food_entries(id,owner_id,food_id,day,meal,name,grams,kcal,protein,carbs,fat,kcal_100,protein_100,carbs_100,fat_100,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET food_id=excluded.food_id,day=excluded.day,meal=excluded.meal,name=excluded.name,grams=excluded.grams,kcal=excluded.kcal,protein=excluded.protein,carbs=excluded.carbs,fat=excluded.fat,kcal_100=excluded.kcal_100,protein_100=excluded.protein_100,carbs_100=excluded.carbs_100', entryId, id, foodId, valid.day, valid.meal, valid.name, valid.grams ?? null, valid.kcal, valid.protein, valid.carbs, valid.fat, reference?.kcal ?? null, reference?.protein ?? null, reference?.carbs ?? null, reference?.fat ?? null, now);
+    await tx.runAsync('INSERT INTO food_entries(id,owner_id,food_id,day,meal,name,grams,kcal,protein,carbs,fat,kcal_100,protein_100,carbs_100,fat_100,created_at,catalog_food_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET food_id=excluded.food_id,day=excluded.day,meal=excluded.meal,name=excluded.name,grams=excluded.grams,kcal=excluded.kcal,protein=excluded.protein,carbs=excluded.carbs,fat=excluded.fat,kcal_100=excluded.kcal_100,protein_100=excluded.protein_100,carbs_100=excluded.carbs_100,catalog_food_id=excluded.catalog_food_id', entryId, id, foodId, valid.day, valid.meal, valid.name, valid.grams ?? null, valid.kcal, valid.protein, valid.carbs, valid.fat, reference?.kcal ?? null, reference?.protein ?? null, reference?.carbs ?? null, reference?.fat ?? null, now, options.catalogId ?? null);
   });
   return entryId;
 }

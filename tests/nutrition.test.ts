@@ -16,7 +16,7 @@ const modules = import.meta.glob('../convex/**/*.{ts,js}');
 const stamp = '2026-11-06T12:00:00.000Z';
 const profile = { id: 'profile-n', name: 'Test', birth_date: '1990-01-01', height_cm: 170, start_weight: 70, target_weight: null, experience: 'Beginner', fitness_goal: 'Health', growth_goals: '', language: 'en', completed_at: stamp };
 const food = { id: 'food-n', owner_id: profile.id, name: 'User food', kcal_100: 165, protein_100: 31, carbs_100: 0, fat_100: 3.6, created_at: stamp };
-const entry = { id: 'entry-n', owner_id: profile.id, food_id: food.id, day: '2026-11-06', meal: 'lunch', name: food.name, grams: 200, kcal: 330, protein: 62, carbs: 0, fat: 7.2, kcal_100: 165, protein_100: 31, carbs_100: 0, fat_100: 3.6, created_at: stamp };
+const entry = { id: 'entry-n', owner_id: profile.id, food_id: food.id, day: '2026-11-06', meal: 'lunch', name: food.name, grams: 200, kcal: 330, protein: 62, carbs: 0, fat: 7.2, kcal_100: 165, protein_100: 31, carbs_100: 0, fat_100: 3.6, created_at: stamp, catalog_food_id: null };
 const op = (n: number) => n.toString(16).padStart(32, '0');
 const open = () => { const d = new DatabaseSync(':memory:'); d.exec('PRAGMA foreign_keys=ON'); for (const migration of migrations) d.exec(migration); return d; };
 
@@ -59,7 +59,7 @@ describe('nutrition SQLite migration and queue', () => {
     d.prepare('INSERT INTO nutrition_targets VALUES (?,?,?,?,?,?,?,?)').run(`${profile.id}:2026-11-06`, profile.id, '2026-11-06', 2200, 110, 250, 70, stamp);
     expect(d.prepare('SELECT kcal FROM nutrition_targets WHERE owner_id=? AND effective_day<=? ORDER BY effective_day DESC LIMIT 1').get(profile.id, '2026-11-05')).toEqual({ kcal: 2000 });
     d.prepare('INSERT INTO custom_foods VALUES (?,?,?,?,?,?,?,?)').run(...Object.values(food));
-    d.prepare('INSERT INTO food_entries VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(...Object.values(entry));
+    d.prepare('INSERT INTO food_entries VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(...Object.values(entry));
     d.prepare('UPDATE food_entries SET kcal=? WHERE id=?').run(340, entry.id);
     expect(d.prepare('SELECT kcal FROM food_entries WHERE id=?').get(entry.id)).toEqual({ kcal: 340 });
     d.prepare('DELETE FROM food_entries WHERE id=?').run(entry.id);
@@ -76,7 +76,7 @@ describe('nutrition SQLite migration and queue', () => {
     d.prepare('INSERT INTO custom_foods VALUES (?,?,?,?,?,?,?,?)').run(...Object.values(food));
     expect(d.prepare('SELECT COUNT(*) AS n FROM sync_outbox').get()).toEqual({ n: 0 });
     d.exec("UPDATE sync_control SET choice='enabled' WHERE id=1");
-    d.prepare('INSERT INTO food_entries VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(...Object.values(entry));
+    d.prepare('INSERT INTO food_entries VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(...Object.values(entry));
     expect(d.prepare('SELECT action FROM sync_outbox WHERE kind=? AND record_id=?').get('food_entries', entry.id)).toEqual({ action: 'upsert' });
     expect(() => d.prepare('INSERT INTO nutrition_preferences VALUES (?,?)').run('other-profile', 1)).toThrow();
     d.prepare('DELETE FROM food_entries WHERE id=?').run(entry.id);
@@ -93,11 +93,13 @@ describe('nutrition SQLite migration and queue', () => {
       first.prepare('INSERT INTO profile VALUES (?,?,?,?,?,?,?,?,?,?,?)').run(...Object.values(profile));
       first.exec("UPDATE sync_control SET choice='enabled' WHERE id=1");
       first.prepare('INSERT INTO custom_foods VALUES (?,?,?,?,?,?,?,?)').run(...Object.values(food));
-      first.prepare('INSERT INTO food_entries VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(...Object.values(entry));
+      first.prepare('INSERT INTO food_entries VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(...Object.values(entry));
+      first.prepare('INSERT INTO food_entries VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(...Object.values({ ...entry, id: 'catalog-entry', food_id: null, catalog_food_id: 'fd_2dObzdqa6o2J' }));
       first.close();
       const reopened = new DatabaseSync(file);
       expect(reopened.prepare('SELECT kcal,protein FROM food_entries WHERE id=?').get(entry.id)).toEqual({ kcal: 330, protein: 62 });
-      expect(reopened.prepare("SELECT COUNT(*) AS n FROM sync_outbox WHERE kind IN ('custom_foods','food_entries')").get()).toEqual({ n: 2 });
+      expect(reopened.prepare('SELECT catalog_food_id,kcal FROM food_entries WHERE id=?').get('catalog-entry')).toEqual({ catalog_food_id: 'fd_2dObzdqa6o2J', kcal: 330 });
+      expect(reopened.prepare("SELECT COUNT(*) AS n FROM sync_outbox WHERE kind IN ('custom_foods','food_entries')").get()).toEqual({ n: 3 });
       reopened.close();
     } finally { rmSync(file, { force: true }); rmdirSync(folder); }
   });
@@ -117,6 +119,8 @@ describe('nutrition Convex ownership', () => {
     expect(await a.mutation(api.sync.apply, foodArgs)).toEqual({ status: 'applied', revision: 1 });
     const entryArgs = { kind: 'food_entries' as const, clientId: entry.id, payload: JSON.stringify(entry), expectedRevision: 0, operationId: op(102) };
     expect(await a.mutation(api.sync.apply, entryArgs)).toEqual({ status: 'applied', revision: 1 });
+    const { catalog_food_id: _unused, ...legacyEntry } = { ...entry, id: 'legacy-entry' };
+    expect(await a.mutation(api.sync.apply, { kind: 'food_entries', clientId: legacyEntry.id, payload: JSON.stringify(legacyEntry), expectedRevision: 0, operationId: op(103) })).toEqual({ status: 'applied', revision: 1 });
     expect((await b.query(api.sync.page, { paginationOpts: { numItems: 10, cursor: null } })).page).toHaveLength(0);
   });
 });

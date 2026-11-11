@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth, useUser } from '@clerk/expo';
 import { useConvexAuth, useQuery } from 'convex/react';
-import { router } from 'expo-router';
+import { Link, router } from 'expo-router';
 import { api } from '../../convex/_generated/api';
 import { clearAccountReminders } from '../services/reminders';
 import { Button, Card, Field, message, Page, styles } from '../ui/components';
@@ -27,6 +27,9 @@ export default function Account() {
       <Button title="Premium — Test Subscriptions" kind="ghost" onPress={() => router.push('/premium-test')}/>
       <Button title="Data & Privacy" kind="ghost" onPress={() => router.push('/cloud-sync')}/>
       <Button title="Sign out" kind="ghost" onPress={async () => { try { await signOut(); await clearAccountReminders(); } catch (error) { message(error); } }}/>
+    </Card>
+    <Card><Text style={styles.label}>Food data attribution</Text>
+      <Text style={styles.muted}>Food catalog by <Link href="https://www.opennutrition.app" style={{ textDecorationLine: 'underline' }}>OpenNutrition</Link>, shared under the <Link href="https://opendatacommons.org/licenses/odbl/1-0/" style={{ textDecorationLine: 'underline' }}>Open Database License</Link>. Portions include data © <Link href="https://world.openfoodfacts.org" style={{ textDecorationLine: 'underline' }}>Open Food Facts contributors</Link>.</Text>
     </Card>
   </Page>;
 }

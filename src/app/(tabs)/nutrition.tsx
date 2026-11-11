@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Link } from 'expo-router';
 import { LayoutChangeEvent, Pressable, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { Easing, interpolate, interpolateColor, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
@@ -10,6 +11,7 @@ import { colors, fonts, radii, shadows } from '../../ui/theme';
 import { addDays, dayKey, fromDay } from '../../core/date';
 import { calorieBalance, meals, nutritionWeek, progressRatio, sumNutrients, weekStats, type Meal } from '../../core/nutrition';
 import { customFoods, foodEntries, nutritionEnabled, nutritionTarget, type CustomFood, type FoodEntry, type NutritionTarget } from '../../data/nutrition';
+import { prepareFoodCatalog } from '../../data/foodCatalog';
 import { useApp } from '../../state/app';
 import { FoodSheet, TargetsSheet } from '../../ui/NutritionSheets';
 import { AnimatedCollapse, AnimatedWeekBar } from '../../ui/MotionBlocks';
@@ -99,6 +101,7 @@ export default function NutritionScreen() {
       .catch(message);
     return () => { active = false; };
   }, [revision, anchor, today]);
+  useEffect(() => { void prepareFoodCatalog(); }, []);
   const selectedIndex = week.indexOf(selected);
   const selectedTarget = targets[selectedIndex] ?? null;
   const daily = entries.filter(entry => entry.day === selected);
@@ -141,6 +144,7 @@ export default function NutritionScreen() {
         <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 18, marginTop: 10 }}>On target means within 10% of your calorie target. Unlogged days are skipped.</Text>
       </>}
     </>}
+    <Text style={{ color: colors.muted, fontSize: 11, marginTop: 24 }}>Food data: <Link href="https://www.opennutrition.app" style={{ textDecorationLine: 'underline' }}>OpenNutrition</Link> (ODbL). Includes data © <Link href="https://world.openfoodfacts.org" style={{ textDecorationLine: 'underline' }}>Open Food Facts contributors</Link>.</Text>
     <BottomSheet visible={sheet === 'food'} title={editing ? 'Edit entry' : 'Add food'} onClose={() => setSheet(null)}>{close => <FoodSheet key={editing?.id ?? `${meal}:${selected}`} entry={editing} meal={meal} day={selected} close={close} onSaved={afterFoodChange}/>}</BottomSheet>
     <BottomSheet visible={sheet === 'targets'} title="Nutrition · targets" onClose={() => setSheet(null)}>{close => <TargetsSheet day={today} target={currentTarget} enabled={enabled} foods={foods} close={close} onSaved={afterChange}/>}</BottomSheet>
   </Page>;

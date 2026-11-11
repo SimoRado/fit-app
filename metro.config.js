@@ -6,6 +6,11 @@ const config = getSentryExpoConfig(__dirname, {
   enableSourceContextInDevelopment: false,
 });
 
+// The complete OpenNutrition catalog is a verified gzip archive. Treat it as
+// a static Expo asset so standalone binaries can initialize the local SQLite
+// file without requiring Metro or a network request.
+if (!config.resolver.assetExts.includes('gz')) config.resolver.assetExts.push('gz');
+
 // Metro passes Windows paths with backslashes to custom resolvers. Sentry's
 // feedback resolver checks these paths using POSIX separators, so it can stub
 // @sentry/feedback while leaving the browser wrapper that calls it in the

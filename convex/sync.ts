@@ -27,7 +27,7 @@ const fields: Record<Kind, readonly string[]> = {
   nutrition_preferences: ['owner_id','enabled'],
   nutrition_targets: ['id','owner_id','effective_day','kcal','protein','carbs','fat','created_at'],
   custom_foods: ['id','owner_id','name','kcal_100','protein_100','carbs_100','fat_100','created_at'],
-  food_entries: ['id','owner_id','food_id','day','meal','name','grams','kcal','protein','carbs','fat','kcal_100','protein_100','carbs_100','fat_100','created_at'],
+  food_entries: ['id','owner_id','food_id','day','meal','name','grams','kcal','protein','carbs','fat','kcal_100','protein_100','carbs_100','fat_100','created_at','catalog_food_id'],
 };
 const parent: Partial<Record<Kind, { kind: Kind; field: string }>> = {
   habits: { kind: 'profile', field: 'owner_id' }, missions: { kind: 'profile', field: 'owner_id' }, routines: { kind: 'profile', field: 'owner_id' },
@@ -46,7 +46,7 @@ const numeric: Partial<Record<Kind, readonly string[]>> = {
   weights: ['kg'], measurements: ['value'],
   nutrition_preferences: ['enabled'], nutrition_targets: ['kcal','protein','carbs','fat'], custom_foods: ['kcal_100','protein_100','carbs_100','fat_100'], food_entries: ['grams','kcal','protein','carbs','fat','kcal_100','protein_100','carbs_100','fat_100'],
 };
-const nullable = new Set(['target_weight','reminder_time','duration_min','reps','weight_kg','duration_sec','food_id','grams','kcal_100','protein_100','carbs_100','fat_100']);
+const nullable = new Set(['target_weight','reminder_time','duration_min','reps','weight_kg','duration_sec','food_id','catalog_food_id','grams','kcal_100','protein_100','carbs_100','fat_100']);
 const integral = new Set(['custom','weekly_target','archived','reminder_enabled','sort_order','target','active','position','duration_min','completed','set_number','reps','duration_sec','enabled']);
 const nonnegative = new Set(['position','sort_order','amount','duration_min','reps','weight_kg','duration_sec','value','grams','kcal','protein','carbs','fat','kcal_100','protein_100','carbs_100','fat_100']);
 const booleanNumber = new Set(['custom','archived','reminder_enabled','active','completed','enabled']);
@@ -59,7 +59,8 @@ function parseRow(kind: Kind, id: string, payload: string) {
   const row = raw as Record<string, unknown>;
   const allowed = fields[kind];
   const legacyHabit = kind === 'habits' && Object.keys(row).length === allowed.length - 7 && allowed.slice(0, -7).every(key => key in row);
-  if (!legacyHabit && (Object.keys(row).length !== allowed.length || allowed.some(key => !(key in row)))) throw Error('Invalid record fields');
+  const legacyFoodEntry = kind === 'food_entries' && Object.keys(row).length === allowed.length - 1 && allowed.slice(0, -1).every(key => key in row);
+  if (!legacyHabit && !legacyFoodEntry && (Object.keys(row).length !== allowed.length || allowed.some(key => !(key in row)))) throw Error('Invalid record fields');
   for (const [field, value] of Object.entries(row)) {
     if (value === null && nullable.has(field) && !(kind === 'custom_foods' && field.endsWith('_100'))) continue;
     if (numeric[kind]?.includes(field)) {
@@ -86,6 +87,7 @@ function parseRow(kind: Kind, id: string, payload: string) {
   if ((kind === 'custom_foods' || kind === 'food_entries') && !(row.name as string).trim()) throw Error('Invalid food name');
   if ((kind === 'custom_foods' || kind === 'food_entries') && (row.name as string).length > 120) throw Error('Invalid food name');
   if (kind === 'food_entries' && row.grams !== null && (row.grams as number) > 10000) throw Error('Invalid portion');
+  if (kind === 'food_entries' && row.catalog_food_id != null && !/^fd_[A-Za-z0-9]+$/.test(String(row.catalog_food_id))) throw Error('Invalid catalog food ID');
   if (kind === 'nutrition_targets' || kind === 'custom_foods' || kind === 'food_entries') {
     const limit = (field: string) => field === 'kcal' || field === 'kcal_100' ? 10000 : 2000;
     for (const [field, value] of Object.entries(row)) if (['kcal','protein','carbs','fat','kcal_100','protein_100','carbs_100','fat_100'].includes(field) && value !== null && (value as number) > limit(field)) throw Error('Invalid nutrition value');

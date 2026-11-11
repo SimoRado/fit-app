@@ -41,8 +41,15 @@ yarn-error.*
 
 # local databases and exports
 *.db
+!assets/foods-starter-v4.db
 *.sqlite
 *.sqlite3
+/build/catalog/
+/opennutrition_foods.tsv
+/build-catalog-*-run.txt
+/build-catalog-run.txt
+/.r2-tools/
+scripts/__pycache__/
 
 # typescript
 *.tsbuildinfo

@@ -1,0 +1,42 @@
+{
+  "version": "v4",
+  "schema_version": 1,
+  "release_date": "2026-11-11",
+  "minimum_supported_schema_version": 1,
+  "source": "OpenNutrition",
+  "license": "ODbL-1.0 / modified DbCL-1.0",
+  "catalogs": {
+    "starter": {
+      "food_count": 2224,
+      "filename": "foods-starter-v4.sqlite.gz",
+      "download_url": null,
+      "compressed_bytes": 1700734,
+      "sqlite_bytes": 11898880,
+      "sha256": "64b4558491edcce0b6b3b676b4570c3f12b25f17612c7cfb3333876b8e5925f5",
+      "sqlite_sha256": "f6486dad83f36db2dbf92c6d20a4d8872742b754865222c921821a362d26362b",
+      "import_seconds": 15.84,
+      "name_median_ms": 1.562,
+      "name_p95_ms": 2.105,
+      "barcode_median_ms": 0.062,
+      "barcode_p95_ms": 0.128,
+      "search_index_bytes": 1228800,
+      "duplicate_barcode_assignments": 0
+    },
+    "full": {
+      "food_count": 326759,
+      "filename": "foods-full-v4.sqlite.gz",
+      "download_url": null,
+      "compressed_bytes": 85427860,
+      "sqlite_bytes": 313692160,
+      "sha256": "2f068953e3835eaaa94efaf7598346e3e2680a2ddc612d21e62e476243609242",
+      "sqlite_sha256": "90ce7a55fd5ef71a8904f69dcf2334a36d0083424a7988463f6aaee11206a98b",
+      "import_seconds": 95.76,
+      "name_median_ms": 1.121,
+      "name_p95_ms": 1.49,
+      "barcode_median_ms": 0.057,
+      "barcode_p95_ms": 0.073,
+      "search_index_bytes": 63619072,
+      "duplicate_barcode_assignments": 182
+    }
+  }
+}

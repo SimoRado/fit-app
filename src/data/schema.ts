@@ -56,6 +56,7 @@ export const migrations = [
    CREATE INDEX IF NOT EXISTS exercise_catalog_category ON exercise_catalog(category);
    CREATE TABLE IF NOT EXISTS exercise_catalog_sources (source_id TEXT PRIMARY KEY, exercise_id TEXT NOT NULL REFERENCES exercises(id));
    CREATE TABLE IF NOT EXISTS exercise_catalog_imports (source TEXT PRIMARY KEY, version TEXT NOT NULL);`,
+  `ALTER TABLE food_entries ADD COLUMN catalog_food_id TEXT;`,
 ] as const;
 
 export const exerciseSeeds: readonly [string, string][] = [
