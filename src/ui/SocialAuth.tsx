@@ -13,7 +13,7 @@ import { AuthError } from './auth';
 import { colors } from './theme';
 import { appleOAuthMessage, googleOAuthMessage, googleOAuthOutcome, oauthOutcome } from '../core/oauthErrors';
 import { authDiagnostic, runtimeSignals } from '../core/runtime';
-import { canStartGoogleOAuth } from '../core/runtimeClassification';
+import { canStartGoogleOAuth, isNativeRuntime } from '../core/runtimeClassification';
 import { googleRedirect } from '../core/googleRedirect';
 import { activateClerkSession } from '../core/googleSession';
 import { appleAuthMode, appleAuthUnavailableMessage, appleAvailabilityReason, appleButtonPresentation } from '../core/appleAuth';
@@ -36,7 +36,7 @@ export function SocialAuth() {
   const [error, setError] = useState('');
   const inFlight = useRef(false);
   const runtime = runtimeSignals();
-  const nativeBuild = runtime.kind === 'native-build';
+  const nativeBuild = isNativeRuntime(runtime.kind);
   const appleNativeConfigured = process.env.EXPO_PUBLIC_CLERK_APPLE_IOS_NATIVE_ENABLED === 'true';
   const appleBrowserConfigured = process.env.EXPO_PUBLIC_CLERK_APPLE_ANDROID_OAUTH_ENABLED === 'true';
   const appleMode = appleAuthMode({ platform: Platform.OS, runtime: runtime.kind, nativeEnabled: appleNativeConfigured, browserEnabled: appleBrowserConfigured, systemAvailable: appleAvailable });
@@ -46,11 +46,13 @@ export function SocialAuth() {
   useEffect(() => {
     authDiagnostic('runtime', {
       kind: runtime.kind,
+      executionEnvironment: runtime.executionEnvironment,
       appOwnership: runtime.appOwnership,
+      hasExpoGoConfig: runtime.hasExpoGoConfig,
       expoGoModule: runtime.expoGoModule,
-      purchasesModule: runtime.purchasesModule,
+      legacyPurchasesBridgeModule: runtime.legacyPurchasesBridgeModule,
     });
-  }, [runtime.kind, runtime.appOwnership, runtime.expoGoModule, runtime.purchasesModule]);
+  }, [runtime.kind, runtime.executionEnvironment, runtime.appOwnership, runtime.hasExpoGoConfig, runtime.expoGoModule, runtime.legacyPurchasesBridgeModule]);
   useEffect(() => {
     authDiagnostic('availability', { platform: Platform.OS, runtime: runtime.kind, androidFlag: appleBrowserConfigured, iosFlag: appleNativeConfigured, button: applePresentation ?? 'hidden', reason: appleReason }, 'APPLE');
   }, [runtime.kind, appleBrowserConfigured, appleNativeConfigured, applePresentation, appleReason]);
@@ -119,7 +121,7 @@ export function SocialAuth() {
     {applePresentation === 'native' && <AppleAuthentication.AppleAuthenticationButton buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE} buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK} cornerRadius={28} style={{ height: 56, width: '100%' }} onPress={() => void start('apple')}/>}
     {applePresentation === 'unavailable' && <SocialButton provider="apple" enabled={false} busy={false} onPress={() => void start('apple')}/>}
     {appleUnavailableMessage && <Text style={{ color: colors.muted, fontSize: 12 }}>{appleUnavailableMessage}</Text>}
-    {!nativeBuild && <Text style={{ color: colors.muted, fontSize: 12 }}>Google sign-in needs the Fitapp development build. Email sign-in works in Expo Go.</Text>}
+    {!nativeBuild && <Text style={{ color: colors.muted, fontSize: 12 }}>Google sign-in needs the Fitapp native build. Email sign-in works in Expo Go.</Text>}
     <AuthError message={error}/>
   </View>;
 }

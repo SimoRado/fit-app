@@ -5,13 +5,17 @@ import { classifyExpoRuntime } from './runtimeClassification';
 export function runtimeSignals() {
   const expoModules = (globalThis as unknown as { expo?: { modules?: Record<string, unknown> } }).expo?.modules;
   const expoGoModule = Boolean(expoModules?.ExpoGo);
-  const purchasesModule = Boolean(NativeModules.RNPurchases);
+  const legacyPurchasesBridgeModule = Boolean(NativeModules.RNPurchases);
+  const appOwnership = Constants.appOwnership ?? null;
+  const executionEnvironment = Constants.executionEnvironment ?? null;
+  const hasExpoGoConfig = Boolean(Constants.expoGoConfig);
   return {
-    kind: classifyExpoRuntime(Constants.appOwnership, expoGoModule, purchasesModule),
-    executionEnvironment: Constants.executionEnvironment,
-    appOwnership: Constants.appOwnership ?? 'none',
+    kind: classifyExpoRuntime({ appOwnership, executionEnvironment, hasExpoGoConfig, expoGoModule, legacyPurchasesBridgeModule }),
+    executionEnvironment,
+    appOwnership: appOwnership ?? 'none',
+    hasExpoGoConfig,
     expoGoModule,
-    purchasesModule,
+    legacyPurchasesBridgeModule,
   };
 }
 

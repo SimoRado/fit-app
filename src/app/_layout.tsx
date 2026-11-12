@@ -14,6 +14,7 @@ import { setActiveLanguage } from '../core/i18n';
 import { AppFonts } from '../ui/fonts';
 import { MotionProvider } from '../ui/motion';
 import { SubscriptionProvider } from '../state/subscriptions';
+import { AdEligibilityBridge } from '../state/AdEligibilityBridge';
 import { SyncProvider } from '../state/sync';
 import { clearAccountReminders } from '../services/reminders';
 import { colors } from '../ui/theme';
@@ -53,7 +54,7 @@ function LocalAccount({ userId, children }: { userId: string; children: React.Re
     return () => { active = false; setLocalAccount(null); };
   }, [userId, retry]);
   if (error) return <View style={{ flex: 1, backgroundColor: colors.bg, justifyContent: 'center', alignItems: 'center', gap: 20, padding: 24 }}><Text style={{ color: colors.text, textAlign: 'center' }}>Could not clear reminders from the previous account.</Text><Pressable accessibilityRole="button" onPress={() => setRetry(value => value + 1)}><Text style={{ color: colors.accent }}>Retry</Text></Pressable></View>;
-  return ready ? <AppProvider key={userId}><SyncProvider>{children}</SyncProvider></AppProvider> : <Loading/>;
+  return ready ? <AppProvider key={userId}><SyncProvider><AdEligibilityBridge>{children}</AdEligibilityBridge></SyncProvider></AppProvider> : <Loading/>;
 }
 
 function Navigator() {

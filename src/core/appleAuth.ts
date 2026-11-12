@@ -1,5 +1,7 @@
+import { isNativeRuntime, type ExpoRuntimeKind } from './runtimeClassification';
+
 export type AppleAuthMode = 'native' | 'browser' | null;
-export type AppRuntime = 'expo-go' | 'native-build';
+export type AppRuntime = ExpoRuntimeKind;
 
 export function appleButtonPresentation(platform: string, mode: AppleAuthMode, browserConfigured = false): 'native' | 'browser' | 'unavailable' | null {
   if (platform === 'ios') return mode === 'native' ? 'native' : 'unavailable';
@@ -32,7 +34,7 @@ export function appleAuthMode(options: {
   browserEnabled: boolean;
   systemAvailable: boolean;
 }): AppleAuthMode {
-  if (options.runtime !== 'native-build') return null;
+  if (!isNativeRuntime(options.runtime)) return null;
   if (options.platform === 'ios' && options.nativeEnabled && options.systemAvailable) return 'native';
   if (options.platform === 'android' && options.browserEnabled) return 'browser';
   return null;
@@ -47,7 +49,7 @@ export function appleAuthUnavailableMessage(options: {
   availabilityChecked: boolean;
 }): string | null {
   if (options.platform !== 'ios' && options.platform !== 'android') return null;
-  if (options.runtime !== 'native-build') return 'Apple sign-in requires the Fitapp development build.';
+  if (!isNativeRuntime(options.runtime)) return 'Apple sign-in requires the Fitapp native build.';
   if (options.platform === 'ios') {
     if (!options.nativeEnabled) return 'Apple sign-in is not configured for this iOS app yet.';
     if (!options.availabilityChecked) return null;

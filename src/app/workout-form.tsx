@@ -16,6 +16,7 @@ import { WorkoutSetRow } from '../ui/WorkoutSetRow';
 import { colors, fonts } from '../ui/theme';
 import { DisplayMetric } from '../ui/DisplayMetric';
 import { ExerciseBrowser } from '../ui/ExerciseBrowser';
+import { interstitialManager } from '../services/adMob';
 
 const blankSet = (): DraftSet => ({ id: uid(), reps: '', weight: '', duration: '', note: '', completed: false });
 const emptyDraft = (): WorkoutDraft => ({ original: null, name: '', day: dayKey(), start: localTime(), duration: '', notes: '', completed: false, items: [], sessionStatus: 'draft', elapsedSeconds: 0, runningSinceMs: null, pausedSinceMs: null, pausedSeconds: 0, finishedAtMs: null });
@@ -226,8 +227,8 @@ export default function WorkoutForm() {
     }
   }
 
-  async function saveManual(): Promise<boolean> {
-    if (saving) return false;
+  async function saveManual(): Promise<{ completedWorkoutId: string | null } | null> {
+    if (saving) return null;
     setSaving(true);
     try {
       const current = draftRef.current;
@@ -241,8 +242,8 @@ export default function WorkoutForm() {
       workout.finished_at_ms = timer.finished_at_ms;
       await repo.saveWorkoutBundle(workout, makeBundle(candidate, workout));
       readyRef.current = false; setReady(false); changed();
-      return true;
-    } catch (error) { message(error); return false; }
+      return { completedWorkoutId: completed && !current.original?.completed ? workout.id : null };
+    } catch (error) { message(error); return null; }
     finally { setSaving(false); }
   }
 
@@ -296,7 +297,7 @@ export default function WorkoutForm() {
       draftRef.current = candidate; setDraft(candidate);
       readyRef.current = false; setReady(false);
       changed();
-      close(() => router.back());
+      close(() => { router.back(); interstitialManager.afterWorkoutSaved(workout.id); });
     } catch (error) { message(error); }
     finally { setSaving(false); }
   }
@@ -371,7 +372,7 @@ export default function WorkoutForm() {
       <BottomSheet visible={finishing} title={live ? 'Finish workout?' : 'Save workout'} onClose={() => setFinishing(false)}>{close => <>
         <Text style={styles.text}>{live ? `Active time: ${formatWorkoutElapsed(elapsedWorkoutSeconds(timerState(currentDraft), now))}` : `Completed sets: ${doneSets}/${totalSets}`}</Text>
         <Text style={styles.muted}>Only completed sets count toward workout statistics and records.</Text>
-        <Button title={saving ? 'Saving…' : live ? 'Finish workout' : 'Save workout'} disabled={saving} onPress={async () => { if (live) await finishLiveWorkout(close); else if (await saveManual()) close(() => router.back()); }}/>
+        <Button title={saving ? 'Saving…' : live ? 'Finish workout' : 'Save workout'} disabled={saving} onPress={async () => { if (live) await finishLiveWorkout(close); else { const result = await saveManual(); if (result) close(() => { router.back(); if (result.completedWorkoutId) interstitialManager.afterWorkoutSaved(result.completedWorkoutId); }); } }}/>
         <Button title="Back" kind="ghost" onPress={() => close()}/>
       </>}</BottomSheet>
     </>}

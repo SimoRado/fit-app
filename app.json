@@ -34,7 +34,13 @@
       "expo-secure-store",
       "expo-apple-authentication",
       "expo-web-browser",
-      ["@sentry/react-native/expo", { "organization": "mohamed-dev-apps", "project": "fit-app" }],
+      [
+        "@sentry/react-native/expo",
+        {
+          "organization": "mohamed-dev-apps",
+          "project": "fit-app"
+        }
+      ],
       "expo-asset"
     ],
     "extra": {

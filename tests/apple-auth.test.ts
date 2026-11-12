@@ -23,24 +23,26 @@ describe('Clerk Apple authentication readiness', () => {
       expect(readFileSync(join(process.cwd(), 'src/app/(auth)', screen), 'utf8')).toContain('<SocialAuth/>');
     }
   });
-  it('uses native Apple auth only on configured iOS development builds', () => {
-    const options = { platform: 'ios', runtime: 'native-build' as const, nativeEnabled: true, browserEnabled: false, systemAvailable: true };
+  it('uses native Apple auth only on configured iOS native builds', () => {
+    const options = { platform: 'ios', runtime: 'development-client' as const, nativeEnabled: true, browserEnabled: false, systemAvailable: true };
     expect(appleAuthMode(options)).toBe('native');
+    expect(appleAuthMode({ ...options, runtime: 'standalone' })).toBe('native');
     expect(appleAuthMode({ ...options, runtime: 'expo-go' })).toBeNull();
     expect(appleAuthMode({ ...options, nativeEnabled: false })).toBeNull();
     expect(appleAuthMode({ ...options, systemAvailable: false })).toBeNull();
   });
 
-  it('uses Clerk browser OAuth only on configured Android development builds', () => {
-    const options = { platform: 'android', runtime: 'native-build' as const, nativeEnabled: false, browserEnabled: true, systemAvailable: false };
+  it('uses Clerk browser OAuth only on configured Android native builds', () => {
+    const options = { platform: 'android', runtime: 'development-client' as const, nativeEnabled: false, browserEnabled: true, systemAvailable: false };
     expect(appleAuthMode(options)).toBe('browser');
+    expect(appleAuthMode({ ...options, runtime: 'standalone' })).toBe('browser');
     expect(appleAuthMode({ ...options, browserEnabled: false })).toBeNull();
     expect(appleAuthMode({ ...options, runtime: 'expo-go' })).toBeNull();
     expect(appleAuthMode({ ...options, platform: 'web' })).toBeNull();
     expect(appleAuthUnavailableMessage({ ...options, availabilityChecked: true })).toBeNull();
     const expoGo = { ...options, runtime: 'expo-go' as const };
     expect(appleButtonPresentation('android', appleAuthMode(expoGo), true)).toBe('unavailable');
-    expect(appleAuthUnavailableMessage({ ...expoGo, availabilityChecked: true })).toMatch(/development build/);
+    expect(appleAuthUnavailableMessage({ ...expoGo, availabilityChecked: true })).toMatch(/native build/);
     expect(appleAvailabilityReason({ ...expoGo, availabilityChecked: true })).toBe('expo-go-cannot-handle-custom-oauth-scheme');
     expect(appleAvailabilityReason({ ...options, availabilityChecked: true })).toBe('android-browser-ready');
     expect(appleAvailabilityReason({ ...options, browserEnabled: false, availabilityChecked: true })).toBe('android-flag-disabled');
@@ -67,7 +69,7 @@ describe('Clerk Apple authentication readiness', () => {
     expect(appleAuthUnavailableMessage({ platform: 'ios', runtime: 'native-build', nativeEnabled: true, browserEnabled: false, systemAvailable: false, availabilityChecked: false })).toBeNull();
     expect(appleAuthUnavailableMessage({ platform: 'ios', runtime: 'native-build', nativeEnabled: false, browserEnabled: false, systemAvailable: false, availabilityChecked: true })).toMatch(/not configured/);
     expect(appleAuthUnavailableMessage({ platform: 'android', runtime: 'native-build', nativeEnabled: false, browserEnabled: false, systemAvailable: false, availabilityChecked: true })).toMatch(/not configured/);
-    expect(appleAuthUnavailableMessage({ platform: 'android', runtime: 'expo-go', nativeEnabled: false, browserEnabled: false, systemAvailable: false, availabilityChecked: true })).toMatch(/development build/);
+    expect(appleAuthUnavailableMessage({ platform: 'android', runtime: 'expo-go', nativeEnabled: false, browserEnabled: false, systemAvailable: false, availabilityChecked: true })).toMatch(/native build/);
   });
 
   it('handles browser cancellation and incomplete returns without exposing error details', () => {

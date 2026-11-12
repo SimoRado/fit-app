@@ -22,7 +22,7 @@ export default function PremiumTest() {
     setNotice(null);
     try {
       const result = await subscription.purchase(chosen);
-      setNotice(result === 'cancelled' ? 'Purchase cancelled. No subscription was activated.' : 'Test Store purchase completed. Check the entitlement status below.');
+      setNotice(result === 'cancelled' ? 'Purchase cancelled. No subscription was activated.' : 'Purchase completed. Check the entitlement status below.');
     } catch { /* The provider exposes the RevenueCat error below. */ }
   }
   async function restore() {
@@ -32,7 +32,7 @@ export default function PremiumTest() {
   }
   return <Page title="Fitapp Premium">
     <Text style={styles.text}>Unlock your full potential.</Text>
-    <Text style={{ color: colors.accent, fontFamily: fonts.mono, fontSize: 11 }}>REVENUECAT TEST STORE · DEVELOPMENT ONLY</Text>
+    <Text style={{ color: colors.accent, fontFamily: fonts.mono, fontSize: 11 }}>{__DEV__ ? 'REVENUECAT TEST STORE · DEVELOPMENT ONLY' : 'REVENUECAT · PREMIUM'}</Text>
     {!subscription.ready && <Card><Text style={styles.muted}>{subscription.loading ? 'Connecting to RevenueCat…' : subscription.error ?? 'Preparing subscriptions…'}</Text></Card>}
     {!subscription.ready && !subscription.loading && <Button title="Retry connection" kind="ghost" onPress={subscription.refresh}/>}
     {subscription.ready && <>

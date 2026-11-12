@@ -1,11 +1,14 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@clerk/expo';
+import { Platform } from 'react-native';
 import Purchases, { type CustomerInfo, type PurchasesOffering, type PurchasesPackage } from 'react-native-purchases';
 import { reportFailure } from '../core/monitoring';
 import { activeEntitlements, isPurchaseCancelled, subscriptionPackages, visibleCustomerInfo } from '../services/subscriptionLogic';
 import { runtimeSignals } from '../core/runtime';
 
-const apiKey = process.env.EXPO_PUBLIC_REVENUECAT_TEST_KEY;
+const apiKey = __DEV__ ? process.env.EXPO_PUBLIC_REVENUECAT_TEST_KEY
+  : Platform.OS === 'android' ? process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY
+  : process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY;
 const entitlementId = process.env.EXPO_PUBLIC_REVENUECAT_ENTITLEMENT_ID;
 const preview = runtimeSignals().kind === 'expo-go';
 let configured = false;
@@ -47,9 +50,9 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     const seq = ++generation.current;
     setReady(false); setInfo(null); setOffering(null); setError(null); setIdentifiedUser(null);
     if (!isLoaded || !userId) { currentUser.current = null; return; }
-    if (!apiKey) { setError('RevenueCat Test Store key is missing.'); return; }
-    if (!apiKey.startsWith('test_')) { setError('Only a RevenueCat Test Store public key is allowed here.'); return; }
-    if (!__DEV__) { setError('Test Store is disabled in release builds.'); return; }
+    if (!apiKey) { setError(__DEV__ ? 'RevenueCat Test Store key is missing.' : 'RevenueCat production key is missing.'); return; }
+    if (__DEV__ && !apiKey.startsWith('test_')) { setError('Only a RevenueCat Test Store public key is allowed here.'); return; }
+    if (!__DEV__ && apiKey.startsWith('test_')) { setError('RevenueCat Test Store is disabled in release builds.'); return; }
     if (preview) { setError('Purchases require a development build. Expo Go only previews this screen.'); return; }
     let listener: ((info: CustomerInfo) => void) | null = null;
     const start = async () => {
