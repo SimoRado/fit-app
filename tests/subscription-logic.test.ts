@@ -15,6 +15,11 @@ describe('subscription logic', () => {
     expect(activeEntitlements(info, 'premium')).toEqual(['premium']);
     expect(activeEntitlements(info, 'missing')).toEqual([]);
   });
+  it('recognizes a successful empty CustomerInfo entitlement map', () => {
+    const info = { entitlements: { active: {} } } as unknown as CustomerInfo;
+    expect(activeEntitlements(info, 'premium')).toEqual([]);
+    expect(activeEntitlements(info)).toEqual([]);
+  });
   it('distinguishes cancellation from failures', () => {
     expect(isPurchaseCancelled({ userCancelled: true })).toBe(true);
     expect(isPurchaseCancelled(new Error('Network unavailable'))).toBe(false);

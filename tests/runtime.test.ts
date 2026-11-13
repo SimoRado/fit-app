@@ -11,6 +11,10 @@ describe('Expo runtime classification', () => {
       appOwnership: null,
       executionEnvironment: 'storeClient',
       hasExpoGoConfig: false,
+      expoVersion: null,
+      debugMode: true,
+      nativeApplicationId: 'com.bettereveryday.fitness',
+      expectedApplicationId: 'com.bettereveryday.fitness',
       expoGoModule: true,
       legacyPurchasesBridgeModule: false,
     })).toBe('development-client');
@@ -19,7 +23,11 @@ describe('Expo runtime classification', () => {
     expect(classifyExpoRuntime({
       appOwnership: null,
       executionEnvironment: 'standalone',
-      hasExpoGoConfig: false,
+      // SDK 58 may expose an embedded app manifest via expoGoConfig in a
+      // standalone binary; this field is diagnostic, not decisive.
+      hasExpoGoConfig: true,
+      nativeApplicationId: 'com.bettereveryday.fitness',
+      expectedApplicationId: 'com.bettereveryday.fitness',
       expoGoModule: true,
       legacyPurchasesBridgeModule: false,
     })).toBe('standalone');
@@ -33,10 +41,28 @@ describe('Expo runtime classification', () => {
       legacyPurchasesBridgeModule: false,
     })).toBe('native-build');
   });
+
+  it('recognizes Expo Go by its own runtime identity and app package', () => {
+    expect(classifyExpoRuntime({ appOwnership: 'expo', executionEnvironment: 'storeClient', hasExpoGoConfig: true })).toBe('expo-go');
+    expect(classifyExpoRuntime({ appOwnership: null, executionEnvironment: 'storeClient', hasExpoGoConfig: true, expoVersion: '58.0.0', nativeApplicationId: 'host.exp.exponent', expectedApplicationId: 'com.bettereveryday.fitness' })).toBe('expo-go');
+  });
+
+  it('classifies a release binary as standalone when dev-client metadata is ambiguous', () => {
+    expect(classifyExpoRuntime({
+      appOwnership: null,
+      executionEnvironment: 'storeClient',
+      hasExpoGoConfig: true,
+      expoVersion: null,
+      debugMode: false,
+      nativeApplicationId: 'com.bettereveryday.fitness',
+      expectedApplicationId: 'com.bettereveryday.fitness',
+    })).toBe('standalone');
+  });
   it('enables Google in every idle native runtime', () => {
     expect(canStartGoogleOAuth('expo-go', false)).toBe(false);
     expect(canStartGoogleOAuth('development-client', false)).toBe(true);
     expect(canStartGoogleOAuth('standalone', false)).toBe(true);
     expect(canStartGoogleOAuth('native-build', true)).toBe(false);
+    expect(canStartGoogleOAuth('standalone', false, false)).toBe(false);
   });
 });

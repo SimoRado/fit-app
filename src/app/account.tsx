@@ -3,6 +3,7 @@ import { useAuth, useUser } from '@clerk/expo';
 import { useConvexAuth, useQuery } from 'convex/react';
 import { Link, router } from 'expo-router';
 import { api } from '../../convex/_generated/api';
+import { admobTestingEnabled } from '../services/adMob';
 import { clearAccountReminders } from '../services/reminders';
 import { Button, Card, Field, message, Page, styles } from '../ui/components';
 import { Text } from '../ui/LocalizedText';
@@ -25,6 +26,7 @@ export default function Account() {
     <Card><Text style={styles.label}>Account settings</Text>
       <Button title="Fitness profile" kind="ghost" onPress={() => router.push('/(tabs)/profile')}/>
       <Button title="Premium — Test Subscriptions" kind="ghost" onPress={() => router.push('/premium-test')}/>
+      {admobTestingEnabled && <Button title="AdMob Testing" kind="ghost" onPress={() => router.push('/admob-testing')}/>}
       <Button title="Data & Privacy" kind="ghost" onPress={() => router.push('/cloud-sync')}/>
       <Button title="Sign out" kind="ghost" onPress={async () => { try { await signOut(); await clearAccountReminders(); } catch (error) { message(error); } }}/>
     </Card>

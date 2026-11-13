@@ -16,7 +16,7 @@ import { useAuth, useUser } from '@clerk/expo';
 import { clearAccountReminders } from '../../services/reminders';
 import { ensureNoPendingBeforeLocalDelete } from '../../data/syncLocal';
 import { BirthDateField } from '../../ui/BirthDateField';
-import { interstitialManager } from '../../services/adMob';
+import { admobTestingEnabled, interstitialManager } from '../../services/adMob';
 
 export default function ProfileScreen() {
   const ads = useSyncExternalStore(interstitialManager.subscribe, interstitialManager.getSnapshot, interstitialManager.getSnapshot);
@@ -80,6 +80,7 @@ export default function ProfileScreen() {
       { label: 'Reminder settings', detail: '', icon: 'notifications-outline' as const, action: () => router.push('/reminders') },
       { label: 'Nutrition', detail: 'Targets, tracking and saved foods', icon: 'restaurant-outline' as const, action: () => router.push('/(tabs)/nutrition') },
       { label: __DEV__ ? 'Premium — Test Subscriptions' : 'Premium', detail: __DEV__ ? 'RevenueCat Test Store' : 'Plans and subscription status', icon: 'diamond-outline' as const, action: () => router.push('/premium-test') },
+      ...(admobTestingEnabled ? [{ label: 'AdMob Testing', detail: 'Internal diagnostics and test ads', icon: 'bug-outline' as const, action: () => router.push('/admob-testing') }] : []),
       { label: 'Data & Privacy', detail: 'Cloud sync and local data', icon: 'shield-checkmark-outline' as const, action: () => router.push('/cloud-sync') },
       ...(ads.privacyOptionsRequired ? [{ label: 'Ad privacy options', detail: 'Manage Google advertising consent', icon: 'options-outline' as const, action: () => { void interstitialManager.showPrivacyOptions(); } }] : []),
     ].map(item => <Pressable key={item.label} accessibilityRole="button" onPress={item.action} style={{ minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 13, borderBottomWidth: 1, borderBottomColor: colors.border }}><View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.lilac, alignItems: 'center', justifyContent: 'center' }}><Ionicons name={item.icon} size={21} color={colors.ink}/></View><View style={{ flex: 1 }}><Text style={{ color: colors.text, fontWeight: '700' }}>{item.label}</Text>{!!item.detail && <Text numberOfLines={1} style={styles.muted}>{item.detail}</Text>}</View><Ionicons name="chevron-forward" size={18} color={colors.muted}/></Pressable>)}

@@ -9,7 +9,7 @@ import { interstitialManager } from '../services/adMob';
 export function AdEligibilityBridge({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { ready, profile } = useApp();
-  const { ready: subscriptionReady, loading, busy, error, info } = useSubscription();
+  const { ready: subscriptionReady, loading, busy, info } = useSubscription();
   const activeEntitlementCount = Object.keys(info?.entitlements.active ?? {}).length;
   const [foreground, setForeground] = useState(AppState.currentState === 'active');
   useEffect(() => {
@@ -18,13 +18,13 @@ export function AdEligibilityBridge({ children }: { children: React.ReactNode })
   }, []);
   useEffect(() => () => interstitialManager.setContext({ eligibility: 'unresolved', safeScreen: false, foreground: false }), []);
   useEffect(() => {
-    const eligibility = ready && profile ? adEligibility({ ready: subscriptionReady, loading, busy, error, activeEntitlementCount }) : 'unresolved';
+    const eligibility = ready && profile ? adEligibility({ ready: subscriptionReady, loading, busy, activeEntitlementCount }) : 'unresolved';
     interstitialManager.setContext({
       eligibility,
       // Only home and workout history are safe post-completion destinations.
       safeScreen: pathname === '/' || pathname.endsWith('/index') || pathname.endsWith('/workouts'),
       foreground,
     });
-  }, [ready, profile, subscriptionReady, loading, busy, error, activeEntitlementCount, pathname, foreground]);
+  }, [ready, profile, subscriptionReady, loading, busy, activeEntitlementCount, pathname, foreground]);
   return <>{children}</>;
 }

@@ -63,7 +63,7 @@ describe('AdMob runtime and entitlement gates', () => {
   });
   it('supports native development and standalone builds only when AdMob modules exist', () => {
     const go = classifyExpoRuntime({ appOwnership: 'expo', executionEnvironment: 'storeClient', hasExpoGoConfig: true });
-    const dev = classifyExpoRuntime({ appOwnership: null, executionEnvironment: 'storeClient', hasExpoGoConfig: false, expoGoModule: true, legacyPurchasesBridgeModule: false });
+    const dev = classifyExpoRuntime({ appOwnership: null, executionEnvironment: 'storeClient', hasExpoGoConfig: false, expoVersion: null, debugMode: true, nativeApplicationId: 'com.bettereveryday.fitness', expectedApplicationId: 'com.bettereveryday.fitness', expoGoModule: true, legacyPurchasesBridgeModule: false });
     const standalone = classifyExpoRuntime({ appOwnership: null, executionEnvironment: 'standalone', hasExpoGoConfig: false });
     expect(canUseAdMobNative(go, 'android', true)).toBe(false);
     expect(canUseAdMobNative(dev, 'android', true)).toBe(true);
@@ -75,14 +75,29 @@ describe('AdMob runtime and entitlement gates', () => {
   it('keeps active entitlements ad-free through purchase, restore, loading, and errors', () => {
     expect(adEligibility(free)).toBe('free');
     expect(adEligibility({ ...free, activeEntitlementCount: 1 })).toBe('premium');
-    expect(adEligibility({ ...free, activeEntitlementCount: 1, loading: true, error: 'offline' })).toBe('premium');
+    expect(adEligibility({ ...free, activeEntitlementCount: 1, loading: true })).toBe('premium');
     expect(adEligibility({ ...free, busy: true })).toBe('unresolved');
     expect(adEligibility({ ...free, ready: false })).toBe('unresolved');
-    expect(adEligibility({ ...free, error: 'offline' })).toBe('unresolved');
+    expect(adEligibility({ ...free, activeEntitlementCount: 0 })).toBe('free');
+    expect(adEligibility({ ...free, ready: false })).toBe('unresolved');
   });
 });
 
 describe('central interstitial manager', () => {
+  it('refreshes UMP information and exposes consent-form availability', async () => {
+    const h = harness({ consent: { canRequestAds: false, privacyOptionsRequired: false, status: 'REQUIRED', consentFormAvailable: false } });
+    await h.manager.refreshDiagnostics();
+    expect(h.adapter.gatherConsent).toHaveBeenCalledOnce();
+    expect(h.manager.getSnapshot()).toMatchObject({
+      consentStatus: 'denied',
+      consentInfoStatus: 'REQUIRED',
+      consentFormAvailable: false,
+      canRequestAds: false,
+      privacyOptionsRequired: false,
+    });
+    expect(h.manager.getSnapshot().reason).toContain('no form is available');
+  });
+
   it('waits five minutes after launch, then shows only after a saved workout and records actual display', async () => {
     const h = harness();
     h.manager.setContext(freeScreen);
@@ -102,7 +117,7 @@ describe('central interstitial manager', () => {
     expect(JSON.parse(h.getStored())).toEqual([5 * MINUTE + 30_000 + 1500]);
     h.ads[0].emit('closed');
     expect(h.ads[0].destroyed).toBe(true);
-    expect(h.logs).toContain('ad dismissed');
+    expect(h.manager.getDiagnostics().events.map(event => event.event)).toContain('interstitial dismissed');
   });
 
   it('never requests or displays for Premium and cancels a loaded ad on activation or restore', async () => {
@@ -118,7 +133,7 @@ describe('central interstitial manager', () => {
     h.manager.afterWorkoutSaved('workout-2');
     await h.advance(1500);
     expect(h.ads[0].shows).toBe(0);
-    expect(h.logs).toContain('suppressed: Premium');
+    expect(h.manager.getDiagnostics().events.some(event => event.event === 'ad suppressed' && event.detail === 'Premium entitlement is active')).toBe(true);
   });
 
   it('does not initialize if Premium activates while consent is being resolved', async () => {
@@ -139,7 +154,8 @@ describe('central interstitial manager', () => {
     h.manager.setContext(freeScreen);
     await h.advance(6 * MINUTE);
     expect(h.ads).toHaveLength(0);
-    expect(h.logs).toContain('native AdMob module unavailable; ads skipped');
+    expect(h.manager.getSnapshot().nativeAvailable).toBe(false);
+    expect(h.manager.getDiagnostics().events.map(event => event.event)).toContain('native SDK unavailable');
   });
 
   it('does not initialize or load when UMP forbids requests, then handles privacy options', async () => {
@@ -194,7 +210,7 @@ describe('central interstitial manager', () => {
     await h.advance(1500);
     expect(h.ads[0].shows).toBe(1);
     expect(h.writes).toHaveLength(0);
-    expect(h.logs).toContain('ad failed to display');
+    expect(h.manager.getSnapshot().lastError).toBe('AdMob could not display the interstitial');
   });
 
   it('retries a failed load without parallel requests', async () => {
@@ -227,6 +243,6 @@ describe('central interstitial manager', () => {
     h.manager.setContext(freeScreen);
     await h.advance(6 * MINUTE);
     expect(h.ads).toHaveLength(0);
-    expect(h.logs).toContain('frequency storage unavailable; ads disabled');
+    expect(h.manager.getSnapshot().reason).toBe('frequency storage unavailable; automatic ads disabled');
   });
 });

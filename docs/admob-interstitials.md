@@ -21,6 +21,25 @@ The manager runs only after a signed in account has a local profile and a resolv
 
 Set up and publish the applicable consent messages in AdMob **Privacy & messaging**. Test regulated geography behavior with UMP test device configuration before release. Review the app's privacy notice and Google Play **Data safety** declarations against the SDK's actual data collection and your regions. In Play Console, declare that the app contains ads. Verify any app ads.txt and AdMob app verification requirements for the release. The SDK and UMP flow alone do not establish legal compliance.
 
+## Internal AdMob Testing screen
+
+In a development build or an explicitly internal build, open **Profile → Settings → AdMob Testing**. The screen reports the actual runtime classifier, native module, SDK, interstitial, UMP, RevenueCat eligibility, and persisted automatic frequency state. Its bounded in-memory event history is diagnostic only; clearing it does not change consent, subscriptions, frequency caps, or user data. Copy Diagnostic Report redacts key, token, and email patterns and does not include provider or ad-unit identifiers.
+
+The Load and Show controls are compiled into local APKs and the internal EAS profiles only. They require the official Google Android test interstitial, permitted UMP consent, foreground state, and a confirmed Free entitlement. Manual displays bypass automatic cooldowns but never write to the automatic frequency counter. The build-time production-ad switch suppresses the testing entry and controls. Internal builds keep production ads disabled.
+
+Manual test flow:
+
+1. Use `npm run android:apk:preview` or `npm run android:apk:dev`, then open Profile → AdMob Testing.
+2. Wait for RevenueCat to resolve to Free and complete any UMP form. Tap **Load Test Interstitial** and wait for the loaded status.
+3. Tap **Show Test Interstitial**. Dismissal should return to Cubyfit; no workout or frequency-cap record is created.
+4. Use **Refresh Diagnostics** to refresh cached UMP status and the existing RevenueCat customer info. **Clear Diagnostic History** only clears the in-memory log and last-event fields.
+
+## Clerk browser OAuth prerequisites
+
+Google and Android Apple use Clerk browser SSO with the native return URL `betterday://oauth-callback`. Local APK builds require a valid `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` and explicitly require `EXPO_PUBLIC_CLERK_APPLE_ANDROID_OAUTH_ENABLED=true`; the value is inlined while Metro bundles the APK, so the app does not depend on the build PC at runtime. The internal EAS profiles also set the Apple browser flag; the Clerk publishable key and Convex URL still need to exist in their configured EAS `development` environment.
+
+In the existing Clerk instance, enable Google and Apple in **SSO connections**. In **Native applications → Allowlist for mobile SSO redirect**, allow `betterday://oauth-callback` for the relevant instance. Clerk's development Apple connection uses shared development credentials; a production Apple browser connection requires the existing Apple Services ID, Team ID, Key ID, private key, and configured return URL. No Clerk or Apple dashboard connection was changed by this code task. See Clerk's [Expo production redirect guidance](https://clerk.com/docs/guides/development/deployment/expo) and [Apple connection setup](https://clerk.com/docs/guides/configure/auth-strategies/social-connections/apple).
+
 ## Eligibility and placement
 
 The existing RevenueCat `CustomerInfo` is the sole Premium source. Any active entitlement for the verified Clerk/RevenueCat account suppresses ads, including when the configured Premium entitlement ID is not yet verified. Unloaded, loading, purchase, restore, error, account mismatch, or otherwise unresolved status suppresses requests and display. A confirmed free state can request ads. Purchase and restore state changes are reflected through the existing subscription provider. No RevenueCat network call is made for each ad opportunity.

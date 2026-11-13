@@ -13,9 +13,11 @@ export async function loadAdMobNative(): Promise<AdsAdapter | null> {
   if (!canUseAdMobNative(runtime, Platform.OS, modulesPresent)) return null;
   try {
     const ads = await import('react-native-google-mobile-ads');
-    const consentResult = (info: { canRequestAds: boolean; privacyOptionsRequirementStatus: string }): ConsentResult => ({
+    const consentResult = (info: { canRequestAds: boolean; privacyOptionsRequirementStatus: string; status: string; isConsentFormAvailable: boolean }): ConsentResult => ({
       canRequestAds: info.canRequestAds,
       privacyOptionsRequired: info.privacyOptionsRequirementStatus === ads.AdsConsentPrivacyOptionsRequirementStatus.REQUIRED,
+      status: info.status,
+      consentFormAvailable: info.isConsentFormAvailable,
     });
     return {
       gatherConsent: async () => consentResult(await ads.AdsConsent.gatherConsent()),
@@ -26,7 +28,7 @@ export async function loadAdMobNative(): Promise<AdsAdapter | null> {
         const ad = ads.InterstitialAd.createForAdRequest(unitId);
         const events = { loaded: ads.AdEventType.LOADED, opened: ads.AdEventType.OPENED, closed: ads.AdEventType.CLOSED, error: ads.AdEventType.ERROR };
         return {
-          on: (event: AdEvent, listener: () => void) => ad.addAdEventListener(events[event], listener),
+          on: (event: AdEvent, listener: (detail?: unknown) => void) => ad.addAdEventListener(events[event], detail => listener(detail)),
           load: () => ad.load(),
           show: () => ad.show(),
           destroy: () => ad.destroy(),

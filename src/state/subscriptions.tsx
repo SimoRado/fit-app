@@ -64,10 +64,24 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
         currentUser.current = userId;
         listener = next => { void Purchases.getAppUserID().then(id => { if (id === userId && seq === generation.current && currentUser.current === userId) setInfo(next); }).catch(() => undefined); };
         Purchases.addCustomerInfoUpdateListener(listener);
-        const [nextInfo, offers] = await Promise.all([Purchases.getCustomerInfo(), Purchases.getOfferings()]);
+        // CustomerInfo is the entitlement source of truth. Offerings are only
+        // needed to sell plans and may be absent (for example, before Play
+        // products are attached in RevenueCat). Do not let that failure make
+        // a successfully identified customer's entitlement unresolved.
+        const nextInfo = await Purchases.getCustomerInfo();
         if (seq !== generation.current) return;
         if (await Purchases.getAppUserID() !== userId) throw Error('Subscription account is still changing. Please retry.');
-        setInfo(nextInfo); setOffering(offers.current); setIdentifiedUser(userId); setReady(true);
+        setInfo(nextInfo); setIdentifiedUser(userId); setReady(true);
+        try {
+          const offers = await Purchases.getOfferings();
+          if (seq !== generation.current) return;
+          setOffering(offers.current);
+        } catch (cause) {
+          if (seq !== generation.current) return;
+          setOffering(null);
+          setError(errorText(cause));
+          reportFailure('subscriptions-offerings', cause);
+        }
       } catch (cause) { if (seq === generation.current) { reportFailure('subscriptions-initialization', cause); setError(errorText(cause)); } }
       finally { if (seq === generation.current) setLoading(false); }
     };
@@ -81,8 +95,21 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   async function refresh() {
     if (!ready) { setRetry(value => value + 1); return; }
     await assertIdentity(); setLoading(true); setError(null);
-    try { const [nextInfo, offers] = await Promise.all([Purchases.getCustomerInfo(), Purchases.getOfferings()]); await assertIdentity(); setInfo(nextInfo); setOffering(offers.current); }
-    catch (cause) { setError(errorText(cause)); throw cause; }
+    try {
+      const nextInfo = await Purchases.getCustomerInfo();
+      await assertIdentity();
+      setInfo(nextInfo);
+      try {
+        const offers = await Purchases.getOfferings();
+        await assertIdentity();
+        setOffering(offers.current);
+        setError(null);
+      } catch (cause) {
+        setOffering(null);
+        setError(errorText(cause));
+        reportFailure('subscriptions-offerings', cause);
+      }
+    } catch (cause) { setError(errorText(cause)); throw cause; }
     finally { setLoading(false); }
   }
   async function purchase(item: PurchasesPackage): Promise<'success' | 'cancelled'> {

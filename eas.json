@@ -4,6 +4,12 @@
       "developmentClient": true,
       "distribution": "internal",
       "environment": "development",
+      "env": {
+        "CUBYFIT_ADMOB_BUILD_CHANNEL": "eas-internal",
+        "EXPO_PUBLIC_CUBYFIT_ADMOB_TESTING": "true",
+        "EXPO_PUBLIC_ADMOB_PRODUCTION_ADS_ENABLED": "false",
+        "EXPO_PUBLIC_CLERK_APPLE_ANDROID_OAUTH_ENABLED": "true"
+      },
       "android": {
         "buildType": "apk"
       }
@@ -11,6 +17,12 @@
     "catalog-offline-test": {
       "distribution": "internal",
       "environment": "development",
+      "env": {
+        "CUBYFIT_ADMOB_BUILD_CHANNEL": "eas-internal",
+        "EXPO_PUBLIC_CUBYFIT_ADMOB_TESTING": "true",
+        "EXPO_PUBLIC_ADMOB_PRODUCTION_ADS_ENABLED": "false",
+        "EXPO_PUBLIC_CLERK_APPLE_ANDROID_OAUTH_ENABLED": "true"
+      },
       "android": {
         "buildType": "apk"
       }

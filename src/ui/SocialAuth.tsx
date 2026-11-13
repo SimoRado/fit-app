@@ -37,8 +37,9 @@ export function SocialAuth() {
   const inFlight = useRef(false);
   const runtime = runtimeSignals();
   const nativeBuild = isNativeRuntime(runtime.kind);
-  const appleNativeConfigured = process.env.EXPO_PUBLIC_CLERK_APPLE_IOS_NATIVE_ENABLED === 'true';
-  const appleBrowserConfigured = process.env.EXPO_PUBLIC_CLERK_APPLE_ANDROID_OAUTH_ENABLED === 'true';
+  const clerkConfigured = /^pk_(test|live)_/.test(process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ?? '');
+  const appleNativeConfigured = clerkConfigured && process.env.EXPO_PUBLIC_CLERK_APPLE_IOS_NATIVE_ENABLED === 'true';
+  const appleBrowserConfigured = clerkConfigured && process.env.EXPO_PUBLIC_CLERK_APPLE_ANDROID_OAUTH_ENABLED === 'true';
   const appleMode = appleAuthMode({ platform: Platform.OS, runtime: runtime.kind, nativeEnabled: appleNativeConfigured, browserEnabled: appleBrowserConfigured, systemAvailable: appleAvailable });
   const applePresentation = appleButtonPresentation(Platform.OS, appleMode, appleBrowserConfigured);
   const appleUnavailableMessage = appleAuthUnavailableMessage({ platform: Platform.OS, runtime: runtime.kind, nativeEnabled: appleNativeConfigured, browserEnabled: appleBrowserConfigured, systemAvailable: appleAvailable, availabilityChecked: appleAvailabilityChecked });
@@ -49,10 +50,13 @@ export function SocialAuth() {
       executionEnvironment: runtime.executionEnvironment,
       appOwnership: runtime.appOwnership,
       hasExpoGoConfig: runtime.hasExpoGoConfig,
+      expoVersionPresent: Boolean(runtime.expoVersion),
+      debugMode: runtime.debugMode,
+      appIdMatches: runtime.appIdMatches,
       expoGoModule: runtime.expoGoModule,
       legacyPurchasesBridgeModule: runtime.legacyPurchasesBridgeModule,
     });
-  }, [runtime.kind, runtime.executionEnvironment, runtime.appOwnership, runtime.hasExpoGoConfig, runtime.expoGoModule, runtime.legacyPurchasesBridgeModule]);
+  }, [runtime.kind, runtime.executionEnvironment, runtime.appOwnership, runtime.hasExpoGoConfig, runtime.expoVersion, runtime.debugMode, runtime.appIdMatches, runtime.expoGoModule, runtime.legacyPurchasesBridgeModule]);
   useEffect(() => {
     authDiagnostic('availability', { platform: Platform.OS, runtime: runtime.kind, androidFlag: appleBrowserConfigured, iosFlag: appleNativeConfigured, button: applePresentation ?? 'hidden', reason: appleReason }, 'APPLE');
   }, [runtime.kind, appleBrowserConfigured, appleNativeConfigured, applePresentation, appleReason]);
@@ -75,6 +79,10 @@ export function SocialAuth() {
     inFlight.current = true; setBusy(provider); setError('');
     let stage: 'initiation' | 'browser' | 'activation' = 'initiation';
     try {
+      if (!clerkConfigured) {
+        setError('Social sign-in is not configured in this build. Please use email sign-in.');
+        return;
+      }
       if (provider === 'apple' && !appleMode) return;
       const usesBrowser = provider === 'google' || appleMode === 'browser';
       const redirect = usesBrowser ? googleRedirect(Constants.expoConfig?.scheme, AuthSession.makeRedirectUri) : null;
@@ -106,22 +114,23 @@ export function SocialAuth() {
       if (provider === 'google') {
         const message = googleOAuthMessage(cause);
         authDiagnostic('error', { stage, category: message === null ? 'cancelled' : message.includes('Connection') ? 'network' : message.includes('redirect') ? 'redirect' : 'other' }, logCategory);
-        if (message) setError(stage === 'activation' ? 'Google connected, but Fitapp could not activate the session. Please try again.' : message);
+        if (message) setError(stage === 'activation' ? 'Google connected, but Cubyfit could not activate the session. Please try again.' : message);
       }
       else {
         const message = appleOAuthMessage(cause);
         authDiagnostic('error', { stage, category: message === null ? 'cancelled' : message.includes('Connection') ? 'network' : message.includes('return') ? 'redirect' : 'other' }, logCategory);
-        if (message) setError(stage === 'activation' ? 'Apple connected, but Fitapp could not activate the session. Please try again.' : message);
+        if (message) setError(stage === 'activation' ? 'Apple connected, but Cubyfit could not activate the session. Please try again.' : message);
       }
     } finally { inFlight.current = false; setBusy(null); }
   }
   return <View style={{ gap: 10 }}>
-    {(Platform.OS === 'android' || Platform.OS === 'ios') && <SocialButton provider="google" enabled={canStartGoogleOAuth(runtime.kind, busy !== null)} busy={busy === 'google'} onPress={() => void start('google')}/>}
+    {(Platform.OS === 'android' || Platform.OS === 'ios') && <SocialButton provider="google" enabled={canStartGoogleOAuth(runtime.kind, busy !== null, clerkConfigured)} busy={busy === 'google'} onPress={() => void start('google')}/>}
     {applePresentation === 'browser' && <SocialButton provider="apple" enabled={busy === null} busy={busy === 'apple'} onPress={() => void start('apple')}/>}
     {applePresentation === 'native' && <AppleAuthentication.AppleAuthenticationButton buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE} buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK} cornerRadius={28} style={{ height: 56, width: '100%' }} onPress={() => void start('apple')}/>}
     {applePresentation === 'unavailable' && <SocialButton provider="apple" enabled={false} busy={false} onPress={() => void start('apple')}/>}
     {appleUnavailableMessage && <Text style={{ color: colors.muted, fontSize: 12 }}>{appleUnavailableMessage}</Text>}
-    {!nativeBuild && <Text style={{ color: colors.muted, fontSize: 12 }}>Google sign-in needs the Fitapp native build. Email sign-in works in Expo Go.</Text>}
+    {!clerkConfigured && <Text style={{ color: colors.muted, fontSize: 12 }}>Social sign-in is not configured in this build. Email sign-in remains available.</Text>}
+    {!nativeBuild && <Text style={{ color: colors.muted, fontSize: 12 }}>Social sign-in requires a Cubyfit development or standalone build. Email sign-in works in Expo Go.</Text>}
     <AuthError message={error}/>
   </View>;
 }
