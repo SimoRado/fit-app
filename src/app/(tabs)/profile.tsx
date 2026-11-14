@@ -69,8 +69,8 @@ export default function ProfileScreen() {
       <Text style={[styles.muted, { textAlign: 'center' }]}>{profile?.fitness_goal} · {profile?.experience}</Text>
     </View>
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{[
-      ['Weight', summary.weight ?? '—', 'KG'], ['Height (cm)', profile?.height_cm ?? '—', 'CM'], ['Workouts', summary.workouts, ''], ['Habits', summary.habits, ''],
-    ].map(([label, value, unit]) => <View key={label} style={{ width: width < 360 ? '48%' : '23%', minHeight: 95, backgroundColor: colors.card, borderRadius: 24, padding: 10, gap: 5, alignItems: 'center', justifyContent: 'center' }}><Text numberOfLines={1} style={{ color: colors.muted, fontFamily: fonts.bold, fontSize: 9, textTransform: 'uppercase' }}>{label}</Text><Text numberOfLines={1} adjustsFontSizeToFit style={{ color: colors.ink, fontFamily: fonts.displayHeavy, fontSize: 27 }}>{value}</Text></View>)}</View>
+      ['Weight', summary.weight ?? '—'], ['Height (cm)', profile?.height_cm ?? '—'], ['Workouts', summary.workouts], ['Habits', summary.habits],
+    ].map(([label, value]) => <View key={label} style={{ width: width < 360 ? '48%' : '23%', minHeight: 95, backgroundColor: colors.card, borderRadius: 24, padding: 10, gap: 5, alignItems: 'center', justifyContent: 'center' }}><Text numberOfLines={1} style={{ color: colors.muted, fontFamily: fonts.bold, fontSize: 9, textTransform: 'uppercase' }}>{label}</Text><Text numberOfLines={1} adjustsFontSizeToFit style={{ color: colors.ink, fontFamily: fonts.displayHeavy, fontSize: 27 }}>{value}</Text></View>)}</View>
     <SectionHeader title="Settings"/>
     <Card><Text style={styles.label}>Signed-in account</Text><Text style={styles.text}>{user?.fullName || user?.firstName || 'Account'}</Text><Text style={styles.muted}>{user?.primaryEmailAddress?.emailAddress ?? ''}</Text><Button title="Manage account" kind="ghost" onPress={() => router.push('/account')}/><Button title="Sign out" kind="ghost" onPress={async () => { try { await signOut(); await clearAccountReminders(); } catch (error) { message(error); } }}/></Card>
     {[

@@ -312,6 +312,8 @@ export class InterstitialManager {
         this.publish({ ...this.snapshot, initialized: true, reason: 'SDK initialized' });
         this.record('SDK initialized');
       }).catch(error => {
+        // A temporary SDK failure must not poison later ad opportunities.
+        this.sdkInitPromise = null;
         this.publish({ ...this.snapshot, initialized: false, reason: 'SDK initialization failed' });
         this.record('SDK initialization failed', sanitizedError(error), true);
       });
@@ -547,7 +549,7 @@ export class InterstitialManager {
         ...this.snapshot,
         canRequestAds: consent.canRequestAds,
         privacyOptionsRequired: consent.privacyOptionsRequired,
-        consentInfoStatus: refreshError ? consent.status ?? 'UNKNOWN' : consent.status ?? 'UNKNOWN',
+        consentInfoStatus: consent.status ?? 'UNKNOWN',
         consentFormAvailable: consent.consentFormAvailable ?? null,
         consentError: refreshError,
         consentStatus: refreshError ? 'unavailable' : consent.canRequestAds ? 'permitted' : 'denied',

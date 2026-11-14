@@ -39,21 +39,35 @@ export function removeLocalAccountData(userId: string) {
 export async function db() {
   if (!activeAccount) throw new Error('Sign in before accessing local fitness data');
   const requestedAccount = activeAccount;
-  if (!promise) promise = (async () => {
-    const d = await SQLite.openDatabaseAsync(localDatabaseName(requestedAccount));
-    await d.execAsync('PRAGMA foreign_keys = ON');
-    const row = await d.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
-    for (let i = row?.user_version ?? 0; i < migrations.length; i++) {
-      await d.withExclusiveTransactionAsync(async tx => { await tx.execAsync(migrations[i]); await tx.execAsync(`PRAGMA user_version = ${i + 1}`); });
-    }
-    await d.withExclusiveTransactionAsync(async tx => {
-      for (const [id, name] of exerciseSeeds) await tx.runAsync('INSERT OR IGNORE INTO exercises VALUES (?,?,?,0)', id, name, id === 'plank' || id === 'running' ? 'duration' : id === 'pullup' ? 'reps' : 'weight_reps');
+  if (!promise) {
+    let attempt!: Promise<SQLite.SQLiteDatabase>;
+    attempt = (async () => {
+      const d = await SQLite.openDatabaseAsync(localDatabaseName(requestedAccount));
+      try {
+        await d.execAsync('PRAGMA foreign_keys = ON');
+        const row = await d.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
+        for (let i = row?.user_version ?? 0; i < migrations.length; i++) {
+          await d.withExclusiveTransactionAsync(async tx => { await tx.execAsync(migrations[i]); await tx.execAsync(`PRAGMA user_version = ${i + 1}`); });
+        }
+        await d.withExclusiveTransactionAsync(async tx => {
+          for (const [id, name] of exerciseSeeds) await tx.runAsync('INSERT OR IGNORE INTO exercises VALUES (?,?,?,0)', id, name, id === 'plank' || id === 'running' ? 'duration' : id === 'pullup' ? 'reps' : 'weight_reps');
+        });
+        await importExerciseCatalog(d);
+        if (activeAccount !== requestedAccount) throw new Error('Account changed while opening local data');
+        return d;
+      } catch (cause) {
+        await d.closeAsync().catch(() => undefined);
+        throw cause;
+      }
+    })().catch(cause => {
+      if (connections.get(requestedAccount) === attempt) connections.delete(requestedAccount);
+      if (activeAccount === requestedAccount && promise === attempt) promise = undefined;
+      reportFailure('database-initialization', cause);
+      throw cause;
     });
-    await importExerciseCatalog(d);
-    if (activeAccount !== requestedAccount) throw new Error('Account changed while opening local data');
-    return d;
-  })().catch(cause => { reportFailure('database-initialization', cause); throw cause; });
-  connections.set(requestedAccount, promise);
+    promise = attempt;
+    connections.set(requestedAccount, attempt);
+  }
   return promise;
 }
 export async function all<T>(table: string, order = ''): Promise<T[]> { return (await db()).getAllAsync<T>(`SELECT * FROM ${table} ${order}`); }

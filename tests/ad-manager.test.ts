@@ -226,6 +226,22 @@ describe('central interstitial manager', () => {
     expect(h.ads[1].loads).toBe(1);
   });
 
+  it('retries SDK initialization after a transient failure', async () => {
+    const h = harness();
+    h.initialize.mockRejectedValueOnce(Error('temporarily offline'));
+    h.manager.setContext(freeScreen);
+    await h.advance(0);
+    expect(h.initialize).toHaveBeenCalledOnce();
+    expect(h.manager.getSnapshot().initialized).toBe(false);
+
+    h.manager.setContext(freeScreen);
+    await h.advance(0);
+    expect(h.initialize).toHaveBeenCalledTimes(2);
+    expect(h.manager.getSnapshot().initialized).toBe(true);
+    await h.advance(6 * MINUTE);
+    expect(h.ads).toHaveLength(1);
+  });
+
   it('persists the rolling cap across restarts and honors eight minutes plus three per day', async () => {
     expect(nextAllowedAt([10 * MINUTE], 0, 11 * MINUTE)).toBe(18 * MINUTE);
     expect(nextAllowedAt([1, 10, 20], 0, 25 * MINUTE)).toBe(24 * 60 * MINUTE + 1);
