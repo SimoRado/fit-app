@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, View } from 'react-native';
+import { Alert, Pressable, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { localize } from '../core/i18n';
 import { Text } from '../ui/LocalizedText';
@@ -11,10 +11,10 @@ import { useApp } from '../state/app';
 import { DraftExercise, DraftSet, WorkoutDraft } from '../state/workoutDraft';
 import { BottomSheet } from '../ui/BottomSheet';
 import { Button, Card, Choices, Field, message, Page, styles, confirm } from '../ui/components';
-import { ProgressBar, SectionHeader } from '../ui/visuals';
+import { ProgressBar } from '../ui/visuals';
 import { WorkoutSetRow } from '../ui/WorkoutSetRow';
 import { colors, fonts } from '../ui/theme';
-import { DisplayMetric } from '../ui/DisplayMetric';
+import { EmptyAction, SectionLink, StatTrio } from '../ui/voltKit';
 import { ExerciseBrowser } from '../ui/ExerciseBrowser';
 import { interstitialManager } from '../services/adMob';
 
@@ -321,20 +321,18 @@ export default function WorkoutForm() {
 
   return <Page title="">
     {!ready ? <Card><Text style={styles.muted}>Opening workout…</Text></Card> : <>
-      {live && <View style={{ gap: 9 }}>
-        <DisplayMetric value={timerText} size={timerText.length > 5 ? 45 : 77}/>
-        <Text style={{ color: draft.sessionStatus === 'paused' ? colors.ink : colors.muted, fontFamily: fonts.bold, fontSize: 12 }}>{draft.sessionStatus === 'paused' ? 'Paused' : 'Workout in progress'}</Text>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <View style={{ flex: 1, minWidth: 0 }}><Button title={timerActionBusy ? 'Please wait…' : draft.sessionStatus === 'paused' ? 'Resume' : 'Pause'} disabled={timerActionBusy} onPress={togglePause}/></View>
-          <View style={{ flex: 1, minWidth: 0 }}><Button title="Finish" kind="ghost" onPress={() => setFinishing(true)}/></View>
+      {live && <View style={{ gap: 10 }}>
+        {/* Volt active-workout header: centred timer with Finish pill. */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <View style={{ width: 72 }}/>
+          <Text accessibilityRole="timer" style={{ flex: 1, textAlign: 'center', color: colors.text, fontFamily: fonts.displayHeavy, fontSize: timerText.length > 5 ? 36 : 44, lineHeight: 50, letterSpacing: -1.2, fontVariant: ['tabular-nums'] }}>{timerText}</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Finish workout" onPress={() => setFinishing(true)} style={{ width: 72, minHeight: 34, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.g2 === '#0B1446' ? '#0B1446' : colors.g1 }}><Text style={{ color: colors.g2 === '#0B1446' ? '#FFFFFF' : colors.plInk, fontFamily: fonts.bold, fontSize: 12.5 }}>Finish</Text></Pressable>
         </View>
+        <Text style={{ textAlign: 'center', color: draft.sessionStatus === 'paused' ? colors.accent : colors.muted, fontFamily: fonts.bold, fontSize: 10.5, letterSpacing: 0.8, textTransform: 'uppercase' }}>{draft.sessionStatus === 'paused' ? 'Paused' : draft.name || 'Workout in progress'}</Text>
+        <Button title={timerActionBusy ? 'Please wait…' : draft.sessionStatus === 'paused' ? 'Resume' : 'Pause'} kind={draft.sessionStatus === 'paused' ? 'primary' : 'ghost'} disabled={timerActionBusy} onPress={togglePause}/>
       </View>}
-      <Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' }}>Completed sets: {doneSets}/{totalSets}</Text><ProgressBar value={totalSets ? doneSets / totalSets : 0}/>
-      <View style={{ flexDirection: 'row', gap: 8 }}>{[
-        { label: 'Sets', value: `${doneSets}/${totalSets}`, fill: colors.lilac },
-        { label: 'Volume', value: `${Math.round(completedVolume)} kg`, fill: colors.sun },
-        { label: 'Exercises', value: draft.items.length, fill: colors.mint },
-      ].map(item => <View key={item.label} style={{ flex: 1, minWidth: 0, padding: 13, borderRadius: 24, backgroundColor: item.fill }}><Text style={{ color: item.fill === colors.sun || item.fill === colors.mint ? colors.accentInk : colors.text, fontFamily: fonts.bold, fontSize: 10, textTransform: 'uppercase' }}>{item.label}</Text><Text numberOfLines={1} adjustsFontSizeToFit style={{ color: item.fill === colors.sun || item.fill === colors.mint ? colors.accentInk : colors.text, fontFamily: fonts.displayHeavy, fontSize: 27, marginTop: 7 }}>{item.value}</Text></View>)}</View>
+      <ProgressBar value={totalSets ? doneSets / totalSets : 0}/>
+      <StatTrio items={[{ label: 'Sets', value: `${doneSets}/${totalSets}` }, { label: 'Volume', value: `${Math.round(completedVolume)} kg` }, { label: 'Exercises', value: String(draft.items.length) }]}/>
       <View style={{ gap: 10, paddingVertical: 8 }}>
         <Field label="Workout name" value={draft.name} onChangeText={name => updateDraft(current => ({ ...current, name }))}/>
         <Button title={detailsOpen ? 'Hide session details' : 'Session details'} kind="ghost" onPress={() => setDetailsOpen(!detailsOpen)}/>
@@ -348,13 +346,21 @@ export default function WorkoutForm() {
         </>}
         <Field label="Notes" value={draft.notes} onChangeText={notes => updateDraft(current => ({ ...current, notes }))} multiline/>
       </Card>}
-      <SectionHeader title="Exercises and sets"/>
+      <SectionLink title="Exercises and sets"/>
       {draft.items.map((item, i) => {
         const exercise = exercises.find(row => row.id === item.exerciseId);
+        const doneInExercise = item.sets.filter(set => set.completed).length;
         return <Card key={item.id} accent={i === activeExercise}>
-          <View style={styles.row}><Text style={{ color: colors.text, fontFamily: fonts.displayHeavy, fontSize: 36, lineHeight: 38, letterSpacing: -1, flex: 1, minWidth: 100, includeFontPadding: false }}>{exercise?.name ?? 'Exercise'}</Text><Button title="Edit" kind="ghost" onPress={() => { setEditingExercise(i); setPicker(true); }}/></View>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={{ color: colors.text, fontFamily: fonts.displayHeavy, fontSize: 24, lineHeight: 27, letterSpacing: -0.6, includeFontPadding: false }}>{exercise?.name ?? 'Exercise'}</Text>
+              <Text style={{ color: colors.muted, fontFamily: fonts.bold, fontSize: 10.5, letterSpacing: 0.8, marginTop: 4 }}>{doneInExercise} / {item.sets.length} SETS</Text>
+            </View>
+            <Pressable accessibilityRole="button" accessibilityLabel={`Change ${exercise?.name ?? 'exercise'}`} onPress={() => { setEditingExercise(i); setPicker(true); }} style={{ paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: colors.bg === '#F5F9FF' ? colors.soft1 : colors.card2 }}><Text style={{ color: colors.text, fontFamily: fonts.bold, fontSize: 12 }}>Edit</Text></Pressable>
+          </View>
           {item.sets.map((set, j) => <WorkoutSetRow key={set.id} set={set} index={j} metric={exercise?.metric ?? 'weight_reps'} onChange={patch => updateSet(i, j, patch)} onRemove={() => updateItem(i, row => ({ ...row, sets: row.sets.filter((_, index) => index !== j) }))}/>) }
-          <View style={styles.row}><Button title="Add set" kind="ghost" onPress={() => updateItem(i, row => ({ ...row, sets: [...row.sets, blankSet()] }))}/><Button title="Remove exercise" kind="danger" onPress={() => confirm('Remove exercise?', () => updateDraft(current => ({ ...current, items: current.items.filter((_, index) => index !== i) })))}/></View>
+          <EmptyAction text="Add set" onPress={() => updateItem(i, row => ({ ...row, sets: [...row.sets, blankSet()] }))}/>
+          <Pressable accessibilityRole="button" onPress={() => confirm('Remove exercise?', () => updateDraft(current => ({ ...current, items: current.items.filter((_, index) => index !== i) })))} style={{ alignSelf: 'center', paddingVertical: 6, paddingHorizontal: 10 }}><Text style={{ color: colors.muted, fontFamily: fonts.bold, fontSize: 12.5 }}>Remove exercise</Text></Pressable>
         </Card>;
       })}
       <Button title="Add exercise" kind="ghost" disabled={!ready || !exercisesReady} onPress={() => { setEditingExercise(null); setPicker(true); }}/>

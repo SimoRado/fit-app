@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { router } from 'expo-router';
+import { View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { elapsedWorkoutSeconds, formatWorkoutElapsed, workoutTimerFromRecord } from '../core/workoutTimer';
 import type { OpenWorkout } from '../data/db';
 import { Button, Card, styles } from './components';
@@ -17,10 +19,16 @@ export function WorkoutInProgressCard({ workout }: { workout: OpenWorkout }) {
   }, [paused, workout.id]);
   const elapsed = formatWorkoutElapsed(elapsedWorkoutSeconds(workoutTimerFromRecord(workout), now));
 
+  // Volt: compact "up next" style card with a lime/accent play badge and a resume pill.
   return <Card accent>
-    <Text style={{ color: colors.muted, fontFamily: fonts.bold, fontSize: 11, letterSpacing: .7, textTransform: 'uppercase' }}>Workout in progress · {paused ? 'Paused' : 'Running'}</Text>
-    <Text accessibilityRole="header" style={{ color: colors.text, fontFamily: fonts.displayHeavy, fontSize: 30, lineHeight: 33, includeFontPadding: false }}>{workout.name || 'Workout session'}</Text>
-    <Text style={styles.muted}>{elapsed} active · {workout.completed_sets}/{workout.total_sets} sets completed</Text>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+      <View style={{ width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.lime }}><Ionicons name={paused ? 'pause' : 'play'} size={18} color="#0B1446"/></View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={{ color: colors.muted, fontFamily: fonts.bold, fontSize: 10.5, letterSpacing: .8, textTransform: 'uppercase' }}>Workout in progress · {paused ? 'Paused' : 'Running'}</Text>
+        <Text accessibilityRole="header" numberOfLines={1} style={{ color: colors.text, fontFamily: fonts.displayHeavy, fontSize: 18, lineHeight: 22 }}>{workout.name || 'Workout session'}</Text>
+        <Text style={[styles.muted, { fontSize: 12.5 }]}>{elapsed} active · {workout.completed_sets}/{workout.total_sets} sets completed</Text>
+      </View>
+    </View>
     <Button title="Resume Workout" onPress={() => router.push({ pathname: '/workout-form', params: { session: workout.id } })}/>
   </Card>;
 }

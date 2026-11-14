@@ -8,7 +8,8 @@ import { repo } from '../data/db';
 import { useApp } from '../state/app';
 import { Button, Card, Choices, Field, message, MultiChoices, Page, styles } from '../ui/components';
 import { Text } from '../ui/LocalizedText';
-import { ProgressBar } from '../ui/visuals';
+import { Ionicons } from '@expo/vector-icons';
+import { MotionPressable } from '../ui/MotionPressable';
 import { colors, fonts } from '../ui/theme';
 import { BirthDateField } from '../ui/BirthDateField';
 import { useUser } from '@clerk/expo';
@@ -47,8 +48,9 @@ export default function Onboarding() {
   }
 
   return <Page key={step} title={step === 0 ? "Let's get to know you" : step === 3 ? 'Review your details' : 'Your starting point'}>
-    <Text style={{ color: colors.accent, fontFamily: fonts.mono, fontSize: 12, letterSpacing: 1 }}>{'Step ' + (step + 1) + ' of 4'}</Text>
-    <ProgressBar value={(step + 1) / 4}/>
+    {/* Volt onboarding: segmented step bar + eyebrow */}
+    <View accessibilityRole="progressbar" accessibilityValue={{ min: 1, max: 4, now: step + 1 }} style={{ flexDirection: 'row', gap: 6 }}>{[0, 1, 2, 3].map(index => <View key={index} style={{ flex: 1, height: 5, borderRadius: 3, backgroundColor: index <= step ? colors.g1 : colors.qTrack }}/>)}</View>
+    <Text style={{ color: colors.muted, fontFamily: fonts.bold, fontSize: 10.5, letterSpacing: 0.8 }}>{'STEP ' + (step + 1) + ' OF 4'}</Text>
     <Text style={styles.muted}>Progress over perfection. Become better, one day at a time.</Text>
     <Text style={styles.muted}>Any history from before sign-in is preserved separately on this device. It is not added to your account automatically.</Text>
     <Button title="Restore from cloud or manage guest data" kind="ghost" onPress={() => router.push('/cloud-sync')}/>
@@ -61,7 +63,15 @@ export default function Onboarding() {
     </Card>}
     {step === 2 && <Card>
       <Choices label="Experience" options={['Beginner', 'Intermediate', 'Advanced']} value={experience} onChange={setExperience}/>
-      <Choices label="Fitness goal" options={['Lose weight', 'Gain muscle', 'Improve general fitness', 'Maintain current fitness']} value={goal} onChange={setGoal}/>
+      <Text style={styles.label}>Fitness goal</Text>
+      <View style={{ gap: 8 }}>{([['Lose weight', 'scale-outline', 'A gentle, sustainable deficit'], ['Gain muscle', 'barbell-outline', 'Build strength with a small surplus'], ['Improve general fitness', 'pulse-outline', 'Train regularly, recover well'], ['Maintain current fitness', 'shield-checkmark-outline', 'Stay steady and balanced']] as const).map(([option, icon, detail]) => {
+        const on = goal === option;
+        return <MotionPressable key={option} selected={on} pressScale={0.98} accessibilityRole="radio" accessibilityState={{ selected: on }} onPress={() => setGoal(option)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 20, backgroundColor: colors.c8, borderWidth: 1.5, borderColor: on ? colors.text : colors.c8Line }}>
+          <View style={{ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg === '#F5F9FF' ? colors.paleBlue : colors.soft1 }}><Ionicons name={icon} size={18} color={colors.accent}/></View>
+          <View style={{ flex: 1 }}><Text style={{ color: colors.text, fontFamily: fonts.displayHeavy, fontSize: 15 }}>{option}</Text><Text style={{ color: colors.muted, fontSize: 12 }}>{detail}</Text></View>
+          {on && <Ionicons name="checkmark" size={20} color={colors.text}/>}
+        </MotionPressable>;
+      })}</View>
       <MultiChoices label="Personal growth goals" options={['Build discipline', 'Improve consistency', 'Build healthier habits', 'Improve productivity']} value={growth} onChange={setGrowth}/>
     </Card>}
     {step === 3 && <Card>
@@ -72,6 +82,6 @@ export default function Onboarding() {
       <Text style={styles.label}>Fitness goal</Text><Text style={styles.text}>{goal}</Text>
       <Text style={styles.label}>Personal growth goals</Text>{growth.map(item => <Text key={item} style={styles.text}>· {item}</Text>)}
     </Card>}
-    <View style={styles.row}>{step > 0 && <Button title="Back" kind="ghost" onPress={() => setStep(value => value - 1)}/>}<Button title={step === 3 ? busy ? 'Saving…' : "Let's Begin" : 'Continue'} onPress={step === 3 ? save : next} disabled={busy}/></View>
+    <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>{step > 0 && <Button title="Back" kind="ghost" onPress={() => setStep(value => value - 1)}/>}<View style={{ flex: 1 }}><Button title={step === 3 ? busy ? 'Saving…' : "Let's Begin" : 'Continue  →'} onPress={step === 3 ? save : next} disabled={busy}/></View></View>
   </Page>;
 }

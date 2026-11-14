@@ -6,17 +6,27 @@ import { Text } from './LocalizedText';
 import { Button, styles } from './components';
 import { colors, fonts, spacing } from './theme';
 import { useVoltTheme } from './VoltThemeProvider';
+import Svg, { Rect } from 'react-native-svg';
+import { CubyMark } from './CubyMark';
 
 export function AuthPage({ title, detail, children }: { title: string; detail: string; children: React.ReactNode }) {
-  useVoltTheme();
+  const { appearance } = useVoltTheme();
   const insets = useSafeAreaInsets();
+  const light = appearance === 'shore';
   return <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1, width: '100%', maxWidth: 620, alignSelf: 'center', paddingHorizontal: spacing.screen, paddingTop: insets.top + 48, paddingBottom: insets.bottom + 32, gap: 18 }}>
-      <View pointerEvents="none" style={{ position: 'absolute', top: -90, right: -110, width: 280, height: 280, borderRadius: 140, backgroundColor: colors.lilac, opacity: .5 }}/>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}><View style={{ width: 28, height: 28, flexDirection: 'row', flexWrap: 'wrap', borderRadius: 7, overflow: 'hidden' }}>{[colors.sun, colors.coral, colors.accent, colors.mint].map(c => <View key={c} style={{ width: 14, height: 14, backgroundColor: c }}/>)}</View><Text style={{ color: colors.muted, fontFamily: fonts.bold, letterSpacing: .6, fontSize: 11 }}>FITNESS × GROWTH</Text></View>
-      <Text accessibilityRole="header" style={{ ...styles.title, fontSize: 44, lineHeight: 45, letterSpacing: -1.8, maxWidth: 330 }}>{title}<Text style={{ color: colors.titleAccent }}>.</Text></Text>
-      <Text style={styles.muted}>{detail}</Text>
-      <View style={{ gap: 16, marginTop: 12 }}>{children}</View>
+    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1, width: '100%', maxWidth: 620, alignSelf: 'center', paddingHorizontal: spacing.screen, paddingTop: insets.top + 14, paddingBottom: insets.bottom + 32, gap: 12 }}>
+      {/* Volt auth backdrop: nested rounded-square arcs in the top-right corner. */}
+      <Svg pointerEvents="none" width={220} height={220} viewBox="0 0 220 220" style={{ position: 'absolute', top: -60 + insets.top, right: -70 }}>
+        <Rect x={20} y={20} width={260} height={260} rx={64} fill="none" stroke={colors.lime} strokeOpacity={light ? 0.45 : 0.5} strokeWidth={26}/>
+        <Rect x={58} y={58} width={190} height={190} rx={44} fill="none" stroke={colors.blue} strokeOpacity={light ? 0.45 : 0.55} strokeWidth={22}/>
+      </Svg>
+      <View style={{ height: 52, flexDirection: 'row', alignItems: 'center', gap: 9 }}>
+        <View style={{ width: 30, height: 30, borderRadius: 9, overflow: 'hidden' }}><CubyMark size={30}/></View>
+        <Text style={{ color: colors.text, fontFamily: fonts.displayHeavy, fontSize: 16, letterSpacing: -0.2 }}>Cubyfit</Text>
+      </View>
+      <Text accessibilityRole="header" style={{ ...styles.title, fontSize: 44, lineHeight: 46, letterSpacing: -1.8, maxWidth: 330, marginTop: 14 }}>{title}<Text style={{ color: colors.titleAccent }}>.</Text></Text>
+      <Text style={[styles.muted, { maxWidth: 300 }]}>{detail}</Text>
+      <View style={{ gap: 12, marginTop: 12 }}>{children}</View>
     </ScrollView>
   </KeyboardAvoidingView>;
 }
@@ -28,7 +38,7 @@ export function AuthField({ label, value, onChangeText, secure = false, email = 
 }
 
 export function AuthAction({ title, onPress, disabled = false }: { title: string; onPress: () => Promise<void> | void; disabled?: boolean }) { return <Button title={title} onPress={onPress} disabled={disabled}/>; }
-export function AuthLink({ href, title }: { href: '/(auth)/welcome' | '/(auth)/sign-in' | '/(auth)/sign-up' | '/(auth)/forgot-password'; title: string }) { useVoltTheme(); return <Link href={href} style={{ color: colors.accent, fontFamily: fonts.mono, fontSize: 13, paddingVertical: 10 }}>{title}</Link>; }
+export function AuthLink({ href, title }: { href: '/(auth)/welcome' | '/(auth)/sign-in' | '/(auth)/sign-up' | '/(auth)/forgot-password'; title: string }) { useVoltTheme(); return <Link href={href} style={{ color: colors.accent, fontFamily: fonts.bold, fontSize: 13, paddingVertical: 10, textAlign: 'center' }}>{title}</Link>; }
 export function AuthError({ message }: { message: string }) { useVoltTheme(); return message ? <Text accessibilityRole="alert" style={{ color: colors.danger, fontSize: 14 }}>{message}</Text> : null; }
 export function clerkMessage(error: unknown): string {
   if (error && typeof error === 'object') {

@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, useWindowDimensions, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput, useWindowDimensions, View } from 'react-native';
 import { router, usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -13,15 +13,15 @@ import { MotionPressable } from './MotionPressable';
 
 export const styles = {
   get page() { return { flex: 1 as const, backgroundColor: colors.bg }; },
-  content: { width: '100%' as const, maxWidth: 620, alignSelf: 'center' as const, gap: spacing.base },
-  get title() { return { fontSize: 38, lineHeight: 42, fontFamily: fonts.displayHeavy, color: colors.text, letterSpacing: -1, includeFontPadding: false as const }; },
-  get subtitle() { return { fontSize: 24, lineHeight: 28, fontFamily: fonts.displayHeavy, color: colors.text, marginTop: spacing.sm, letterSpacing: -.4 }; },
-  get card() { return { padding: spacing.card, gap: spacing.md, position: 'relative' as const, borderRadius: radii.card, backgroundColor: colors.card, ...shadows.card }; },
+  content: { width: '100%' as const, maxWidth: 620, alignSelf: 'center' as const, gap: spacing.md },
+  get title() { return { fontSize: 41, lineHeight: 45, fontFamily: fonts.displayHeavy, color: colors.text, letterSpacing: -1.2, includeFontPadding: false as const }; },
+  get subtitle() { return { fontSize: 17, lineHeight: 22, fontFamily: fonts.displayHeavy, color: colors.text, marginTop: spacing.sm, letterSpacing: -.35 }; },
+  get card() { return { padding: spacing.card, gap: spacing.md, position: 'relative' as const, borderRadius: radii.card, backgroundColor: colors.c8, borderWidth: 1, borderColor: colors.c8Line, ...(colors.bg === '#F5F9FF' ? shadows.card : {}) }; },
   get text() { return { color: colors.text, fontSize: 16, lineHeight: 23 }; },
   get muted() { return { color: colors.muted, fontSize: 14, lineHeight: 21 }; },
   row: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const, gap: 10 },
   get input() { return { backgroundColor: colors.card, borderColor: colors.borderStrong, borderWidth: 1.5, borderRadius: radii.input, minHeight: 52, paddingHorizontal: 16, paddingVertical: 12, color: colors.text, fontFamily: fonts.semibold, fontSize: 16 }; },
-  get label() { return { color: colors.muted, fontFamily: fonts.bold, fontSize: 11, letterSpacing: .7, textTransform: 'uppercase' as const, marginBottom: 7 }; },
+  get label() { return { color: colors.muted, fontFamily: fonts.bold, fontSize: 11, letterSpacing: .77, textTransform: 'uppercase' as const, marginBottom: 7 }; },
   button: { minHeight: 50, paddingHorizontal: 20, paddingVertical: 10, alignItems: 'center' as const, justifyContent: 'center' as const, position: 'relative' as const, overflow: 'hidden' as const, borderRadius: radii.pill },
   get buttonText() { return { color: colors.accentText, fontFamily: fonts.bold, fontSize: 15, textAlign: 'center' as const, includeFontPadding: false as const }; },
   ghost: { backgroundColor: 'transparent' },
@@ -33,7 +33,7 @@ export function AngularBackground({ color = colors.card, border = colors.border,
   return <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: color, borderColor: border, borderWidth: 1, borderRadius: cut >= 30 ? radii.large : radii.card }]}/>;
 }
 
-export function Page({ title, children, headerAction }: { title: string; children: React.ReactNode; headerAction?: React.ReactNode }) {
+export function Page({ title, children, headerAction, eyebrow }: { title: string; children: React.ReactNode; headerAction?: React.ReactNode; eyebrow?: string }) {
   const { language } = useApp();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -45,16 +45,24 @@ export function Page({ title, children, headerAction }: { title: string; childre
   const revealActive = !reducedMotion && tabRoute && transition.sequence > 0 && transition.route === tabName;
   const showBack = !tabRoute && pathname !== '/onboarding';
   const compactHeader = !tabRoute && pathname !== '/onboarding';
-  const inlineHeader = compactHeader || !!headerAction;
-  const titleSize = language === 'ar' ? 40 : compactHeader ? 34 : tabRoute ? width < 375 ? 48 : 56 : pathname === '/onboarding' ? 46 : title.length > 10 ? 40 : 48;
-  const pageContent = <ScrollView style={styles.page} contentContainerStyle={[styles.content, { paddingHorizontal: width < 375 ? 20 : spacing.screen, paddingTop: insets.top + 18, paddingBottom: Math.max(insets.bottom, 16) + (tabRoute ? 110 : 42), direction: language === 'ar' ? 'rtl' : 'ltr' }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
-        <View style={{ gap: inlineHeader ? 8 : 14, flexDirection: inlineHeader ? 'row' : 'column', alignItems: inlineHeader ? 'center' : 'stretch' }}>
-          {showBack && <Pressable accessibilityRole="button" accessibilityLabel={localize('Back', language)} onPress={() => router.canGoBack() ? router.back() : router.replace('/(tabs)')} style={{ width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.card, ...shadows.card }}>
-            <Ionicons name={language === 'ar' ? 'arrow-forward' : 'arrow-back'} size={22} color={colors.text}/>
-          </Pressable>}
-          {!!title && <Text accessibilityRole="header" style={[styles.title, { fontSize: titleSize, lineHeight: language === 'ar' ? 52 : titleSize + 3, flexShrink: 1 }]}>{title}<Text style={{ color: colors.titleAccent }}>.</Text></Text>}
-          {headerAction && <View style={{ marginLeft: 'auto' }}>{headerAction}</View>}
-        </View>
+  // Volt prototype: tab screens use a 44px `.top` row (eyebrow + actions) above a 41px
+  // `.page-t` title; secondary screens use a back circle with an inline 22px `.bar-t` title.
+  const titleSize = language === 'ar' ? 34 : compactHeader ? 22.4 : pathname === '/onboarding' ? 34 : width < 360 ? 36 : 41;
+  const back = showBack && <MotionPressable pressScale={0.9} accessibilityRole="button" accessibilityLabel={localize('Back', language)} hitSlop={6} onPress={() => router.canGoBack() ? router.back() : router.replace('/(tabs)')} style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.c8, ...(colors.bg === '#F5F9FF' ? { shadowColor: colors.navShadow, shadowOpacity: .12, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 2 } : { borderWidth: 1, borderColor: colors.borderStrong }) }}>
+    <Ionicons name={language === 'ar' ? 'chevron-forward' : 'chevron-back'} size={18} color={colors.text}/>
+  </MotionPressable>;
+  const titleNode = !!title && <Text accessibilityRole="header" style={[styles.title, { fontSize: titleSize, lineHeight: language === 'ar' ? titleSize + 14 : Math.round(titleSize * 1.1), letterSpacing: -titleSize * .03, flexShrink: 1 }]}>{title}<Text style={{ color: colors.titleAccent }}>.</Text></Text>;
+  const header = compactHeader
+    ? <View style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 2 }}>{back}<View style={{ flex: 1, minWidth: 0 }}>{titleNode}</View>{headerAction}</View>
+    : <View>
+      {(eyebrow !== undefined || headerAction) && <View style={{ height: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Text numberOfLines={1} style={{ flex: 1, color: colors.muted, fontFamily: fonts.bold, fontSize: 11, letterSpacing: .8, textTransform: 'uppercase' }}>{eyebrow ?? ''}</Text>
+        {headerAction && <View style={{ flexDirection: 'row', gap: 8 }}>{headerAction}</View>}
+      </View>}
+      {titleNode}
+    </View>;
+  const pageContent = <ScrollView style={styles.page} contentContainerStyle={[styles.content, { paddingHorizontal: spacing.screen, paddingTop: insets.top + 4, paddingBottom: Math.max(insets.bottom, 16) + (tabRoute ? 96 : 42), direction: language === 'ar' ? 'rtl' : 'ltr' }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+        {(!!title || showBack || headerAction) && header}
         {children}
       </ScrollView>;
   return <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
@@ -67,7 +75,7 @@ export function Page({ title, children, headerAction }: { title: string; childre
 
 export function Card({ children, accent = false }: { children: React.ReactNode; accent?: boolean }) {
   const { language } = useApp();
-  return <View style={[styles.card, { direction: language === 'ar' ? 'rtl' : 'ltr', borderWidth: accent ? 2 : 0, borderColor: colors.accent }]}>{children}</View>;
+  return <View style={[styles.card, { direction: language === 'ar' ? 'rtl' : 'ltr', borderWidth: accent ? 2 : 1, borderColor: accent ? colors.g1 : colors.c8Line }]}>{children}</View>;
 }
 
 export function Button({ title, onPress, kind = 'primary', disabled = false, size = 'default' }: { title: string; onPress: () => void | Promise<void>; kind?: 'primary' | 'ghost' | 'danger'; disabled?: boolean; size?: 'default' | 'hero' }) {
@@ -85,13 +93,14 @@ export function Button({ title, onPress, kind = 'primary', disabled = false, siz
     } catch (error) { message(error); }
   }
   const inactive = disabled || pending;
-  const color = kind === 'primary' ? colors.accent : kind === 'danger' ? colors.danger : colors.card;
-  const textColor = kind === 'primary' ? colors.accentText : kind === 'danger' ? colors.dangerText : colors.text;
+  // Volt: primary actions use the gradient-anchor colour (navy on Shore, lime on Abyss).
+  const color = kind === 'primary' ? colors.g1 : kind === 'danger' ? colors.danger : colors.c8;
+  const textColor = kind === 'primary' ? colors.plInk : kind === 'danger' ? colors.dangerText : colors.text;
   return <View style={{ flexShrink: 1 }}>
     <MotionPressable accessibilityRole="button" accessibilityState={{ disabled: inactive }} disabled={inactive} onPress={press}
-      style={[styles.button, size === 'hero' && { minHeight: 92, paddingHorizontal: 24 }, { direction: language === 'ar' ? 'rtl' : 'ltr', opacity: inactive ? .45 : 1 }]}>
+      style={[styles.button, size === 'hero' && { minHeight: 58, paddingHorizontal: 24 }, { direction: language === 'ar' ? 'rtl' : 'ltr', opacity: inactive ? .45 : 1 }]}>
       <AngularBackground color={color} border={kind === 'ghost' ? colors.borderStrong : color}/>
-      <Text style={[styles.buttonText, { color: textColor }, size === 'hero' && { fontFamily: fonts.displayHeavy, fontSize: 22 }]}>{title}</Text>
+      <Text style={[styles.buttonText, { color: textColor }, size === 'hero' && { fontFamily: fonts.displayHeavy, fontSize: 17 }]}>{title}</Text>
     </MotionPressable>
   </View>;
 }

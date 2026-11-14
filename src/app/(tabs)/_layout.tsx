@@ -17,7 +17,7 @@ const items: Record<string, { label: Key; icon: React.ComponentProps<typeof Ioni
   workouts: { label: 'workouts', icon: 'barbell-outline' },
   nutrition: { label: 'nutrition', icon: 'restaurant-outline' },
   habits: { label: 'habits', icon: 'checkmark-circle-outline' },
-  progress: { label: 'progress', icon: 'stats-chart-outline' },
+  progress: { label: 'progress', icon: 'bar-chart-outline' },
 };
 
 function AnimatedTab({ title, icon, selected, width, activeBackground, activeText, activeIcon, inactiveText, onPress, onLongPress }: { title: string; icon: React.ComponentProps<typeof Ionicons>['name']; selected: boolean; width: number; activeBackground: string; activeText: string; activeIcon: string; inactiveText: string; onPress: () => void; onLongPress: () => void }) {
@@ -29,7 +29,7 @@ function AnimatedTab({ title, icon, selected, width, activeBackground, activeTex
   }, [progress, reduced, selected]);
   const tabStyle = useAnimatedStyle(() => ({
     width: interpolate(progress.value, [0, 1], [width, width * 2.7]),
-    gap: interpolate(progress.value, [0, 1], [0, 7]),
+    gap: interpolate(progress.value, [0, 1], [0, 6]),
     backgroundColor: interpolateColor(progress.value, [0, 1], ['rgba(0,0,0,0)', activeBackground]),
     transform: [{ scale: pressed.value }],
   }), [width, activeBackground]);
@@ -38,27 +38,29 @@ function AnimatedTab({ title, icon, selected, width, activeBackground, activeTex
     maxWidth: interpolate(progress.value, [0, 1], [0, Math.max(0, width * 2.7 - 42)]),
     transform: [{ translateX: interpolate(progress.value, [0, 1], [-5, 0]) }],
   }), [width]);
-  return <Animated.View style={[{ height: '100%', borderRadius: radii.pill, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }, tabStyle]}>
+  return <Animated.View style={[{ height: '100%', borderRadius: radii.pill, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }, selected ? { shadowColor: activeBackground, shadowOpacity: 0.3, shadowRadius: 9, shadowOffset: { width: 0, height: 5 }, elevation: 3 } : null, tabStyle]}>
     <Pressable accessibilityRole="tab" accessibilityState={{ selected }} accessibilityLabel={title} onPress={onPress} onLongPress={onLongPress}
       onPressIn={() => { pressed.set(reduced ? 1 : withTiming(0.94, { duration: 110, easing: Easing.out(Easing.quad) })); }}
       onPressOut={() => { pressed.set(reduced ? 1 : withSpring(1, { damping: 14, stiffness: 250 })); }}
       style={{ width: '100%', height: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
-      <Ionicons name={icon} size={selected ? 21 : 20} color={selected ? activeIcon : inactiveText}/>
-      <Animated.Text numberOfLines={1} style={[{ color: selected ? activeText : inactiveText, fontFamily: fonts.bold, fontSize: 12.5, includeFontPadding: false, overflow: 'hidden' }, labelStyle]}>{title}</Animated.Text>
+      <Ionicons name={icon} size={19} color={selected ? activeIcon : inactiveText}/>
+      <Animated.Text numberOfLines={1} style={[{ color: selected ? activeText : inactiveText, fontFamily: fonts.bold, fontSize: 12, includeFontPadding: false, overflow: 'hidden' }, labelStyle]}>{title}</Animated.Text>
     </Pressable>
   </Animated.View>;
 }
 
 function FloatingTabBar({ state, emitter, navigateToTab }: BottomTabBarProps) {
-  const { language } = useApp();
+  const { language, appearance } = useApp();
   const { palette } = useVoltTheme();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const { reveal, setActiveRoute } = useTabMotion();
   useEffect(() => { setActiveRoute(state.routes[state.index]?.name ?? 'index'); }, [setActiveRoute, state.index, state.routes]);
-  const barWidth = Math.min(width - 28, 540);
-  const tabBaseWidth = Math.max(30, (barWidth - 12 - 16) / (5 + 1.7));
-  return <View style={{ position: 'absolute', bottom: 14 + insets.bottom, left: 14, right: 14, maxWidth: 540, alignSelf: 'center', height: 68, padding: 6, borderRadius: 34, backgroundColor: palette.navBackground, borderWidth: 1, borderColor: palette.border, ...shadows.dock }}>
+  const barWidth = Math.min(width - 24, 540);
+  const tabBaseWidth = Math.max(30, (barWidth - 10 - 16) / (5 + 1.7));
+  const light = appearance === 'shore';
+  // Prototype `.tabs`: 12px inset, 5px padding, 28px radius, 44px tabs, active tab flex 2.7.
+  return <View style={{ position: 'absolute', bottom: 12 + insets.bottom, left: 12, right: 12, maxWidth: 540, alignSelf: 'center', height: 54, padding: 5, borderRadius: 28, backgroundColor: palette.navBackground, borderWidth: 1, borderColor: light ? 'rgba(11,20,70,0.05)' : 'rgba(255,255,255,0.07)', ...shadows.dock, shadowColor: light ? '#0B1446' : '#000000', shadowOpacity: light ? 0.14 : 0.55 }}>
     <View style={{ flex: 1, flexDirection: language === 'ar' ? 'row-reverse' : 'row', gap: 4 }}>
       {state.routes.map((route, index) => {
         const item = items[route.name];
