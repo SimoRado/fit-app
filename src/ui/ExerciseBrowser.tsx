@@ -14,7 +14,7 @@ function Filter({ title, values, value, change }: { title: string; values: strin
   return <View style={{ gap: 7 }}><Text style={styles.label}>{title}</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 7 }}>
     {['All', ...values].map(option => {
       const selected = value === (option === 'All' ? '' : option);
-      return <Pressable key={option} accessibilityRole="button" accessibilityState={{ selected }} onPress={() => change(option === 'All' ? '' : option)} style={{ backgroundColor: selected ? colors.ink : colors.card, borderColor: colors.borderStrong, borderWidth: 1, borderRadius: 24, paddingHorizontal: 13, paddingVertical: 10 }}><Text style={{ color: selected ? colors.card : colors.text, fontFamily: fonts.bold, textTransform: 'capitalize' }}>{option}</Text></Pressable>;
+      return <Pressable key={option} accessibilityRole="button" accessibilityState={{ selected }} onPress={() => change(option === 'All' ? '' : option)} style={{ backgroundColor: selected ? colors.navActiveBackground : colors.card, borderColor: selected ? colors.navActiveBackground : colors.borderStrong, borderWidth: 1, borderRadius: 24, paddingHorizontal: 13, paddingVertical: 10 }}><Text style={{ color: selected ? colors.navActiveText : colors.text, fontFamily: fonts.bold, textTransform: 'capitalize' }}>{option}</Text></Pressable>;
     })}
   </ScrollView></View>;
 }

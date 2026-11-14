@@ -334,7 +334,7 @@ export default function WorkoutForm() {
         { label: 'Sets', value: `${doneSets}/${totalSets}`, fill: colors.lilac },
         { label: 'Volume', value: `${Math.round(completedVolume)} kg`, fill: colors.sun },
         { label: 'Exercises', value: draft.items.length, fill: colors.mint },
-      ].map(item => <View key={item.label} style={{ flex: 1, minWidth: 0, padding: 13, borderRadius: 24, backgroundColor: item.fill }}><Text style={{ color: colors.ink, fontFamily: fonts.bold, fontSize: 10, textTransform: 'uppercase' }}>{item.label}</Text><Text numberOfLines={1} adjustsFontSizeToFit style={{ color: colors.ink, fontFamily: fonts.displayHeavy, fontSize: 27, marginTop: 7 }}>{item.value}</Text></View>)}</View>
+      ].map(item => <View key={item.label} style={{ flex: 1, minWidth: 0, padding: 13, borderRadius: 24, backgroundColor: item.fill }}><Text style={{ color: item.fill === colors.sun || item.fill === colors.mint ? colors.accentInk : colors.text, fontFamily: fonts.bold, fontSize: 10, textTransform: 'uppercase' }}>{item.label}</Text><Text numberOfLines={1} adjustsFontSizeToFit style={{ color: item.fill === colors.sun || item.fill === colors.mint ? colors.accentInk : colors.text, fontFamily: fonts.displayHeavy, fontSize: 27, marginTop: 7 }}>{item.value}</Text></View>)}</View>
       <View style={{ gap: 10, paddingVertical: 8 }}>
         <Field label="Workout name" value={draft.name} onChangeText={name => updateDraft(current => ({ ...current, name }))}/>
         <Button title={detailsOpen ? 'Hide session details' : 'Session details'} kind="ghost" onPress={() => setDetailsOpen(!detailsOpen)}/>

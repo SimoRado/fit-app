@@ -11,21 +11,23 @@ import { useReducedMotion, useTabMotion } from './motion';
 import { PageReveal } from './PageReveal';
 import { MotionPressable } from './MotionPressable';
 
-export const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: colors.bg },
-  content: { width: '100%', maxWidth: 620, alignSelf: 'center', gap: spacing.base },
-  title: { fontSize: 52, lineHeight: 54, fontFamily: fonts.displayHeavy, color: colors.text, letterSpacing: -1.5, includeFontPadding: false },
-  subtitle: { fontSize: 28, lineHeight: 31, fontFamily: fonts.displayHeavy, color: colors.text, marginTop: spacing.sm, letterSpacing: -.5, includeFontPadding: false },
-  card: { padding: spacing.card, gap: spacing.md, position: 'relative', borderRadius: radii.card, backgroundColor: colors.card, ...shadows.card },
-  text: { color: colors.text, fontSize: 16, lineHeight: 23 },
-  muted: { color: colors.muted, fontSize: 14, lineHeight: 21 },
-  row: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  input: { backgroundColor: colors.card, borderColor: colors.borderStrong, borderWidth: 2, borderRadius: radii.input, minHeight: 56, paddingHorizontal: 16, paddingVertical: 12, color: colors.text, fontFamily: fonts.semibold, fontSize: 16 },
-  label: { color: colors.muted, fontFamily: fonts.bold, fontSize: 11, letterSpacing: .7, textTransform: 'uppercase', marginBottom: 7 },
-  button: { minHeight: 56, paddingHorizontal: 22, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', position: 'relative', overflow: 'hidden', borderRadius: radii.pill },
-  buttonText: { color: colors.card, fontFamily: fonts.bold, fontSize: 16, textAlign: 'center', includeFontPadding: false },
-  ghost: { backgroundColor: 'transparent' }, ghostText: { color: colors.text }, danger: { backgroundColor: 'transparent' },
-});
+export const styles = {
+  get page() { return { flex: 1 as const, backgroundColor: colors.bg }; },
+  content: { width: '100%' as const, maxWidth: 620, alignSelf: 'center' as const, gap: spacing.base },
+  get title() { return { fontSize: 38, lineHeight: 42, fontFamily: fonts.displayHeavy, color: colors.text, letterSpacing: -1, includeFontPadding: false as const }; },
+  get subtitle() { return { fontSize: 24, lineHeight: 28, fontFamily: fonts.displayHeavy, color: colors.text, marginTop: spacing.sm, letterSpacing: -.4 }; },
+  get card() { return { padding: spacing.card, gap: spacing.md, position: 'relative' as const, borderRadius: radii.card, backgroundColor: colors.card, ...shadows.card }; },
+  get text() { return { color: colors.text, fontSize: 16, lineHeight: 23 }; },
+  get muted() { return { color: colors.muted, fontSize: 14, lineHeight: 21 }; },
+  row: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const, gap: 10 },
+  get input() { return { backgroundColor: colors.card, borderColor: colors.borderStrong, borderWidth: 1.5, borderRadius: radii.input, minHeight: 52, paddingHorizontal: 16, paddingVertical: 12, color: colors.text, fontFamily: fonts.semibold, fontSize: 16 }; },
+  get label() { return { color: colors.muted, fontFamily: fonts.bold, fontSize: 11, letterSpacing: .7, textTransform: 'uppercase' as const, marginBottom: 7 }; },
+  button: { minHeight: 50, paddingHorizontal: 20, paddingVertical: 10, alignItems: 'center' as const, justifyContent: 'center' as const, position: 'relative' as const, overflow: 'hidden' as const, borderRadius: radii.pill },
+  get buttonText() { return { color: colors.accentText, fontFamily: fonts.bold, fontSize: 15, textAlign: 'center' as const, includeFontPadding: false as const }; },
+  ghost: { backgroundColor: 'transparent' },
+  get ghostText() { return { color: colors.text }; },
+  danger: { backgroundColor: 'transparent' },
+};
 
 export function AngularBackground({ color = colors.card, border = colors.border, cut = 14 }: { color?: string; border?: string; cut?: number }) {
   return <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: color, borderColor: border, borderWidth: 1, borderRadius: cut >= 30 ? radii.large : radii.card }]}/>;
@@ -50,7 +52,7 @@ export function Page({ title, children, headerAction }: { title: string; childre
           {showBack && <Pressable accessibilityRole="button" accessibilityLabel={localize('Back', language)} onPress={() => router.canGoBack() ? router.back() : router.replace('/(tabs)')} style={{ width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.card, ...shadows.card }}>
             <Ionicons name={language === 'ar' ? 'arrow-forward' : 'arrow-back'} size={22} color={colors.text}/>
           </Pressable>}
-          {!!title && <Text accessibilityRole="header" style={[styles.title, { fontSize: titleSize, lineHeight: language === 'ar' ? 52 : titleSize + 3, flexShrink: 1 }]}>{title}<Text style={{ color: colors.coral }}>.</Text></Text>}
+          {!!title && <Text accessibilityRole="header" style={[styles.title, { fontSize: titleSize, lineHeight: language === 'ar' ? 52 : titleSize + 3, flexShrink: 1 }]}>{title}<Text style={{ color: colors.titleAccent }}>.</Text></Text>}
           {headerAction && <View style={{ marginLeft: 'auto' }}>{headerAction}</View>}
         </View>
         {children}
@@ -83,12 +85,13 @@ export function Button({ title, onPress, kind = 'primary', disabled = false, siz
     } catch (error) { message(error); }
   }
   const inactive = disabled || pending;
-  const color = kind === 'primary' ? colors.ink : kind === 'danger' ? colors.coral : colors.card;
+  const color = kind === 'primary' ? colors.accent : kind === 'danger' ? colors.danger : colors.card;
+  const textColor = kind === 'primary' ? colors.accentText : kind === 'danger' ? colors.dangerText : colors.text;
   return <View style={{ flexShrink: 1 }}>
     <MotionPressable accessibilityRole="button" accessibilityState={{ disabled: inactive }} disabled={inactive} onPress={press}
       style={[styles.button, size === 'hero' && { minHeight: 92, paddingHorizontal: 24 }, { direction: language === 'ar' ? 'rtl' : 'ltr', opacity: inactive ? .45 : 1 }]}>
       <AngularBackground color={color} border={kind === 'ghost' ? colors.borderStrong : color}/>
-      <Text style={[styles.buttonText, size === 'hero' && { fontFamily: fonts.displayHeavy, fontSize: 26 }, kind !== 'primary' && styles.ghostText]}>{title}</Text>
+      <Text style={[styles.buttonText, { color: textColor }, size === 'hero' && { fontFamily: fonts.displayHeavy, fontSize: 22 }]}>{title}</Text>
     </MotionPressable>
   </View>;
 }
@@ -110,7 +113,7 @@ export function Choices<T extends string>({ label, options, value, onChange, com
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{options.map(option => {
       const display = ['7', '30', '90'].includes(option) ? (compact ? option + (language === 'fr' ? ' J' : language === 'ar' ? ' ي' : ' D') : 'Last ' + option + ' days') : option;
       const selected = option === value;
-      return <MotionPressable selected={selected} pressScale={0.97} accessibilityRole="radio" accessibilityLabel={localize(['7', '30', '90'].includes(option) ? 'Last ' + option + ' days' : option, language)} accessibilityState={{ selected }} key={option} onPress={() => onChange(option)} style={{ minHeight: 44, justifyContent: 'center' }}><View style={{ minHeight: pill ? 36 : 44, paddingHorizontal: 16, paddingVertical: pill ? 6 : 10, backgroundColor: selected ? colors.ink : colors.card, borderWidth: 1.5, borderColor: selected ? colors.ink : colors.borderStrong, borderRadius: radii.pill, justifyContent: 'center' }}><Text style={{ color: selected ? colors.card : colors.text, fontWeight: selected ? '700' : '600' }}>{display}</Text></View></MotionPressable>;
+      return <MotionPressable selected={selected} pressScale={0.97} accessibilityRole="radio" accessibilityLabel={localize(['7', '30', '90'].includes(option) ? 'Last ' + option + ' days' : option, language)} accessibilityState={{ selected }} key={option} onPress={() => onChange(option)} style={{ minHeight: 44, justifyContent: 'center' }}><View style={{ minHeight: pill ? 36 : 44, paddingHorizontal: 16, paddingVertical: pill ? 6 : 10, backgroundColor: selected ? colors.accent : colors.card, borderWidth: 1.5, borderColor: selected ? colors.accent : colors.borderStrong, borderRadius: radii.pill, justifyContent: 'center' }}><Text style={{ color: selected ? colors.accentText : colors.text, fontWeight: selected ? '700' : '600' }}>{display}</Text></View></MotionPressable>;
     })}</View>
   </View>;
 }
@@ -119,7 +122,7 @@ export function MultiChoices<T extends string>({ label, options, value, onChange
   return <View style={{ gap: 8, direction: language === 'ar' ? 'rtl' : 'ltr' }}><Text style={styles.label}>{label}</Text>
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{options.map(option => {
       const selected = value.includes(option);
-      return <MotionPressable selected={selected} pressScale={0.97} accessibilityRole="checkbox" accessibilityState={{ checked: selected }} key={option} onPress={() => onChange(selected ? value.filter(item => item !== option) : [...value, option])} style={{ minHeight: 44, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: selected ? colors.ink : colors.card, borderRadius: radii.pill, justifyContent: 'center' }}><Text style={{ color: selected ? colors.card : colors.text, fontWeight: selected ? '700' : '600' }}>{option}</Text></MotionPressable>;
+      return <MotionPressable selected={selected} pressScale={0.97} accessibilityRole="checkbox" accessibilityState={{ checked: selected }} key={option} onPress={() => onChange(selected ? value.filter(item => item !== option) : [...value, option])} style={{ minHeight: 44, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: selected ? colors.accent : colors.card, borderRadius: radii.pill, justifyContent: 'center' }}><Text style={{ color: selected ? colors.accentText : colors.text, fontWeight: selected ? '700' : '600' }}>{option}</Text></MotionPressable>;
     })}</View>
   </View>;
 }

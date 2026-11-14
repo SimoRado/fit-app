@@ -11,6 +11,7 @@ import { router } from 'expo-router';
 import { Text } from './LocalizedText';
 import { AuthError } from './auth';
 import { colors } from './theme';
+import { useVoltTheme } from './VoltThemeProvider';
 import { appleOAuthMessage, googleOAuthMessage, googleOAuthOutcome, oauthOutcome } from '../core/oauthErrors';
 import { authDiagnostic, runtimeSignals } from '../core/runtime';
 import { canStartGoogleOAuth, isNativeRuntime } from '../core/runtimeClassification';
@@ -22,12 +23,13 @@ WebBrowser.maybeCompleteAuthSession();
 
 function SocialButton({ provider, enabled, busy, onPress }: { provider: 'google' | 'apple'; enabled: boolean; busy: boolean; onPress: () => void }) {
   const label = `Continue with ${provider === 'google' ? 'Google' : 'Apple'}`;
-  return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled: busy || !enabled }} disabled={busy || !enabled} onPress={onPress} style={{ minHeight: 56, borderWidth: provider === 'google' ? 1.5 : 0, borderColor: colors.borderStrong, borderRadius: 999, backgroundColor: provider === 'apple' ? colors.ink : colors.card, flexDirection: 'row', gap: 12, alignItems: 'center', justifyContent: 'center', opacity: enabled ? 1 : .5 }}>
-    <Ionicons name={provider === 'google' ? 'logo-google' : 'logo-apple'} size={22} color={provider === 'google' ? '#4285F4' : '#fff'}/><Text style={{ color: provider === 'google' ? '#202124' : '#fff', fontSize: 16, fontWeight: '600' }}>{busy ? 'Connecting…' : label}</Text>
+  return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled: busy || !enabled }} disabled={busy || !enabled} onPress={onPress} style={{ minHeight: 56, borderWidth: provider === 'google' ? 1.5 : 0, borderColor: colors.borderStrong, borderRadius: 999, backgroundColor: provider === 'apple' ? colors.accentInk : colors.card, flexDirection: 'row', gap: 12, alignItems: 'center', justifyContent: 'center', opacity: enabled ? 1 : .5 }}>
+    <Ionicons name={provider === 'google' ? 'logo-google' : 'logo-apple'} size={22} color={provider === 'google' ? '#4285F4' : '#fff'}/><Text style={{ color: provider === 'google' ? colors.text : '#fff', fontSize: 16, fontWeight: '600' }}>{busy ? 'Connecting…' : label}</Text>
   </Pressable>;
 }
 
 export function SocialAuth() {
+  useVoltTheme();
   const { startSSOFlow } = useSSO();
   const { startAppleAuthenticationFlow } = useSignInWithApple();
   const [appleAvailable, setAppleAvailable] = useState(false);

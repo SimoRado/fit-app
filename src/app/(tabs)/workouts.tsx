@@ -39,14 +39,14 @@ export default function Workouts() {
     <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 14 }}><DisplayMetric value={stats.week} size={118}/><View style={{ flex: 1, paddingBottom: 19 }}><Text style={{ color: colors.muted, fontFamily: fonts.bold, fontSize: 10, letterSpacing: .7, textTransform: 'uppercase' }}>sessions this week</Text><Text style={styles.muted}>{stats.month} this month · {stats.total} total</Text></View></View>
     <View style={{ flexDirection: language === 'ar' ? 'row-reverse' : 'row', gap: 6 }}>{week.map(day => {
       const done = training.some(workout => workout.day === day);
-      return <View key={day} style={{ flex: 1, minWidth: 0, gap: 7, alignItems: 'center' }}><View style={{ width: '100%', aspectRatio: 1, maxHeight: 45, borderRadius: 24, borderWidth: day === today ? 2 : 0, borderColor: colors.accent, backgroundColor: done ? colors.sun : colors.card, alignItems: 'center', justifyContent: 'center' }}>{done && <Text style={{ color: colors.ink, fontSize: 18 }}>✓</Text>}</View><Text style={{ color: colors.muted, fontFamily: fonts.bold, fontSize: 9, textAlign: 'center' }}>{new Intl.DateTimeFormat(locale, { weekday: 'narrow' }).format(fromDay(day))}</Text></View>;
+      return <View key={day} style={{ flex: 1, minWidth: 0, gap: 7, alignItems: 'center' }}><View style={{ width: '100%', aspectRatio: 1, maxHeight: 45, borderRadius: 24, borderWidth: day === today ? 2 : 0, borderColor: colors.accent, backgroundColor: done ? colors.sun : colors.card, alignItems: 'center', justifyContent: 'center' }}>{done && <Text style={{ color: colors.accentInk, fontSize: 18 }}>✓</Text>}</View><Text style={{ color: colors.muted, fontFamily: fonts.bold, fontSize: 9, textAlign: 'center' }}>{new Intl.DateTimeFormat(locale, { weekday: 'narrow' }).format(fromDay(day))}</Text></View>;
     })}</View>
     {openWorkout && <WorkoutInProgressCard workout={openWorkout}/>}
     <Button title="Start workout" size="hero" onPress={() => router.push('/workout-form')}/>
     <Button title={rest.includes(today) ? 'Undo rest day' : 'Mark today as rest day'} kind="ghost" onPress={async () => { await repo.toggleRest(profile!.id, today); changed(); }}/>
     <SectionHeader title="Saved routines"/>
     <Button title="Create routine" kind="ghost" onPress={() => router.push('/routine-form')}/>
-    {routines.map(routine => <View key={routine.id} style={{ padding: 20, borderRadius: 30, backgroundColor: colors.card, gap: 13, shadowColor: '#46328C', shadowOpacity: .07, shadowRadius: 12, elevation: 2 }}>
+    {routines.map(routine => <View key={routine.id} style={{ padding: 20, borderRadius: 30, backgroundColor: colors.card, gap: 13, shadowColor: colors.accentInk, shadowOpacity: .07, shadowRadius: 12, elevation: 2 }}>
       <Text style={{ color: colors.text, fontFamily: fonts.displayHeavy, fontSize: 28, lineHeight: 30, includeFontPadding: false }}>{routine.name}</Text>
       <View style={styles.row}>
         <Button title="Start" onPress={() => router.push({ pathname: '/workout-form', params: { routine: routine.id } })}/>

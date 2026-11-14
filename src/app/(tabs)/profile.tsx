@@ -17,13 +17,14 @@ import { clearAccountReminders } from '../../services/reminders';
 import { ensureNoPendingBeforeLocalDelete } from '../../data/syncLocal';
 import { BirthDateField } from '../../ui/BirthDateField';
 import { admobTestingEnabled, interstitialManager } from '../../services/adMob';
+import { VoltAppearanceSelector } from '../../ui/volt';
 
 export default function ProfileScreen() {
   const ads = useSyncExternalStore(interstitialManager.subscribe, interstitialManager.getSnapshot, interstitialManager.getSnapshot);
   const { width } = useWindowDimensions();
   const { user } = useUser();
   const { signOut } = useAuth();
-  const { profile, revision, refresh } = useApp();
+  const { profile, revision, refresh, appearance, setAppearance } = useApp();
   const [name, setName] = useState('');
   const [birth, setBirth] = useState('');
   const [height, setHeight] = useState('');
@@ -65,12 +66,14 @@ export default function ProfileScreen() {
     <View style={{ alignItems: 'center', gap: 9, paddingTop: 60, paddingBottom: 12 }}>
       <View style={{ width: 84, height: 84, borderRadius: 42, backgroundColor: colors.lilac, borderColor: colors.sun, borderWidth: 4, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.text, fontFamily: fonts.displayHeavy, fontSize: 42 }}>{profile?.name?.slice(0, 1).toUpperCase() ?? 'M'}</Text></View>
       <Text style={{ color: colors.text, fontFamily: fonts.displayHeavy, fontSize: 42, lineHeight: 46, textAlign: 'center', letterSpacing: -1.2 }}>{profile?.name}</Text>
-      <View style={{ backgroundColor: colors.ink, paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 5 }}><Ionicons name="flame" size={12} color={colors.sun}/><Text style={{ color: colors.sun, fontFamily: fonts.bold, fontSize: 11 }}>{summary.streak} day streak</Text></View>
+      <View style={{ backgroundColor: colors.accentInk, paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 5 }}><Ionicons name="flame" size={12} color={colors.lime}/><Text style={{ color: colors.lime, fontFamily: fonts.bold, fontSize: 11 }}>{summary.streak} day streak</Text></View>
       <Text style={[styles.muted, { textAlign: 'center' }]}>{profile?.fitness_goal} · {profile?.experience}</Text>
     </View>
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{[
       ['Weight', summary.weight ?? '—'], ['Height (cm)', profile?.height_cm ?? '—'], ['Workouts', summary.workouts], ['Habits', summary.habits],
     ].map(([label, value]) => <View key={label} style={{ width: width < 360 ? '48%' : '23%', minHeight: 95, backgroundColor: colors.card, borderRadius: 24, padding: 10, gap: 5, alignItems: 'center', justifyContent: 'center' }}><Text numberOfLines={1} style={{ color: colors.muted, fontFamily: fonts.bold, fontSize: 9, textTransform: 'uppercase' }}>{label}</Text><Text numberOfLines={1} adjustsFontSizeToFit style={{ color: colors.ink, fontFamily: fonts.displayHeavy, fontSize: 27 }}>{value}</Text></View>)}</View>
+    <SectionHeader title="Appearance"/>
+    <VoltAppearanceSelector value={appearance} onChange={async next => { try { await setAppearance(next); } catch (error) { message(error); } }}/>
     <SectionHeader title="Settings"/>
     <Card><Text style={styles.label}>Signed-in account</Text><Text style={styles.text}>{user?.fullName || user?.firstName || 'Account'}</Text><Text style={styles.muted}>{user?.primaryEmailAddress?.emailAddress ?? ''}</Text><Button title="Manage account" kind="ghost" onPress={() => router.push('/account')}/><Button title="Sign out" kind="ghost" onPress={async () => { try { await signOut(); await clearAccountReminders(); } catch (error) { message(error); } }}/></Card>
     {[

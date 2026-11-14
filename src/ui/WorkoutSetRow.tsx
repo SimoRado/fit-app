@@ -12,7 +12,7 @@ import { useApp } from '../state/app';
 export function WorkoutSetRow({ set, index, metric, onChange, onRemove }: { set: DraftSet; index: number; metric: Exercise['metric']; onChange: (patch: Partial<DraftSet>) => void; onRemove: () => void }) {
   const [showNote, setShowNote] = useState(!!set.note);
   const { language } = useApp();
-  const inputStyle = { minHeight: 50, borderRadius: 20, backgroundColor: set.completed ? colors.mint : colors.card2, paddingHorizontal: 7, color: colors.text, fontFamily: fonts.displayHeavy, fontSize: 24, textAlign: language === 'ar' ? 'right' as const : 'center' as const };
+  const inputStyle = { minHeight: 50, borderRadius: 20, backgroundColor: set.completed ? colors.mint : colors.card2, paddingHorizontal: 7, color: set.completed ? colors.accentInk : colors.text, fontFamily: fonts.displayHeavy, fontSize: 24, textAlign: language === 'ar' ? 'right' as const : 'center' as const };
   return <View style={{ borderTopWidth: 1, borderTopColor: colors.border, paddingVertical: 14, gap: 8 }}>
     {index === 0 && <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}><Text style={{ width: 32, color: colors.muted, fontFamily: fonts.mono, fontSize: 10 }}>SET</Text><Text style={{ flex: 1, color: colors.muted, fontFamily: fonts.mono, fontSize: 10 }}>{metric === 'duration' ? 'SECONDS' : metric === 'weight_reps' ? 'KG' : 'REPS'}</Text>{metric === 'weight_reps' && <Text style={{ flex: 1, color: colors.muted, fontFamily: fonts.mono, fontSize: 10 }}>REPS</Text>}<View style={{ width: 48 }}/></View>}
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>

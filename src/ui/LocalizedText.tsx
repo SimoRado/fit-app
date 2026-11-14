@@ -3,7 +3,7 @@ import { StyleSheet, Text as NativeText, TextProps } from 'react-native';
 import { localize } from '../core/i18n';
 import { useApp } from '../state/app';
 import { useAppFonts } from './fonts';
-import { fonts } from './theme';
+import { colors, fonts } from './theme';
 
 export function Text({ children, style, ...props }: TextProps) {
   const { language } = useApp();
@@ -25,5 +25,5 @@ export function Text({ children, style, ...props }: TextProps) {
     if (trailing && !/\s$/.test(translated)) translated += trailing;
     return translated;
   });
-  return <NativeText {...props} style={[{ writingDirection: language === 'ar' ? 'rtl' : 'ltr', textAlign: language === 'ar' ? 'right' : 'left' }, style, { fontFamily: loaded ? family : undefined }, loaded && { fontWeight: 'normal' }]}>{localized}</NativeText>;
+  return <NativeText {...props} style={[{ color: colors.text, writingDirection: language === 'ar' ? 'rtl' : 'ltr', textAlign: language === 'ar' ? 'right' : 'left' }, style, { fontFamily: loaded ? family : undefined }, loaded && { fontWeight: 'normal' }]}>{localized}</NativeText>;
 }

@@ -87,7 +87,7 @@ export function NutritionVessel({ consumed, target, size = 154 }: { consumed: nu
   const levelProps = useAnimatedProps(() => ({ y: level.value, height: 260 - level.value }));
   return <Svg width={size} height={size * 1.12} viewBox="0 0 200 224" accessibilityLabel={`${Math.round(ratio * 100)} percent of calorie target`}>
     <Defs><ClipPath id={id}><Path d={vessel}/></ClipPath></Defs>
-    <Path d={vessel} fill="rgba(255,255,255,.55)"/>
+    <Path d={vessel} fill={colors.card2} opacity={0.82}/>
     <G clipPath={`url(#${id})`}>
       <AnimatedRect x="0" width="200" fill={fill} animatedProps={levelProps}/>
       <G clipPath={`url(#${id})`}>
@@ -120,9 +120,9 @@ export function NutritionScene() {
   const firstProps = useAnimatedProps(() => ({ translate: [8 * first.value, -10 * first.value] }));
   const secondProps = useAnimatedProps(() => ({ translate: [8 * second.value, -10 * second.value] }));
   return <Svg pointerEvents="none" width="100%" height="100%" viewBox="0 0 300 420" preserveAspectRatio="xMidYMid slice" style={{ position: 'absolute', inset: 0 }}>
-    <Rect width="300" height="420" fill="#FFE7A3"/>
-    <AnimatedG animatedProps={firstProps}><Path d={d1} fill="#FF9F80"/></AnimatedG>
-    <AnimatedG animatedProps={secondProps}><Path d={d2} fill={colors.lilac} opacity={0.9}/></AnimatedG>
+    <Rect width="300" height="420" fill={colors.surfaceWarm}/>
+    <AnimatedG animatedProps={firstProps}><Path d={d1} fill={colors.blue}/></AnimatedG>
+    <AnimatedG animatedProps={secondProps}><Path d={d2} fill={colors.paleBlue} opacity={0.5}/></AnimatedG>
     <Circle cx="255" cy="93" r="20" fill={colors.bg} opacity={0.75}/>
   </Svg>;
 }
@@ -135,7 +135,7 @@ export function NutritionPebble({ consumed, target, color }: { consumed: number;
   const levelProps = useAnimatedProps(() => ({ y: level.value, height: 150 - level.value }));
   return <Svg width={88} height={88} viewBox="0 0 100 100">
     <Defs><ClipPath id={id}><Path d={shape}/></ClipPath></Defs>
-    <Path d={shape} fill="rgba(255,255,255,.7)"/>
+    <Path d={shape} fill={colors.card2}/>
     <G clipPath={`url(#${id})`}>
       <AnimatedRect x="0" width="100" fill={color} animatedProps={levelProps}/>
       <AnimatedG clipPath={`url(#${id})`} animatedProps={firstProps}><G transform="scale(.5 1)"><Path d={wavePath(0, 4)} fill={color} opacity={0.6}/></G></AnimatedG>

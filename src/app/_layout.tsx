@@ -6,7 +6,6 @@ import { ConvexProviderWithClerk } from 'convex/react-clerk';
 import { ConvexReactClient } from 'convex/react';
 import { Stack } from 'expo-router';
 import * as Sentry from '@sentry/react-native';
-import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppProvider } from '../state/app';
 import { removeLocalAccountData, setLocalAccount } from '../data/db';
@@ -17,7 +16,7 @@ import { SubscriptionProvider } from '../state/subscriptions';
 import { AdEligibilityBridge } from '../state/AdEligibilityBridge';
 import { SyncProvider } from '../state/sync';
 import { clearAccountReminders } from '../services/reminders';
-import { colors } from '../ui/theme';
+import { useVoltTheme, VoltThemeProvider } from '../ui/VoltThemeProvider';
 import { authDiagnostic } from '../core/runtime';
 import { clerkGateState } from '../core/googleSession';
 import { api } from '../../convex/_generated/api';
@@ -25,11 +24,12 @@ import { pendingDeletions, forgetDeletion } from '../data/pendingDeletion';
 import { clearMonitoringUser, reportFailure } from '../core/monitoring';
 
 function RenderError({ retry }: { error: Error; retry: () => Promise<void> }) {
-  return <View style={{ flex: 1, backgroundColor: colors.bg, justifyContent: 'center', padding: 24, gap: 16 }}>
-    <Text style={{ color: colors.text, fontSize: 28, fontWeight: '700' }}>Something went wrong</Text>
-    <Text style={{ color: colors.muted }}>Your data is still on this device. Please try this screen again.</Text>
-    <Pressable accessibilityRole="button" onPress={() => { void retry(); }} style={{ alignSelf: 'flex-start', backgroundColor: colors.accent, padding: 16, borderRadius: 18 }}>
-      <Text style={{ color: colors.accentText, fontWeight: '700' }}>Try again</Text>
+  const { palette } = useVoltTheme();
+  return <View style={{ flex: 1, backgroundColor: palette.bg, justifyContent: 'center', padding: 24, gap: 16 }}>
+    <Text style={{ color: palette.text, fontSize: 28, fontWeight: '700' }}>Something went wrong</Text>
+    <Text style={{ color: palette.muted }}>Your data is still on this device. Please try this screen again.</Text>
+    <Pressable accessibilityRole="button" onPress={() => { void retry(); }} style={{ alignSelf: 'flex-start', backgroundColor: palette.accent, padding: 16, borderRadius: 18 }}>
+      <Text style={{ color: palette.accentText, fontWeight: '700' }}>Try again</Text>
     </Pressable>
   </View>;
 }
@@ -40,9 +40,10 @@ const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
 if (!convexUrl || !publishableKey) throw new Error('Missing Clerk or Convex development configuration');
 const convex = new ConvexReactClient(convexUrl, { unsavedChangesWarning: false });
 
-function Loading() { return <View style={{ flex: 1, backgroundColor: colors.bg, justifyContent: 'center' }}><ActivityIndicator color={colors.accent}/></View>; }
+function Loading() { const { palette } = useVoltTheme(); return <View style={{ flex: 1, backgroundColor: palette.bg, justifyContent: 'center' }}><ActivityIndicator color={palette.accent}/></View>; }
 
 function LocalAccount({ userId, children }: { userId: string; children: React.ReactNode }) {
+  const { palette } = useVoltTheme();
   const [ready, setReady] = useState(false);
   const [error, setError] = useState(false);
   const [retry, setRetry] = useState(0);
@@ -53,8 +54,36 @@ function LocalAccount({ userId, children }: { userId: string; children: React.Re
     void clearAccountReminders().then(() => { if (active) { authDiagnostic('local account preparation complete', {}, 'NAVIGATION'); setReady(true); } }).catch(cause => { if (active) { reportFailure('account-reminders', cause); authDiagnostic('local account preparation failed', {}, 'NAVIGATION'); setError(true); } });
     return () => { active = false; setLocalAccount(null); };
   }, [userId, retry]);
-  if (error) return <View style={{ flex: 1, backgroundColor: colors.bg, justifyContent: 'center', alignItems: 'center', gap: 20, padding: 24 }}><Text style={{ color: colors.text, textAlign: 'center' }}>Could not clear reminders from the previous account.</Text><Pressable accessibilityRole="button" onPress={() => setRetry(value => value + 1)}><Text style={{ color: colors.accent }}>Retry</Text></Pressable></View>;
+  if (error) return <View style={{ flex: 1, backgroundColor: palette.bg, justifyContent: 'center', alignItems: 'center', gap: 20, padding: 24 }}><Text style={{ color: palette.text, textAlign: 'center' }}>Could not clear reminders from the previous account.</Text><Pressable accessibilityRole="button" onPress={() => setRetry(value => value + 1)}><Text style={{ color: palette.accent }}>Retry</Text></Pressable></View>;
   return ready ? <AppProvider key={userId}><SyncProvider><AdEligibilityBridge>{children}</AdEligibilityBridge></SyncProvider></AppProvider> : <Loading/>;
+}
+
+function AuthenticatedStack({ signedIn }: { signedIn: boolean }) {
+  const { palette } = useVoltTheme();
+  return <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: palette.bg } }}>
+    <Stack.Protected guard={false}><Stack.Screen name="(auth)"/></Stack.Protected>
+    <Stack.Protected guard={signedIn} redirectTo="/(auth)/welcome">
+      <Stack.Screen name="index"/><Stack.Screen name="(tabs)"/><Stack.Screen name="onboarding"/>
+      <Stack.Screen name="habit-form"/><Stack.Screen name="habit-history"/><Stack.Screen name="workout-form"/>
+      <Stack.Screen name="routine-form"/><Stack.Screen name="weight"/><Stack.Screen name="weight-form"/>
+      <Stack.Screen name="measurement-form"/><Stack.Screen name="mission-form"/><Stack.Screen name="missions"/>
+      <Stack.Screen name="motivation"/><Stack.Screen name="reminders"/><Stack.Screen name="account"/><Stack.Screen name="premium-test"/><Stack.Screen name="cloud-sync"/><Stack.Screen name="delete-account"/><Stack.Screen name="admob-testing"/>
+    </Stack.Protected>
+  </Stack>;
+}
+
+function AuthStack() {
+  const { palette } = useVoltTheme();
+  return <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: palette.bg } }}>
+    <Stack.Protected guard><Stack.Screen name="(auth)"/></Stack.Protected>
+    <Stack.Protected guard={false} redirectTo="/(auth)/welcome">
+      <Stack.Screen name="index"/><Stack.Screen name="(tabs)"/><Stack.Screen name="onboarding"/>
+      <Stack.Screen name="habit-form"/><Stack.Screen name="habit-history"/><Stack.Screen name="workout-form"/>
+      <Stack.Screen name="routine-form"/><Stack.Screen name="weight"/><Stack.Screen name="weight-form"/>
+      <Stack.Screen name="measurement-form"/><Stack.Screen name="mission-form"/><Stack.Screen name="missions"/>
+      <Stack.Screen name="motivation"/><Stack.Screen name="reminders"/><Stack.Screen name="account"/><Stack.Screen name="premium-test"/><Stack.Screen name="cloud-sync"/><Stack.Screen name="delete-account"/><Stack.Screen name="admob-testing"/>
+    </Stack.Protected>
+  </Stack>;
 }
 
 function Navigator() {
@@ -83,26 +112,19 @@ function Navigator() {
     return () => { active = false; clearInterval(timer); };
   }, [userId, signOut]);
   useEffect(() => { authDiagnostic('Clerk auth state', { loaded: isLoaded, signedIn: Boolean(isSignedIn), hasUser: Boolean(userId) }, 'NAVIGATION'); }, [isLoaded, isSignedIn, userId]);
+  // Keep the root appearance alive across Clerk transitions. The signed-in
+  // AppProvider restores the account's persisted selection after local data is
+  // ready; resetting here used to race that hydration and flash a different UI.
   useEffect(() => { if (isLoaded && !isSignedIn) { clearMonitoringUser(); setLocalAccount(null); setActiveLanguage('en'); clearAccountReminders().catch(() => undefined); } }, [isLoaded, isSignedIn]);
   const gate = clerkGateState(isLoaded, isSignedIn, userId);
   useEffect(() => { authDiagnostic('protected route gate', { gate }, 'NAVIGATION'); }, [gate]);
   if (gate === 'loading') return <Loading/>;
   const signedIn = gate === 'signed-in';
-  const stack = <><StatusBar style="dark"/><Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
-    <Stack.Protected guard={!signedIn}><Stack.Screen name="(auth)"/></Stack.Protected>
-    <Stack.Protected guard={signedIn} redirectTo="/(auth)/welcome">
-      <Stack.Screen name="index"/><Stack.Screen name="(tabs)"/><Stack.Screen name="onboarding"/>
-      <Stack.Screen name="habit-form"/><Stack.Screen name="habit-history"/><Stack.Screen name="workout-form"/>
-      <Stack.Screen name="routine-form"/><Stack.Screen name="weight"/><Stack.Screen name="weight-form"/>
-      <Stack.Screen name="measurement-form"/><Stack.Screen name="mission-form"/><Stack.Screen name="missions"/>
-      <Stack.Screen name="motivation"/><Stack.Screen name="reminders"/><Stack.Screen name="account"/><Stack.Screen name="premium-test"/><Stack.Screen name="cloud-sync"/><Stack.Screen name="delete-account"/><Stack.Screen name="admob-testing"/>
-    </Stack.Protected>
-  </Stack></>;
-  return signedIn && userId ? <LocalAccount key={userId} userId={userId}>{stack}</LocalAccount> : stack;
+  return signedIn && userId ? <LocalAccount key={userId} userId={userId}><AuthenticatedStack signedIn={signedIn}/></LocalAccount> : <AuthStack/>;
 }
 
 export default function Root() {
-  return <SafeAreaProvider><AppFonts><MotionProvider><ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
+  return <SafeAreaProvider><VoltThemeProvider><AppFonts><MotionProvider><ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
     <ConvexProviderWithClerk client={convex} useAuth={useAuth}><SubscriptionProvider><Navigator/></SubscriptionProvider></ConvexProviderWithClerk>
-  </ClerkProvider></MotionProvider></AppFonts></SafeAreaProvider>;
+  </ClerkProvider></MotionProvider></AppFonts></VoltThemeProvider></SafeAreaProvider>;
 }
