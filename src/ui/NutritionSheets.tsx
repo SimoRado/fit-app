@@ -7,11 +7,10 @@ import { Text } from './LocalizedText';
 import { Button, Field, confirm, message } from './components';
 import { colors, fonts, radii } from './theme';
 import { MotionPressable } from './MotionPressable';
-import { BloomSwitch } from './MotionBlocks';
 import { dayKey, validDay } from '../core/date';
 import { displayQuantity, fromGrams, primaryUnits, parseQuantity, servingLabel, toGrams, unitOptions, type FoodUnit } from '../core/foodUnits';
 import { meals, parseNumber, parseTargets, portionNutrients, type CalorieDisplay, type Meal, type Nutrients, type TargetInput } from '../core/nutrition';
-import { deleteCustomFood, deleteFoodEntry, foodEntryUnit, recentFoods, reusableFoods, saveFoodEntry, saveNutritionTarget, setCalorieDisplay, setNutritionEnabled, type CustomFood, type FoodEntry, type NutritionTarget, type RecentFood, type ReusableFood, type SavedFoodUnit } from '../data/nutrition';
+import { deleteCustomFood, deleteFoodEntry, foodEntryUnit, recentFoods, reusableFoods, saveFoodEntry, saveNutritionTarget, setCalorieDisplay, type CustomFood, type FoodEntry, type NutritionTarget, type RecentFood, type ReusableFood, type SavedFoodUnit } from '../data/nutrition';
 import { catalogFoodById, foodCategories, searchFoodCatalog, type CatalogFood } from '../data/foodCatalog';
 import { useApp } from '../state/app';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
@@ -361,10 +360,9 @@ export function TargetSetup({ day, onSaved }: { day: string; onSaved: () => void
   </View>;
 }
 
-export function TargetsSheet({ day, target, enabled, display, foods, close, onSaved, onDisplayChange }: { day: string; target: NutritionTarget | null; enabled: boolean; display: CalorieDisplay; foods: CustomFood[]; close: Close; onSaved: () => void; onDisplayChange: (mode: CalorieDisplay) => void }) {
+export function TargetsSheet({ day, target, display, foods, close, onSaved, onDisplayChange }: { day: string; target: NutritionTarget | null; display: CalorieDisplay; foods: CustomFood[]; close: Close; onSaved: () => void; onDisplayChange: (mode: CalorieDisplay) => void }) {
   const [value, setValue] = useState<TargetInput>({ kcal: fieldText(target?.kcal), protein: fieldText(target?.protein), carbs: fieldText(target?.carbs), fat: fieldText(target?.fat) });
   const [mode, setMode] = useState<CalorieDisplay>(display);
-  const [tracking, setTracking] = useState(enabled);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const macros = macroKcal(value);
@@ -383,7 +381,6 @@ export function TargetsSheet({ day, target, enabled, display, foods, close, onSa
     setMode(next); onDisplayChange(next);
     try { await setCalorieDisplay(next); } catch (cause) { setMode(previous); onDisplayChange(previous); message(cause); }
   }
-  async function toggle() { try { await setNutritionEnabled(!tracking); setTracking(!tracking); onSaved(); } catch (cause) { message(cause); } }
   function removeFood(food: CustomFood) { confirm(`Delete ${food.name}?`, async () => { try { await deleteCustomFood(food.id); onSaved(); } catch (cause) { message(cause); } }, 'Diary entries already logged with this food remain in your history.', 'Delete saved food'); }
   return <View style={{ gap: 16 }}>
     <View style={{ gap: 10 }}>
@@ -398,8 +395,6 @@ export function TargetsSheet({ day, target, enabled, display, foods, close, onSa
       <Segmented options={['remaining', 'consumed'] as const} value={mode} onChange={next => void changeMode(next)} label={item => item === 'remaining' ? 'Calories left' : 'Calories eaten'}/>
       <Text style={{ color: colors.muted, fontSize: 12 }}>{mode === 'remaining' ? 'Target minus what you have eaten, e.g. "2,380 kcal left".' : 'What you have eaten so far, e.g. "220 kcal consumed".'} The ring fills toward the same target either way.</Text>
     </View>
-    <View style={{ minHeight: 54, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}><Text style={{ color: colors.ink, fontFamily: fonts.bold }}>Calorie tracking</Text><BloomSwitch label="Calorie tracking" value={tracking} onChange={toggle}/></View>
-    <Text style={{ color: colors.muted, fontSize: 12, marginTop: -8 }}>Turning tracking off hides diary content and dashboard values without deleting meals.</Text>
     <Text style={{ color: colors.ink, fontFamily: fonts.displayHeavy, fontSize: 22, marginTop: 6 }}>Saved custom foods</Text>
     {foods.length ? foods.map(food => <View key={food.id} style={{ minHeight: 54, flexDirection: 'row', alignItems: 'center', gap: 8, borderBottomWidth: 1, borderBottomColor: colors.border }}><View style={{ flex: 1 }}><Text style={{ color: colors.ink, fontFamily: fonts.bold }}>{food.name}</Text><Text style={{ color: colors.muted, fontSize: 11 }}>{Math.round(food.kcal_100)} kcal / 100 g</Text></View><Pressable accessibilityRole="button" accessibilityLabel={`Delete ${food.name}`} onPress={() => removeFood(food)} style={{ padding: 10 }}><Text style={{ color: colors.danger }}>Delete</Text></Pressable></View>) : <Text style={{ color: colors.muted }}>No custom foods saved yet.</Text>}
   </View>;

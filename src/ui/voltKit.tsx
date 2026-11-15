@@ -37,10 +37,10 @@ export function cardShadow(palette: Readonly<Palette>): ViewStyle {
 }
 
 /** `.card8` — the primary Volt surface. */
-export function VCard({ children, style, onPress, accessibilityLabel, tone = 'card' }: { children: React.ReactNode; style?: StyleProp<ViewStyle>; onPress?: () => void; accessibilityLabel?: string; tone?: 'card' | 'soft1' | 'soft2' }) {
+export function VCard({ children, style, onPress, accessibilityLabel, tone = 'card', raised = false }: { children: React.ReactNode; style?: StyleProp<ViewStyle>; onPress?: () => void; accessibilityLabel?: string; tone?: 'card' | 'soft1' | 'soft2'; raised?: boolean }) {
   const p = usePalette();
   const background = tone === 'soft1' ? p.soft1 : tone === 'soft2' ? p.soft2 : p.c8;
-  const base: ViewStyle = { backgroundColor: background, borderWidth: 1, borderColor: tone === 'card' ? p.c8Line : 'transparent', borderRadius: 26, padding: 16, ...(tone === 'card' ? cardShadow(p) : {}) };
+  const base: ViewStyle = { backgroundColor: background, borderWidth: 1, borderColor: tone === 'card' ? p.c8Line : 'transparent', borderRadius: 26, padding: 16, ...(tone === 'card' ? cardShadow(p) : raised ? { shadowColor: p.navShadow, shadowOpacity: 0.04, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 1 } : {}) };
   if (!onPress) return <View style={[base, style]}>{children}</View>;
   return <MotionPressable pressScale={0.97} accessibilityRole="button" accessibilityLabel={accessibilityLabel} onPress={onPress} style={[base, style]}>{children}</MotionPressable>;
 }

@@ -1,13 +1,16 @@
-import React, { useEffect, useState } from 'react';
+import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
+import Svg, { Circle } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import Animated from 'react-native-reanimated';
+import { router, useLocalSearchParams } from 'expo-router';
+import Animated, { interpolateColor, useAnimatedProps, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { Text } from '../../ui/LocalizedText';
-import { addDays, dayKey, fromDay, weekStart } from '../../core/date';
+import { addDays, dayKey, fromDay, uid, weekStart } from '../../core/date';
 import { habitDone, habitRate, habitStreak, scheduled } from '../../core/logic';
 import { Habit, HabitCompletion, HabitProgress } from '../../core/types';
 import { filterHabits, habitProgressOn, reminderTimes, weeklyConsistency } from '../../core/habitExtras';
+import { amountLabel, applyAmountDelta, habitRatio, quantityDone } from '../../core/habitProgress';
+import { STARTER_HABITS, frequencyLabel, habitDurationMinutes, habitGroup, minutesLeft, nowLineIndex, scheduleLine, type StarterHabit } from '../../core/habitDesign';
 import { repo } from '../../data/db';
 import { useApp } from '../../state/app';
 import { useScreenRevision } from '../../state/useScreenRevision';
@@ -17,59 +20,110 @@ import { fonts } from '../../ui/theme';
 import { reconcileReminders } from '../../services/reminders';
 import { MotionPressable } from '../../ui/MotionPressable';
 import { CircleButton, EmptyAction, MiniBar, SectionLink, VCard, isLight, useEntering, usePalette, type VoltIcon } from '../../ui/voltKit';
+import { CubyMark } from '../../ui/CubyMark';
+import { HabitEditor } from '../../ui/HabitEditor';
+import { HabitGlyph, groupColors } from '../../ui/HabitVisuals';
+import { MonthWeekCalendar } from '../../ui/MonthWeekCalendar';
+import { deviceUses12h } from '../../ui/WheelTimePicker';
+import { useReducedMotion } from '../../ui/motion';
+
+const clock = () => new Date().toTimeString().slice(0, 5);
+const formatStep = (habit: Habit) => `${Number((habit.increment ?? 1).toFixed(2))} ${habit.unit ?? ''}`.trim();
+type EditorState = { habit: Habit | null; mode: 'time' | 'anytime' } | null;
 
 /**
- * Volt Habits (prototype `hab12`): summary header, segmented day bar, week strip,
- * a timed schedule and an "Anytime" list. Interactions are tap-only by design —
- * the prototype's swipe-to-complete/edit/delete gestures are intentionally not used;
- * the row's "⋯" button opens the same actions in a sheet.
+ * Volt Habits (references 1, 4, 5, 7): empty state with one-tap starters, a
+ * segmented completion bar, the shared month/week calendar, a timed Schedule
+ * with a live "Now" line, and an Anytime list. Completed rows use their
+ * category's bright colour, open rows a soft tint. Tap-only: the right circle
+ * completes (or adds one step to a measured habit), ⋯ opens edit/correct/delete.
  */
 export default function Habits() {
-  const { changed, language } = useApp();
+  const { changed, language, profile } = useApp();
   // Reloads only while this tab is focused (see useScreenRevision).
   const revision = useScreenRevision();
   const p = usePalette();
+  const params = useLocalSearchParams<{ new?: string; edit?: string }>();
+  const hour12 = useMemo(() => deviceUses12h(), []);
   const [habits, setHabits] = useState<Habit[]>([]);
-  const [completions, setCompletions] = useState<HabitCompletion[]>([]);
-  const [progress, setProgress] = useState<HabitProgress[]>([]);
+  // Completions and measured progress change together (a measured habit completes at its
+  // target), so they share one state object and every optimistic update is functional.
+  const [track, setTrack] = useState<{ completions: HabitCompletion[]; progress: HabitProgress[] }>({ completions: [], progress: [] });
+  const { completions, progress } = track;
+  // Measured-habit writes still in flight; a reload during a burst of taps would show an older total.
+  const pendingWrites = useRef(0);
+  const [loaded, setLoaded] = useState(false);
   const [selected, setSelected] = useState(dayKey());
-  const [category, setCategory] = useState('All Habits');
   const [summaryWeek, setSummaryWeek] = useState(weekStart(dayKey()));
   const [amountDraft, setAmountDraft] = useState('');
   const [menu, setMenu] = useState<Habit | null>(null);
+  const [editor, setEditor] = useState<EditorState>(null);
+  const [manage, setManage] = useState(false);
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [nowTime, setNowTime] = useState(clock);
+  const creating = useRef(false);
   const today = dayKey();
   const locale = language === 'fr' ? 'fr-FR' : language === 'ar' ? 'ar-u-nu-arab' : 'en-US';
 
   useEffect(() => {
+    let active = true;
     Promise.all([repo.habits(), repo.completions(), repo.habitProgress()]).then(([allHabits, allCompletions, allProgress]) => {
-      setHabits(allHabits); setCompletions(allCompletions); setProgress(allProgress);
+      if (!active) return;
+      setHabits(allHabits); setLoaded(true);
+      if (pendingWrites.current === 0) setTrack({ completions: allCompletions, progress: allProgress });
     }).catch(message);
+    return () => { active = false; };
   }, [revision]);
+  // Home / Progress links (`/habit-form`) arrive here with ?new=1 or ?edit=<id>.
+  useEffect(() => {
+    if (params.new) { setEditor({ habit: null, mode: 'time' }); router.setParams({ new: undefined }); }
+  }, [params.new]);
+  useEffect(() => {
+    if (!params.edit || !loaded) return;
+    const habit = habits.find(item => item.id === params.edit);
+    if (habit) setEditor({ habit, mode: 'time' });
+    router.setParams({ edit: undefined });
+  }, [params.edit, loaded, habits]);
+  // The Now line moves once a minute, and only while today is shown.
+  useEffect(() => {
+    if (selected !== today) return;
+    setNowTime(clock());
+    const timer = setInterval(() => setNowTime(clock()), 60000);
+    return () => clearInterval(timer);
+  }, [selected, today]);
 
-  const ordered = filterHabits(habits, category);
-  const due = ordered.filter(habit => !habit.archived && scheduled(habit, selected));
-  const categories = ['All Habits', ...new Set(habits.map(habit => habit.category || 'Other'))];
+  const ordered = filterHabits(habits, 'All Habits');
+  const active = ordered.filter(habit => !habit.archived);
+  const due = active.filter(habit => scheduled(habit, selected));
   const summary = weeklyConsistency(habits, completions, progress, summaryWeek, today);
-  const isDone = (habit: Habit, day = selected) => {
-    const row = habitProgressOn(progress, habit.id, day);
-    return habit.habit_type === 'quantity' ? !!row && row.amount >= row.target_snapshot : habitDone(habit, completions, day);
-  };
+  const isDone = (habit: Habit, day = selected) => habit.habit_type === 'quantity' ? quantityDone(habit, habitProgressOn(progress, habit.id, day)) : habitDone(habit, completions, day);
+  /** 0–1 for the ring and the segment: partial for measured habits. */
+  const ratio = (habit: Habit) => habitRatio(habit, habitProgressOn(progress, habit.id, selected), isDone(habit));
   const doneCount = due.filter(habit => isDone(habit)).length;
-  const timed = due.filter(habit => reminderTimes(habit).length).sort((a, b) => reminderTimes(a)[0].localeCompare(reminderTimes(b)[0]));
+  // A stored time is the schedule (the reminder switch only controls notifications). Same-time habits keep their manual order.
+  const timed = due.filter(habit => reminderTimes(habit).length).sort((a, b) => reminderTimes(a)[0].localeCompare(reminderTimes(b)[0]) || (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.created_at.localeCompare(b.created_at));
   const anytime = due.filter(habit => !reminderTimes(habit).length);
-  const notDue = ordered.filter(habit => !due.includes(habit));
-  const nowTime = new Date().toTimeString().slice(0, 5);
+  const nowIndex = selected === today ? nowLineIndex(timed.map(habit => reminderTimes(habit)[0]), nowTime) : null;
 
+  /** Optimistic: the row, counter, bar and calendar update at once; SQLite then persists. */
   async function setCompletion(id: string, completed: boolean) {
+    const without = (rows: HabitCompletion[]) => rows.filter(row => !(row.habit_id === id && row.day === today));
+    setTrack(state => ({ ...state, completions: completed ? [...without(state.completions), { id: `local-${id}`, habit_id: id, day: today, created_at: new Date().toISOString() }] : without(state.completions) }));
     try { await repo.setHabitCompletion(id, today, completed); changed(); }
-    catch (error) { message(error); }
+    catch (error) { setTrack(state => ({ ...state, completions: completed ? without(state.completions) : state.completions })); changed(); message(error); }
   }
-  async function addAmount(habit: Habit) {
-    try {
-      const current = habitProgressOn(progress, habit.id, selected)?.amount ?? 0;
-      const next = Math.round((current + (habit.increment ?? 1)) * 10000) / 10000;
-      await repo.setHabitAmount(habit.id, selected, next); changed();
-    } catch (error) { message(error); }
+  /**
+   * Measured habit step (+increment or −increment). The screen updates at once with the same
+   * maths SQLite applies; the write itself is an atomic read-add-write, so rapid taps are
+   * serialised and none is lost or counted twice. One reload follows the last pending write.
+   */
+  async function changeAmount(habit: Habit, delta: number) {
+    const day = selected;
+    pendingWrites.current++;
+    setTrack(state => { const next = applyAmountDelta(state.progress, state.completions, habit, day, delta); return { progress: next.progress, completions: next.completions }; });
+    try { await repo.addHabitAmount(habit.id, day, delta); }
+    catch (error) { message(error); }
+    finally { pendingWrites.current--; if (pendingWrites.current === 0) changed(); }
   }
   async function resetAmount(habit: Habit) { try { await repo.setHabitAmount(habit.id, selected, 0); changed(); } catch (error) { message(error); } }
   async function saveAmount(habit: Habit) {
@@ -78,82 +132,105 @@ export default function Habits() {
     changed();
   }
   async function move(id: string, direction: -1 | 1) { try { await repo.moveHabit(id, direction); changed(); } catch (error) { message(error); } }
-  async function deleteHabit(id: string) {
-    try { await repo.remove('habits', id); await reconcileReminders(); changed(); }
-    catch (error) { message(error); }
+  /** A saved habit moves to its new section/position at once (time, Anytime, target); the reload then confirms. */
+  function applySaved(saved?: Habit) {
+    if (saved) {
+      setHabits(rows => rows.some(row => row.id === saved.id) ? rows.map(row => row.id === saved.id ? { ...row, ...saved } : row) : [...rows, saved]);
+      // Mirrors saveHabit: a new goal applies to today and later; earlier days keep their target.
+      if (saved.habit_type === 'quantity') setTrack(state => {
+        const target = saved.target_value ?? 1;
+        const progress = state.progress.map(row => row.habit_id === saved.id && row.day >= today ? { ...row, target_snapshot: target, unit_snapshot: saved.unit ?? '' } : row);
+        const reached = new Set(progress.filter(row => row.habit_id === saved.id && row.day >= today && row.amount >= target).map(row => row.day));
+        const completions = state.completions.filter(row => row.habit_id !== saved.id || row.day < today || reached.has(row.day));
+        for (const day of reached) if (!completions.some(row => row.habit_id === saved.id && row.day === day)) completions.push({ id: `local-${saved.id}:${day}`, habit_id: saved.id, day, created_at: new Date().toISOString() });
+        return { progress, completions };
+      });
+    }
+    changed();
   }
-  /** Primary tap action for the round check button. */
+  /** Optimistic: the row disappears at once; restored if the local delete fails. */
+  async function deleteHabit(id: string) {
+    const before = habits;
+    setHabits(rows => rows.filter(row => row.id !== id));
+    try { await repo.remove('habits', id); changed(); void reconcileReminders(); }
+    catch (error) { setHabits(before); message(error); }
+  }
+  /** One-tap starter: saved locally at once with no reminder; editable afterwards. */
+  async function createStarter(starter: StarterHabit) {
+    if (creating.current) return;
+    creating.current = true;
+    try {
+      if (!profile) throw Error('Complete your profile first.');
+      const times = starter.time ? [starter.time] : [];
+      await repo.saveHabit({ id: uid(), owner_id: profile.id, name: starter.name, description: '', category: starter.group, icon: starter.icon, frequency: 'daily', days: '0,1,2,3,4,5,6', weekly_target: 7, start_date: today, archived: 0, created_at: new Date().toISOString(), reminder_time: times[0] ?? null, reminder_enabled: 0, reminder_times: JSON.stringify(times), habit_type: 'boolean', target_value: 1, unit: '', increment: 1 });
+      setSelected(today); changed();
+    } catch (error) { message(error); }
+    finally { setTimeout(() => { creating.current = false; }, 600); }
+  }
+  /** The round control: yes/no toggles; measured adds one increment until the target (no accidental over-adding). */
   const primary = (habit: Habit) => {
-    if (habit.habit_type === 'quantity') return selected <= today ? addAmount(habit) : undefined;
+    if (habit.habit_type === 'quantity') return selected <= today && !isDone(habit) ? changeAmount(habit, habit.increment ?? 1) : undefined;
     if (selected === today) return setCompletion(habit.id, !isDone(habit));
     return undefined;
   };
-  const canAct = (habit: Habit) => habit.habit_type === 'quantity' ? selected <= today : selected === today;
-  const weekDays = Array.from({ length: 7 }, (_, index) => addDays(today, index - 6));
-  const dayLabel = new Intl.DateTimeFormat(locale, { weekday: 'short', day: 'numeric', month: 'short' }).format(fromDay(selected));
+  const canAct = (habit: Habit) => habit.habit_type === 'quantity' ? selected <= today && !isDone(habit) : selected === today;
+  const openMenu = (habit: Habit) => { setAmountDraft(String(habitProgressOn(progress, habit.id, selected)?.amount ?? 0)); setMenu(habit); };
+  const dayLabel = new Intl.DateTimeFormat(locale, { weekday: 'short', day: 'numeric', month: 'short' }).format(fromDay(selected)).toUpperCase();
   const menuProgress = menu ? habitProgressOn(progress, menu.id, selected) : undefined;
+  const startDay = selected > today ? selected : today;
+  const marker = (day: string) => {
+    const rate = habitRate(habits, completions, day, day);
+    if (!rate.due || day > today) return null;
+    const level = rate.done / rate.due;
+    const on = day === selected;
+    return <View style={{ width: 14, height: 3.5, borderRadius: 2, marginTop: 2, backgroundColor: on ? p.plInk : level === 0 ? p.qTrack : level < 1 ? p.lv1 : p.lv3, opacity: on ? 0.6 : 1 }}/>;
+  };
 
-  return <Page title="" >
-    {/* .top — eyebrow + calendar/history + add */}
+  const header = <>
     <View style={{ height: 44, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-      <Text numberOfLines={1} style={{ flex: 1, color: p.muted, fontFamily: fonts.bold, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase' }}>{selected === today ? `Today · ${dayLabel}` : dayLabel}</Text>
-      {selected !== today && <CircleButton icon="today-outline" label="Back to today" onPress={() => setSelected(today)}/>}
-      <CircleButton icon="add" tone="accent" label="Create habit" onPress={() => router.push('/habit-form')}/>
+      <Text numberOfLines={1} style={{ flex: 1, color: p.muted, fontFamily: fonts.bold, fontSize: 11, letterSpacing: 0.8 }}>{selected === today ? `TODAY · ${dayLabel}` : dayLabel}</Text>
+      <CircleButton icon="calendar-outline" label="Choose a date" onPress={() => setCalendarOpen(true)}/>
+      <CircleButton icon="add" tone="accent" label="New habit" onPress={() => setEditor({ habit: null, mode: 'time' })}/>
     </View>
-    {/* .h12-head — title + summary */}
     <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }}>
       <Text accessibilityRole="header" style={{ color: p.text, fontFamily: fonts.displayHeavy, fontSize: 41, lineHeight: 45, letterSpacing: -1.2 }}>Habits<Text style={{ color: p.titleAccent }}>.</Text></Text>
-      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, paddingBottom: 8 }}>
+      {active.length > 0 && <Pressable accessibilityRole="button" accessibilityLabel={`${doneCount} of ${due.length} done. Manage habits`} onPress={() => setManage(true)} style={{ flexDirection: 'row', alignItems: 'baseline', gap: 5, paddingBottom: 8 }}>
         <Text style={{ color: p.text, fontFamily: fonts.displayHeavy, fontSize: 22 }}>{doneCount}/{due.length}</Text>
-        <Text style={{ color: p.muted, fontFamily: fonts.semibold, fontSize: 12.5 }}>done</Text>
-      </View>
+        <Text style={{ color: p.muted, fontFamily: fonts.semibold, fontSize: 12.5 }}>done · Manage</Text>
+        <Ionicons name="chevron-forward" size={13} color={p.muted}/>
+      </Pressable>}
     </View>
-    {/* .h12-bar — one segment per habit due */}
-    {due.length > 0 && <View accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: due.length, now: doneCount }} style={{ flexDirection: 'row', gap: 4 }}>
-      {due.map(habit => <View key={habit.id} style={{ flex: 1, height: 5, borderRadius: 3, backgroundColor: isDone(habit) ? p.g1 : p.qTrack }}/>)}
-    </View>}
+  </>;
 
-    {/* .h12-wk — week strip */}
-    <View style={{ flexDirection: language === 'ar' ? 'row-reverse' : 'row', gap: 6, marginTop: 4 }}>
-      {weekDays.map(day => {
-        const rate = habitRate(habits, completions, day, day);
-        const level = rate.due ? rate.done / rate.due : 0;
-        const on = day === selected;
-        const levelColor = !rate.due || level === 0 ? p.qTrack : level < 0.5 ? p.lv1 : level < 1 ? p.lv2 : p.lv3;
-        return <MotionPressable key={day} selected={on} pressScale={0.92} accessibilityRole="tab" accessibilityState={{ selected: on }} accessibilityLabel={new Intl.DateTimeFormat(locale, { weekday: 'long', day: 'numeric', month: 'long' }).format(fromDay(day))} onPress={() => setSelected(day)} style={{ flex: 1, minWidth: 0, alignItems: 'center', gap: 4, paddingTop: 8, paddingBottom: 9, borderRadius: 14, backgroundColor: on ? p.g1 : 'transparent' }}>
-          <Text style={{ color: on ? p.plInk : p.muted, fontFamily: fonts.bold, fontSize: 10.5 }}>{new Intl.DateTimeFormat(locale, { weekday: 'narrow' }).format(fromDay(day))}</Text>
-          <Text style={{ color: on ? p.plInk : day === today ? p.accent : p.text, fontFamily: fonts.displayHeavy, fontSize: 16, lineHeight: 18 }}>{fromDay(day).getDate()}</Text>
-          <View style={{ width: 14, height: 4, borderRadius: 2, backgroundColor: on ? p.plInk : levelColor, opacity: on ? 0.5 : 1 }}/>
-        </MotionPressable>;
-      })}
-    </View>
+  if (loaded && active.length === 0) return <Page title="">
+    {header}
+    <EmptyHabits onPick={starter => { void createStarter(starter); }} onCreate={() => setEditor({ habit: null, mode: 'time' })}/>
+    <BottomSheet layout="fixed" visible={!!editor} title={editor?.habit ? 'Edit habit' : 'New habit'} onClose={() => setEditor(null)}>{close => editor && <HabitEditor key={editor.habit?.id ?? 'new'} habit={editor.habit} startDay={startDay} initialMode={editor.mode} close={close} onSaved={applySaved}/>}</BottomSheet>
+    <ManageSheet open={manage} habits={ordered} onClose={() => setManage(false)} onEdit={habit => { setManage(false); setEditor({ habit, mode: 'time' }); }}/>
+  </Page>;
 
-    {categories.length > 2 && <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
-      {categories.map(option => { const on = option === category; return <MotionPressable key={option} selected={on} pressScale={0.95} accessibilityRole="radio" accessibilityState={{ selected: on }} onPress={() => setCategory(option)} style={{ paddingHorizontal: 13, paddingVertical: 7, borderRadius: 999, backgroundColor: on ? p.g1 : p.c8, borderWidth: 1, borderColor: on ? p.g1 : p.c8Line }}><Text style={{ color: on ? p.plInk : p.text, fontFamily: fonts.bold, fontSize: 12 }}>{option === 'All Habits' ? 'All' : option}</Text></MotionPressable>; })}
-    </View>}
+  return <Page title="">
+    {header}
+    {due.length > 0 && <SegmentBar values={due.map(ratio)} ids={due.map(habit => habit.id)}/>}
+    <MonthWeekCalendar selected={selected} onSelect={setSelected} locale={locale} marker={marker} open={calendarOpen} onOpenChange={setCalendarOpen}/>
+    {selected !== today && <Text style={{ color: p.muted, fontFamily: fonts.medium, fontSize: 12.5 }}>{selected < today ? 'Looking back at' : 'Planning ahead for'} <Text style={{ color: p.text, fontFamily: fonts.bold }}>{dayLabel}</Text>. <Text accessibilityRole="button" onPress={() => setSelected(today)} style={{ color: p.accent, fontFamily: fonts.bold, textDecorationLine: 'underline' }}>Back to today</Text></Text>}
 
-    {/* Schedule (timed habits) */}
-    <SectionLink title="Schedule" right={<View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}><Text style={{ color: p.muted, fontFamily: fonts.semibold, fontSize: 12 }}>{timed.length} planned</Text><CircleButton icon="add" tone="accent" size={30} label="Create timed habit" onPress={() => router.push('/habit-form')}/></View>}/>
+    <SectionLink title="Schedule" right={<View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}><Text style={{ color: p.muted, fontFamily: fonts.semibold, fontSize: 12 }}>{timed.length} planned</Text><CircleButton icon="add" tone="accent" size={30} label="New habit at a time" onPress={() => setEditor({ habit: null, mode: 'time' })}/></View>}/>
     {timed.length ? <View>
-      <View pointerEvents="none" style={{ position: 'absolute', left: 46 + 26, top: 10, bottom: 10, width: 0, borderLeftWidth: 1.5, borderStyle: 'dashed', borderColor: p.borderStrong }}/>
-      {timed.map((habit, index) => {
-        const time = reminderTimes(habit)[0];
-        const previous = index ? reminderTimes(timed[index - 1])[0] : '';
-        return <React.Fragment key={habit.id}>
-          {selected === today && previous <= nowTime && time > nowTime && index > 0 && <NowMarker/>}
-          <HabitRow habit={habit} index={index} time={time} done={isDone(habit)} progress={habitProgressOn(progress, habit.id, selected)} streak={habitStreak(habit, completions).current} canAct={canAct(habit)} onPrimary={() => primary(habit)} onMore={() => { setAmountDraft(String(habitProgressOn(progress, habit.id, selected)?.amount ?? 0)); setMenu(habit); }}/>
-        </React.Fragment>;
-      })}
-    </View> : <EmptyAction text="Give a habit a reminder time to see it on your schedule." icon="time-outline" onPress={() => router.push('/habit-form')}/>}
+      <View pointerEvents="none" style={{ position: 'absolute', left: 46 + 8 + 26, top: 16, bottom: 16, width: 0, borderLeftWidth: 1.5, borderStyle: 'dashed', borderColor: p.borderStrong }}/>
+      {timed.map((habit, index) => <React.Fragment key={habit.id}>
+        {nowIndex === index && <NowMarker/>}
+        <HabitRow habit={habit} index={index} time={reminderTimes(habit)[0]} hour12={hour12} now={selected === today ? nowTime : null} done={isDone(habit)} ratio={ratio(habit)} progress={habitProgressOn(progress, habit.id, selected)} streak={habitStreak(habit, completions).current} canAct={canAct(habit)} onPrimary={() => primary(habit)} onMore={() => openMenu(habit)}/>
+      </React.Fragment>)}
+    </View> : <EmptyAction text="Give a habit a time to see it on your schedule." icon="time-outline" onPress={() => setEditor({ habit: null, mode: 'time' })}/>}
 
-    {/* Anytime */}
-    <SectionLink title="Anytime" right={<Text style={{ color: p.muted, fontFamily: fonts.semibold, fontSize: 12 }}>whenever suits you</Text>}/>
-    {anytime.length ? anytime.map((habit, index) => <HabitRow key={habit.id} habit={habit} index={index} done={isDone(habit)} progress={habitProgressOn(progress, habit.id, selected)} streak={habitStreak(habit, completions).current} canAct={canAct(habit)} onPrimary={() => primary(habit)} onMore={() => { setAmountDraft(String(habitProgressOn(progress, habit.id, selected)?.amount ?? 0)); setMenu(habit); }}/>)
-      : due.length === 0 ? <EmptyAction text="No habits scheduled for this day. Create one or check your schedule." onPress={() => router.push('/habit-form')}/> : <EmptyAction text="Every habit here has a time." icon="checkmark"/>}
+    <SectionLink title="Anytime" right={<View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}><Text style={{ color: p.muted, fontFamily: fonts.semibold, fontSize: 12 }}>whenever suits you</Text><CircleButton icon="add" tone="accent" size={30} label="New anytime habit" onPress={() => setEditor({ habit: null, mode: 'anytime' })}/></View>}/>
+    {anytime.length ? anytime.map((habit, index) => <HabitRow key={habit.id} habit={habit} index={index} hour12={hour12} now={null} done={isDone(habit)} ratio={ratio(habit)} progress={habitProgressOn(progress, habit.id, selected)} streak={habitStreak(habit, completions).current} canAct={canAct(habit)} onPrimary={() => primary(habit)} onMore={() => openMenu(habit)}/>)
+      : <EmptyAction text="Add something to do anytime, like water" onPress={() => setEditor({ habit: null, mode: 'anytime' })}/>}
+    {due.length === 0 && <Text style={{ color: p.muted, fontFamily: fonts.medium, fontSize: 12.5 }}>No habits are scheduled on this day. Manage shows every habit.</Text>}
+    {selected !== today && <View style={{ padding: 12, borderRadius: 14, backgroundColor: isLight(p) ? p.soft1 : p.card2 }}><Text style={{ color: p.muted, fontFamily: fonts.medium, fontSize: 12.5 }}>{selected < today ? 'Viewing a past day. Measured habits can still be adjusted; yes/no habits can only be checked off for today.' : 'Viewing a future day. Habits can be completed on the day itself.'}</Text></View>}
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><Ionicons name="information-circle-outline" size={14} color={p.muted}/><Text style={{ flex: 1, color: p.muted, fontFamily: fonts.medium, fontSize: 11.5 }}>Tap the circle to complete or add progress. Tap ⋯ to edit, correct or delete.</Text></View>
 
-    {selected !== today && <View style={{ marginTop: 6, padding: 12, borderRadius: 14, backgroundColor: isLight(p) ? p.soft1 : p.card2 }}><Text style={{ color: p.muted, fontFamily: fonts.medium, fontSize: 12.5 }}>Viewing a past day. Measured habits can still be adjusted; yes/no habits can only be checked off for today.</Text></View>}
-
-    {/* Weekly consistency */}
     <SectionLink title="This week"/>
     <VCard>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -168,75 +245,174 @@ export default function Habits() {
       <View style={{ marginTop: 12 }}><MiniBar value={summary.due ? summary.done / summary.due : 0} color={p.pgBar} track={p.qTrack}/></View>
     </VCard>
 
-    {notDue.length > 0 && <>
-      <SectionLink title="Not scheduled on this day"/>
-      {notDue.map((habit, index) => <HabitRow key={habit.id} habit={habit} index={index} done={false} streak={habitStreak(habit, completions).current} canAct={false} inactive onPrimary={() => undefined} onMore={() => { setAmountDraft('0'); setMenu(habit); }}/>)}
-    </>}
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 }}><Ionicons name="information-circle-outline" size={14} color={p.muted}/><Text style={{ flex: 1, color: p.muted, fontFamily: fonts.medium, fontSize: 11.5 }}>Tap the circle to complete a habit. Tap ⋯ for edit, history, order and delete.</Text></View>
-
+    <BottomSheet layout="fixed" visible={!!editor} title={editor?.habit ? 'Edit habit' : 'New habit'} onClose={() => setEditor(null)}>{close => editor && <HabitEditor key={editor.habit?.id ?? `new-${editor.mode}`} habit={editor.habit} startDay={startDay} initialMode={editor.mode} close={close} onSaved={applySaved}/>}</BottomSheet>
+    <ManageSheet open={manage} habits={ordered} onClose={() => setManage(false)} onEdit={habit => { setManage(false); setEditor({ habit, mode: 'time' }); }}/>
     <BottomSheet visible={!!menu} title={menu?.name ?? 'Habit'} onClose={() => setMenu(null)}>{close => menu && <View style={{ gap: 6 }}>
       {menu.habit_type === 'quantity' ? <>
-        <Text style={{ color: p.muted, fontFamily: fonts.semibold }}>{menuProgress?.amount ?? 0} / {menuProgress?.target_snapshot ?? menu.target_value ?? 1} {menuProgress?.unit_snapshot ?? menu.unit ?? ''}</Text>
+        <Text style={{ color: p.text, fontFamily: fonts.displayHeavy, fontSize: 18 }}>{amountLabel(menu, menuProgress)}</Text>
         <MiniBar value={(menuProgress?.amount ?? 0) / (menuProgress?.target_snapshot ?? menu.target_value ?? 1)} color={p.pgBar} track={p.qTrack}/>
         {selected <= today && !menu.archived && scheduled(menu, selected) && <>
-          <ActionItem icon="add" tone="ok" label={`Add ${menu.increment ?? 1} ${menu.unit ?? ''}`.trim()} onPress={() => close(() => { void addAmount(menu); })}/>
+          <View style={{ flexDirection: 'row', gap: 6 }}>
+            <View style={{ flex: 1 }}><ActionItem icon="remove" label={`Remove ${formatStep(menu)}`} disabled={!(menuProgress?.amount)} onPress={() => { void changeAmount(menu, -(menu.increment ?? 1)); }}/></View>
+            <View style={{ flex: 1 }}><ActionItem icon="add" tone="ok" label={`Add ${formatStep(menu)}`} onPress={() => { void changeAmount(menu, menu.increment ?? 1); }}/></View>
+          </View>
           <Field label="Set total" value={amountDraft} onChangeText={setAmountDraft} keyboardType="decimal-pad"/>
           <Button title="Save total" kind="ghost" onPress={async () => { await saveAmount(menu); close(); }}/>
           <ActionItem icon="refresh" label="Reset day" onPress={() => confirm('Reset this day’s progress?', () => close(() => { void resetAmount(menu); }), 'This removes the measured progress for this day.', 'Reset')}/>
         </>}
       </> : selected === today && !menu.archived && scheduled(menu, selected) ? <ActionItem icon={isDone(menu) ? 'arrow-undo' : 'checkmark'} tone="ok" label={isDone(menu) ? 'Mark as not done' : 'Mark as done'} onPress={() => close(() => { void setCompletion(menu.id, !isDone(menu)); })}/> : null}
-      <ActionItem icon="create-outline" tone="ed" label="Edit habit" onPress={() => close(() => router.push({ pathname: '/habit-form', params: { id: menu.id } }))}/>
+      <ActionItem icon="create-outline" tone="ed" label="Edit habit" onPress={() => close(() => setEditor({ habit: menu, mode: 'time' }))}/>
       <ActionItem icon="time-outline" label="History" onPress={() => close(() => router.push({ pathname: '/habit-history', params: { id: menu.id } }))}/>
       <View style={{ flexDirection: 'row', gap: 6 }}>
         <View style={{ flex: 1 }}><ActionItem icon="arrow-up" label="Move up" onPress={() => { void move(menu.id, -1); }}/></View>
         <View style={{ flex: 1 }}><ActionItem icon="arrow-down" label="Move down" onPress={() => { void move(menu.id, 1); }}/></View>
       </View>
-      <ActionItem icon="trash-outline" tone="del" label="Delete habit" onPress={() => confirm('Delete habit and its history?', () => close(() => { void deleteHabit(menu.id); }))}/>
+      <ActionItem icon="trash-outline" tone="del" label="Delete habit" onPress={() => confirm(`Delete “${menu.name}”?`, () => close(() => { void deleteHabit(menu.id); }), 'This removes the habit and its completion history.', 'Delete habit')}/>
     </View>}</BottomSheet>
   </Page>;
 }
 
+/** Reference 1 — empty state with one-tap starters. */
+function EmptyHabits({ onPick, onCreate }: { onPick: (starter: StarterHabit) => void; onCreate: () => void }) {
+  const p = usePalette();
+  return <View style={{ gap: 10, marginTop: 6 }}>
+    <View style={{ alignItems: 'center', gap: 8, paddingVertical: 10 }}>
+      <View style={{ width: 72, height: 72, borderRadius: 22, overflow: 'hidden', marginBottom: 6 }}><CubyMark size={72}/></View>
+      <Text style={{ color: p.text, fontFamily: fonts.displayHeavy, fontSize: 21, textAlign: 'center' }}>Start with one small habit</Text>
+      <Text style={{ color: p.muted, fontFamily: fonts.medium, fontSize: 13.5, lineHeight: 19, textAlign: 'center', maxWidth: 290 }}>Pick one below, or make your own. You can change it anytime.</Text>
+    </View>
+    {STARTER_HABITS.map(starter => {
+      const colors = groupColors(p, starter.group);
+      return <MotionPressable key={starter.name} pressScale={0.98} accessibilityRole="button" accessibilityLabel={`Add habit ${starter.name}`} onPress={() => onPick(starter)}
+        style={{ minHeight: 60, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, borderRadius: 18, backgroundColor: p.c8, borderWidth: 1, borderColor: p.c8Line }}>
+        <View style={{ width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.soft }}><HabitGlyph icon={starter.icon} size={18} color={colors.softInk}/></View>
+        <Text style={{ flex: 1, color: p.text, fontFamily: fonts.bold, fontSize: 14.5 }}>{starter.name}</Text>
+        <Ionicons name="add" size={20} color={p.text}/>
+      </MotionPressable>;
+    })}
+    <MotionPressable pressScale={0.98} accessibilityRole="button" onPress={onCreate}
+      style={{ minHeight: 56, marginTop: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 999, backgroundColor: p.text }}>
+      <Ionicons name="add" size={20} color={p.bg}/><Text style={{ color: p.bg, fontFamily: fonts.bold, fontSize: 15.5 }}>Create my own</Text>
+    </MotionPressable>
+  </View>;
+}
+
+/** Thin segmented bar: one segment per habit due, each filled to that habit's progress (partial for measured habits). */
+function SegmentBar({ values, ids }: { values: number[]; ids: string[] }) {
+  const total = values.reduce((sum, value) => sum + value, 0);
+  return <View accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: 100, now: Math.round(values.length ? total / values.length * 100 : 0) }} style={{ flexDirection: 'row', gap: 4 }}>
+    {values.map((value, index) => <Segment key={ids[index]} value={value}/>)}
+  </View>;
+}
+function Segment({ value }: { value: number }) {
+  const p = usePalette();
+  const reduced = useReducedMotion();
+  const fill = useSharedValue(value);
+  useEffect(() => { fill.value = reduced ? value : withTiming(value, { duration: 280 }); }, [fill, value, reduced]);
+  const style = useAnimatedStyle(() => ({ width: `${fill.value * 100}%` }));
+  return <View style={{ flex: 1, height: 5, borderRadius: 3, overflow: 'hidden', backgroundColor: p.qTrack }}>
+    <Animated.View style={[{ height: '100%', borderRadius: 3, backgroundColor: p.g1 }, style]}/>
+  </View>;
+}
+
 function NowMarker() {
   const p = usePalette();
-  return <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginVertical: 2 }}>
+  return <View accessibilityLabel="Now" style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginVertical: 2 }}>
     <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, backgroundColor: p.lime }}><Text style={{ color: '#0B1446', fontFamily: fonts.bold, fontSize: 10.5 }}>Now</Text></View>
     <View style={{ flex: 1, height: 1.5, backgroundColor: p.lime }}/>
   </View>;
 }
 
-/** Timeline / list row: time, icon capsule, label, round check, ⋯ menu. */
-function HabitRow({ habit, time, done, progress, streak, canAct, inactive = false, index, onPrimary, onMore }: { habit: Habit; time?: string; done: boolean; progress?: HabitProgress; streak: number; canAct: boolean; inactive?: boolean; index: number; onPrimary: () => unknown; onMore: () => void }) {
+/** Schedule / Anytime row. Memoised so toggling one habit re-renders only that row. */
+const HabitRow = memo(function HabitRow({ habit, time, hour12, now, done, ratio, progress, streak, canAct, index, onPrimary, onMore }: { habit: Habit; time?: string; hour12: boolean; now: string | null; done: boolean; ratio: number; progress?: HabitProgress; streak: number; canAct: boolean; index: number; onPrimary: () => unknown; onMore: () => void }) {
   const p = usePalette();
+  const reduced = useReducedMotion();
   const entering = useEntering(index);
   const quantity = habit.habit_type === 'quantity';
-  const capsule = index % 2 === 0 ? p.g1 : p.lime;
-  const capsuleInk = capsule === p.lime ? '#0B1446' : p.plInk;
-  const sub = quantity ? `${progress?.amount ?? 0} / ${progress?.target_snapshot ?? habit.target_value ?? 1} ${progress?.unit_snapshot ?? habit.unit ?? ''}`.trim() : habit.frequency === 'quota' ? `${habit.weekly_target}× per week` : habit.frequency === 'days' ? habit.days : 'Every day';
-  const check: VoltIcon = quantity && !done ? 'add' : 'checkmark';
-  return <Animated.View entering={entering} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, opacity: inactive ? 0.6 : 1 }}>
-    {time !== undefined && <Text style={{ width: 46, color: p.muted, fontFamily: fonts.semibold, fontSize: 11.5 }}>{time}</Text>}
-    <View style={{ width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center', backgroundColor: done ? capsule : p.c8, borderWidth: done ? 0 : 1.5, borderColor: p.c8Line }}>
-      <Text style={{ fontSize: 20, color: done ? capsuleInk : p.accent }}>{habit.icon || '•'}</Text>
-    </View>
-    <Pressable accessibilityRole="button" accessibilityLabel={`${habit.name} options`} onPress={onMore} style={{ flex: 1, minWidth: 0, gap: 1 }}>
-      <Text numberOfLines={1} style={{ color: done ? p.muted : p.text, fontFamily: fonts.displayHeavy, fontSize: 15 }}>{habit.name}</Text>
-      <Text numberOfLines={1} style={{ color: p.muted, fontFamily: fonts.medium, fontSize: 11.5 }}>{sub}{streak > 0 ? ` · ${streak} day streak` : ''}</Text>
-      {quantity && <View style={{ marginTop: 4, maxWidth: 160 }}><MiniBar value={(progress?.amount ?? 0) / (progress?.target_snapshot ?? habit.target_value ?? 1)} color={p.pgBar} track={p.qTrack} height={4}/></View>}
-    </Pressable>
-    {!inactive && <MotionPressable pressScale={0.86} disabled={!canAct} accessibilityRole={quantity ? 'button' : 'checkbox'} accessibilityState={{ checked: done, disabled: !canAct }} accessibilityLabel={quantity ? `Add ${habit.increment ?? 1} to ${habit.name}` : habit.name} onPress={() => { void onPrimary(); }}
-      style={{ width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: done ? p.g1 : 'transparent', borderWidth: done ? 0 : 2, borderColor: p.borderStrong, opacity: canAct || done ? 1 : 0.4 }}>
-      {(done || quantity) && <Ionicons name={check} size={17} color={done ? p.plInk : p.accent}/>}
-    </MotionPressable>}
-    <Pressable accessibilityRole="button" accessibilityLabel={`More actions for ${habit.name}`} hitSlop={6} onPress={onMore} style={{ width: 32, height: 34, alignItems: 'center', justifyContent: 'center' }}><Ionicons name="ellipsis-horizontal" size={18} color={p.muted}/></Pressable>
+  const colors = groupColors(p, habitGroup(habit.category));
+  const duration = habitDurationMinutes(habit);
+  const left = time && now ? minutesLeft(time, duration, now) : null;
+  const fill = useSharedValue(done ? 1 : 0);
+  useEffect(() => { fill.value = reduced ? Number(done) : withTiming(Number(done), { duration: 220 }); }, [done, fill, reduced]);
+  const capsuleStyle = useAnimatedStyle(() => ({ backgroundColor: interpolateColor(fill.value, [0, 1], [colors.soft, colors.solid]) }), [colors.soft, colors.solid]);
+  const sub = time ? (left !== null ? `${left} min left` : scheduleLine(time, duration, hour12)) : frequencyLabel(habit);
+  const amount = quantity ? amountLabel(habit, progress) : null;
+  // Taller capsule only when a real duration is stored (references 7: Read 20 min, Study 1 h).
+  const capsuleHeight = duration ? Math.min(108, 52 + Math.round(Math.min(duration, 90) / 90 * 48)) : 52;
+  return <Animated.View entering={entering}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 }}>
+        {time !== undefined && <Text style={{ width: 46, alignSelf: 'flex-start', paddingTop: 6, color: p.muted, fontFamily: fonts.semibold, fontSize: 11.5 }}>{time}</Text>}
+        <Animated.View style={[{ width: 52, height: capsuleHeight, borderRadius: 26, alignItems: 'center', justifyContent: 'center', borderWidth: left !== null && !done ? 2 : 0, borderColor: colors.solid }, capsuleStyle]}>
+          <HabitGlyph icon={habit.icon} size={20} color={done ? colors.ink : colors.softInk} filled={done}/>
+        </Animated.View>
+        <Pressable accessibilityRole="button" accessibilityLabel={`${habit.name} options`} onPress={onMore} style={{ flex: 1, minWidth: 0, gap: 1, paddingVertical: 2 }}>
+          <Text style={{ color: p.muted, fontFamily: fonts.medium, fontSize: 11.5 }}>{sub}{!time && streak > 0 ? ` · ${streak} day streak` : ''}</Text>
+          <Text style={{ color: p.text, fontFamily: fonts.displayHeavy, fontSize: 15, lineHeight: 19 }}>{habit.name}</Text>
+          {amount && <Text style={{ color: done ? p.text : p.muted, fontFamily: fonts.bold, fontSize: 11.5 }}>{amount}</Text>}
+        </Pressable>
+        <Pressable disabled={!canAct} accessibilityRole={quantity ? 'button' : 'checkbox'} accessibilityState={{ checked: done, disabled: !canAct }}
+          accessibilityLabel={quantity ? (done ? `${habit.name}, target reached, ${amount}` : `Add ${habit.increment ?? 1} ${habit.unit ?? ''} to ${habit.name}, ${amount}`) : `Complete ${habit.name}`}
+          accessibilityHint={quantity && done ? 'Use the more actions button to correct the amount' : undefined} hitSlop={6} onPress={() => { void onPrimary(); }}>
+          <ProgressCheck ratio={ratio} done={done} quantity={quantity} enabled={canAct || done} solid={colors.solid} ink={colors.ink}/>
+        </Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel={`More actions for ${habit.name}`} hitSlop={6} onPress={onMore} style={{ width: 30, height: 34, alignItems: 'center', justifyContent: 'center' }}><Ionicons name="ellipsis-horizontal" size={18} color={p.muted}/></Pressable>
+      </View>
   </Animated.View>;
+});
+
+/**
+ * Right-side control. Yes/no: empty circle → filled check. Measured: a ring that
+ * fills to amount/target with "+" inside, turning into the filled check at 100%.
+ */
+const RING = 34, STROKE = 3, RADIUS = (RING - STROKE) / 2, CIRC = 2 * Math.PI * RADIUS;
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+function ProgressCheck({ ratio, done, quantity, enabled, solid, ink }: { ratio: number; done: boolean; quantity: boolean; enabled: boolean; solid: string; ink: string }) {
+  const p = usePalette();
+  const reduced = useReducedMotion();
+  const ring = useSharedValue(ratio);
+  const full = useSharedValue(done ? 1 : 0);
+  useEffect(() => { ring.value = reduced ? ratio : withTiming(ratio, { duration: 320 }); }, [ratio, reduced, ring]);
+  useEffect(() => { full.value = reduced ? Number(done) : withTiming(Number(done), { duration: 200 }); }, [done, full, reduced]);
+  const ringProps = useAnimatedProps(() => ({ strokeDashoffset: CIRC * (1 - ring.value) }));
+  const fillStyle = useAnimatedStyle(() => ({ backgroundColor: interpolateColor(full.value, [0, 1], ['rgba(0,0,0,0)', solid]), transform: [{ scale: 0.92 + 0.08 * full.value }] }), [solid]);
+  return <View style={{ width: RING, height: RING, opacity: enabled ? 1 : 0.4 }}>
+    <Svg width={RING} height={RING} style={{ position: 'absolute' }}>
+      <Circle cx={RING / 2} cy={RING / 2} r={RADIUS} stroke={p.borderStrong} strokeWidth={STROKE - 1} fill="none"/>
+      {quantity && <AnimatedCircle cx={RING / 2} cy={RING / 2} r={RADIUS} stroke={solid} strokeWidth={STROKE} fill="none" strokeLinecap="round"
+        strokeDasharray={`${CIRC} ${CIRC}`} animatedProps={ringProps} transform={`rotate(-90 ${RING / 2} ${RING / 2})`}/>}
+    </Svg>
+    <Animated.View style={[{ width: RING, height: RING, borderRadius: RING / 2, alignItems: 'center', justifyContent: 'center' }, fillStyle]}>
+      {done ? <Ionicons name="checkmark" size={17} color={ink}/> : quantity ? <Ionicons name="add" size={17} color={p.accent}/> : null}
+    </Animated.View>
+  </View>;
+}
+
+/** "Manage": every habit, including ones not due today and archived ones. */
+function ManageSheet({ open, habits, onClose, onEdit }: { open: boolean; habits: Habit[]; onClose: () => void; onEdit: (habit: Habit) => void }) {
+  const p = usePalette();
+  return <BottomSheet visible={open} title="Manage habits" onClose={onClose}>{() => <View style={{ gap: 6 }}>
+    {habits.length ? habits.map(habit => {
+      const colors = groupColors(p, habitGroup(habit.category));
+      const times = reminderTimes(habit);
+      return <MotionPressable key={habit.id} pressScale={0.98} accessibilityRole="button" accessibilityLabel={`Edit ${habit.name}`} onPress={() => onEdit(habit)}
+        style={{ minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 10, borderRadius: 16, backgroundColor: isLight(p) ? p.soft1 : p.card2, opacity: habit.archived ? 0.6 : 1 }}>
+        <View style={{ width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.soft }}><HabitGlyph icon={habit.icon} size={17} color={colors.softInk}/></View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={{ color: p.text, fontFamily: fonts.bold, fontSize: 14.5 }}>{habit.name}</Text>
+          <Text style={{ color: p.muted, fontSize: 12 }}>{habitGroup(habit.category)} · {frequencyLabel(habit)} · {times.length ? times[0] : 'Anytime'}{habit.archived ? ' · Archived' : ''}</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={16} color={p.muted}/>
+      </MotionPressable>;
+    }) : <Text style={{ color: p.muted }}>No habits yet.</Text>}
+  </View>}</BottomSheet>;
 }
 
 /** `.am-b` — action menu item. */
-function ActionItem({ icon, label, onPress, tone }: { icon: VoltIcon; label: string; onPress: () => void; tone?: 'ok' | 'ed' | 'del' }) {
+function ActionItem({ icon, label, onPress, tone, disabled = false }: { icon: VoltIcon; label: string; onPress: () => void; tone?: 'ok' | 'ed' | 'del'; disabled?: boolean }) {
   const p = usePalette();
   const bg = tone === 'ok' ? p.lime : tone === 'ed' ? p.blue : tone === 'del' ? p.g1 : p.c8;
   const fg = tone === 'ok' || tone === 'ed' ? '#0B1446' : tone === 'del' ? p.plInk : p.text;
-  return <MotionPressable pressScale={0.97} accessibilityRole="button" onPress={onPress} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 16, backgroundColor: isLight(p) ? p.soft1 : p.card2 }}>
+  return <MotionPressable pressScale={0.97} accessibilityRole="button" accessibilityState={{ disabled }} disabled={disabled} onPress={onPress} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 16, backgroundColor: isLight(p) ? p.soft1 : p.card2, opacity: disabled ? 0.45 : 1 }}>
     <View style={{ width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: bg }}><Ionicons name={icon} size={18} color={fg}/></View>
     <Text style={{ color: p.text, fontFamily: fonts.bold, fontSize: 15 }}>{label}</Text>
   </MotionPressable>;

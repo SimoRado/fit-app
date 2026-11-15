@@ -15,7 +15,7 @@ import { colors, fonts } from '../../ui/theme';
 import { cards } from '../../core/cards';
 import { gymSchedulePreferenceKey, parseGymSchedule, resolveDayPlan, type GymDayPlan } from '../../core/gymSchedule';
 import { dailyProgressPercent } from '../../core/voltGeometry';
-import { foodEntries, nutritionEnabled, nutritionTarget, type FoodEntry, type NutritionTarget } from '../../data/nutrition';
+import { foodEntries, nutritionTarget, type FoodEntry, type NutritionTarget } from '../../data/nutrition';
 import { sumNutrients, type Meal, type Nutrients } from '../../core/nutrition';
 import { BottomSheet } from '../../ui/BottomSheet';
 import { FoodSheet } from '../../ui/NutritionSheets';
@@ -60,7 +60,7 @@ export default function Home() {
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [foodOpen, setFoodOpen] = useState(false);
   const [monthCursor, setMonthCursor] = useState(() => fromDay(dayKey()));
-  const [nutrition, setNutrition] = useState<{ enabled: boolean; target: NutritionTarget | null; consumed: Nutrients; entries: FoodEntry[] } | null>(null);
+  const [nutrition, setNutrition] = useState<{ target: NutritionTarget | null; consumed: Nutrients; entries: FoodEntry[] } | null>(null);
 
   useEffect(() => {
     if (!profile?.id) return;
@@ -75,8 +75,8 @@ export default function Home() {
 
   useEffect(() => {
     let active = true;
-    Promise.all([nutritionEnabled(), nutritionTarget(selectedDay), foodEntries(selectedDay, selectedDay)])
-      .then(([enabled, target, entries]) => { if (active) setNutrition({ enabled, target, consumed: sumNutrients(entries), entries }); })
+    Promise.all([nutritionTarget(selectedDay), foodEntries(selectedDay, selectedDay)])
+      .then(([target, entries]) => { if (active) setNutrition({ target, consumed: sumNutrients(entries), entries }); })
       .catch(message);
     return () => { active = false; };
   }, [revision, selectedDay]);
@@ -105,10 +105,10 @@ export default function Home() {
   const missionDone = activeMissions.filter(mission => missionProgress(mission, selectedDay, { completions, workouts: training, weights, manual }).done).length;
   const streak = Math.max(0, ...habits.filter(habit => !habit.archived && habit.frequency !== 'quota').map(habit => habitStreak(habit, completions, today).current));
   const selectedWorkout = training.find(workout => workout.day === selectedDay);
-  const caloriesOn = !!nutrition?.enabled && !!nutrition.target?.kcal;
+  const caloriesOn = !!nutrition?.target?.kcal;
 
-  // Daily progress follows the prototype: three rings (calories — or missions when calorie
-  // tracking is off — habits, workout) and an overall percentage averaging the three.
+  // Daily progress follows the prototype: three rings (calories when a target exists,
+  // otherwise missions; habits; workout) and an overall percentage averaging the three.
   const firstRing = caloriesOn ? nutrition!.consumed.kcal / nutrition!.target!.kcal : activeMissions.length ? missionDone / activeMissions.length : null;
   const habitRing = habitItems.length ? habitsDone / habitItems.length : null;
   const workoutRing = selectedWorkout ? 1 : routines.length ? 0 : null;
@@ -147,7 +147,7 @@ export default function Home() {
 
   return <Page title="">
     {/* .top8 — logo, greeting, account avatar */}
-    <View style={{ height: 62, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+    <View style={{ height: 50, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
       <View style={{ width: 40, height: 40, borderRadius: 12, overflow: 'hidden' }}><CubyMark size={40}/></View>
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text numberOfLines={1} accessibilityRole="header" style={{ color: p.text, fontFamily: fonts.displayHeavy, fontSize: 19, letterSpacing: -0.4 }}>Hi {firstName}</Text>
@@ -214,7 +214,7 @@ export default function Home() {
 
     {/* .duo — training and meal cards */}
     <View style={{ flexDirection: 'row', gap: 10 }}>
-      <VCard tone="soft1" onPress={handleWorkoutPress} accessibilityLabel={selectedWorkout ? `View workout ${selectedWorkout.name}` : routine ? `Start ${routine.name}` : 'Open workouts'} style={{ flex: 1, minHeight: 132, padding: 14, gap: 3 }}>
+      <VCard tone="soft1" raised onPress={handleWorkoutPress} accessibilityLabel={selectedWorkout ? `View workout ${selectedWorkout.name}` : routine ? `Start ${routine.name}` : 'Open workouts'} style={{ flex: 1, minHeight: 132, padding: 14, gap: 3 }}>
         <IconBox icon="barbell-outline" size={36} iconSize={18}/>
         <View style={{ position: 'absolute', top: 14, right: 14, width: 34, height: 34, borderRadius: 17, backgroundColor: p.g1, alignItems: 'center', justifyContent: 'center' }}><Ionicons name={selectedWorkout ? 'checkmark' : 'play'} size={15} color={p.plInk}/></View>
         <View style={{ marginTop: 'auto' }}>
@@ -222,8 +222,7 @@ export default function Home() {
           <Text numberOfLines={2} style={{ color: p.muted, fontFamily: fonts.medium, fontSize: 12 }}>{selectedWorkout ? `Done${selectedWorkout.duration_min ? ` · ${selectedWorkout.duration_min} min` : ''}` : routine ? `${plannedRoutine ? 'Planned · ' : ''}${routineExerciseCount} exercise${routineExerciseCount === 1 ? '' : 's'}` : dayPlan?.kind === 'rest' ? 'Rest day' : 'Create your first routine'}</Text>
         </View>
       </VCard>
-      {nutrition?.enabled !== false
-        ? <VCard tone="soft2" onPress={() => setFoodOpen(true)} accessibilityLabel={`Add food to ${mealTitle[nextMeal]}`} style={{ flex: 1, minHeight: 132, padding: 14, gap: 3 }}>
+      <VCard tone="soft2" raised onPress={() => setFoodOpen(true)} accessibilityLabel={`Add food to ${mealTitle[nextMeal]}`} style={{ flex: 1, minHeight: 132, padding: 14, gap: 3 }}>
           <IconBox icon="restaurant-outline" size={36} iconSize={18}/>
           <View style={{ marginTop: 'auto' }}>
             <Text numberOfLines={1} style={{ color: p.text, fontFamily: fonts.displayHeavy, fontSize: 16 }}>{mealTitle[nextMeal]}</Text>
@@ -231,13 +230,6 @@ export default function Home() {
             <View style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8, paddingHorizontal: 11, paddingVertical: 6, borderRadius: 999, backgroundColor: p.g1 }}><Ionicons name="add" size={14} color={p.plInk}/><Text style={{ color: p.plInk, fontFamily: fonts.bold, fontSize: 11.5 }}>Add meal</Text></View>
           </View>
         </VCard>
-        : <VCard tone="soft2" onPress={() => router.push('/(tabs)/habits')} accessibilityLabel="Open habits" style={{ flex: 1, minHeight: 132, padding: 14, gap: 3 }}>
-          <IconBox icon="checkmark-circle-outline" size={36} iconSize={18}/>
-          <View style={{ marginTop: 'auto' }}>
-            <Text style={{ color: p.text, fontFamily: fonts.displayHeavy, fontSize: 16 }}>Habits</Text>
-            <Text style={{ color: p.muted, fontFamily: fonts.medium, fontSize: 12 }}>{habitItems.length - habitsDone} left today</Text>
-          </View>
-        </VCard>}
     </View>
 
     {/* .q8 — daily quote */}

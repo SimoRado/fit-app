@@ -217,13 +217,16 @@ describe('Day / Month / Year date input', () => {
 
   it('is used for every manual date field', () => {
     expect(source('src/ui/BirthDateField.tsx')).toContain('<DateField');
-    for (const path of ['src/app/habit-form.tsx', 'src/app/measurement-form.tsx', 'src/app/weight-form.tsx', 'src/app/workout-form.tsx']) {
+    for (const path of ['src/app/measurement-form.tsx', 'src/app/weight-form.tsx', 'src/app/workout-form.tsx']) {
       const text = source(path);
       expect(text).toContain('<DateField');
       expect(text).not.toContain('(YYYY-MM-DD)"');
     }
     // Food logging inherits the Nutrition calendar's selected date.
     expect(source('src/ui/NutritionSheets.tsx')).not.toContain('<DateField');
+    // New habits start on the Habits calendar's day (today, or a selected future day); edits keep their start date.
+    expect(source('src/ui/HabitEditor.tsx')).not.toContain('<DateField');
+    expect(source('src/ui/HabitEditor.tsx')).toContain('start_date: habit?.start_date ?? startDay');
   });
 });
 

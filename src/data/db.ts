@@ -1,6 +1,7 @@
 import * as SQLite from 'expo-sqlite';
 import { Exercise, Favorite, Habit, HabitCompletion, HabitProgress, Measurement, Mission, MissionCompletion, Preference, Profile, Routine, RoutineExercise, WeightEntry, Workout, WorkoutExercise, WorkoutSet } from '../core/types';
 import { addDays, dayKey, uid } from '../core/date';
+import { nextAmount } from '../core/habitProgress';
 import { startWorkoutTimer } from '../core/workoutTimer';
 import { exerciseSeeds, migrations } from './schema';
 import { trainingWorkoutsQuery } from './queries';
@@ -188,6 +189,21 @@ function scheduleCatalogImport(account: string) {
 
 export async function all<T>(table: string, order = ''): Promise<T[]> { return (await db()).getAllAsync<T>(`SELECT * FROM ${table} ${order}`); }
 export async function one<T>(table: string, id: string): Promise<T | null> { return (await db()).getFirstAsync<T>(`SELECT * FROM ${table} WHERE id = ?`, id); }
+/** Writes a measured habit's amount for a day and keeps its completion record in step (call inside a transaction). */
+async function writeHabitAmount(tx: SQLite.SQLiteDatabase, habitId: string, day: string, compute: (current: number) => number) {
+  const habit = await tx.getFirstAsync<Habit>('SELECT * FROM habits WHERE id=?', habitId);
+  if (!habit || habit.habit_type !== 'quantity') throw Error('Measurable habit not found.');
+  const prior = await tx.getFirstAsync<HabitProgress>('SELECT * FROM habit_progress WHERE habit_id=? AND day=?', habitId, day);
+  const amount = compute(prior?.amount ?? 0);
+  if (!Number.isFinite(amount) || amount < 0 || amount > 100000000) throw Error('Enter a valid nonnegative amount.');
+  const target = prior?.target_snapshot ?? habit.target_value ?? 1;
+  if (amount === 0) await tx.runAsync('DELETE FROM habit_progress WHERE habit_id=? AND day=?', habitId, day);
+  else await tx.runAsync('INSERT INTO habit_progress (id,habit_id,day,amount,target_snapshot,unit_snapshot,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT(habit_id,day) DO UPDATE SET amount=excluded.amount,updated_at=excluded.updated_at', `${habitId}:${day}`, habitId, day, amount, target, prior?.unit_snapshot ?? habit.unit ?? '', new Date().toISOString());
+  if (amount >= target) await tx.runAsync('INSERT OR IGNORE INTO habit_completions VALUES (?,?,?,?)', uid(), habitId, day, new Date().toISOString());
+  else await tx.runAsync('DELETE FROM habit_completions WHERE habit_id=? AND day=?', habitId, day);
+  return amount;
+}
+
 export async function put(table: string, record: Record<string, unknown>) { const cols = Object.keys(record); await (await db()).runAsync(`INSERT INTO ${table} (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')}) ON CONFLICT(id) DO UPDATE SET ${cols.filter(c=>c!=='id').map(c=>`${c}=excluded.${c}`).join(',')}`, ...(Object.values(record) as (string | number | null)[])); }
 export async function remove(table: string, id: string) { await (await db()).runAsync(`DELETE FROM ${table} WHERE id=?`, id); }
 
@@ -215,6 +231,18 @@ export const repo = {
     const existing = await d.getFirstAsync<{ sort_order: number }>('SELECT sort_order FROM habits WHERE id=? AND owner_id=?', h.id, h.owner_id);
     const next = existing ? existing.sort_order : (await d.getFirstAsync<{ n: number }>('SELECT COALESCE(MAX(sort_order),-1)+1 AS n FROM habits WHERE owner_id=?', h.owner_id))?.n ?? 0;
     await put('habits', { ...h, habit_type: h.habit_type ?? 'boolean', target_value: h.target_value ?? 1, unit: h.unit ?? '', increment: h.increment ?? 1, reminder_enabled: h.reminder_enabled ?? Number(!!h.reminder_time), reminder_times: h.reminder_times ?? JSON.stringify(h.reminder_time ? [h.reminder_time] : []), sort_order: h.sort_order ?? next });
+    if ((h.habit_type ?? 'boolean') === 'quantity' && (h.target_value ?? 1) > 0) {
+      // New goal applies from today on; earlier days keep the target they were tracked against.
+      await d.withExclusiveTransactionAsync(async tx => {
+        const today = dayKey();
+        await tx.runAsync('UPDATE habit_progress SET target_snapshot=?, unit_snapshot=? WHERE habit_id=? AND day>=? AND (target_snapshot<>? OR unit_snapshot<>?)', h.target_value ?? 1, h.unit ?? '', h.id, today, h.target_value ?? 1, h.unit ?? '');
+        const rows = await tx.getAllAsync<HabitProgress>('SELECT * FROM habit_progress WHERE habit_id=? AND day>=?', h.id, today);
+        for (const row of rows) {
+          if (row.amount >= row.target_snapshot) await tx.runAsync('INSERT OR IGNORE INTO habit_completions VALUES (?,?,?,?)', uid(), h.id, row.day, new Date().toISOString());
+          else await tx.runAsync('DELETE FROM habit_completions WHERE habit_id=? AND day=?', h.id, row.day);
+        }
+      });
+    }
   },
   moveHabit: async (id: string, direction: -1 | 1) => {
     const d = await db();
@@ -230,16 +258,19 @@ export const repo = {
   setHabitAmount: async (habitId: string, day: string, amount: number) => {
     if (!Number.isFinite(amount) || amount < 0 || amount > 100000000) throw Error('Enter a valid nonnegative amount.');
     const d = await db();
-    await d.withExclusiveTransactionAsync(async tx => {
-      const habit = await tx.getFirstAsync<Habit>('SELECT * FROM habits WHERE id=?', habitId);
-      if (!habit || habit.habit_type !== 'quantity') throw Error('Measurable habit not found.');
-      const prior = await tx.getFirstAsync<HabitProgress>('SELECT * FROM habit_progress WHERE habit_id=? AND day=?', habitId, day);
-      const target = prior?.target_snapshot ?? habit.target_value ?? 1;
-      if (amount === 0) await tx.runAsync('DELETE FROM habit_progress WHERE habit_id=? AND day=?', habitId, day);
-      else await tx.runAsync('INSERT INTO habit_progress (id,habit_id,day,amount,target_snapshot,unit_snapshot,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT(habit_id,day) DO UPDATE SET amount=excluded.amount,updated_at=excluded.updated_at', `${habitId}:${day}`, habitId, day, amount, target, prior?.unit_snapshot ?? habit.unit ?? '', new Date().toISOString());
-      if (amount >= target) await tx.runAsync('INSERT OR IGNORE INTO habit_completions VALUES (?,?,?,?)', uid(), habitId, day, new Date().toISOString());
-      else await tx.runAsync('DELETE FROM habit_completions WHERE habit_id=? AND day=?', habitId, day);
-    });
+    await d.withExclusiveTransactionAsync(async tx => { await writeHabitAmount(tx, habitId, day, () => amount); });
+  },
+  /**
+   * Atomic accumulative step: reads the stored amount and adds `delta` inside one
+   * exclusive transaction, so rapid taps are serialised and never lost or
+   * double-counted. Negative deltas correct a mistaken tap; never below 0.
+   */
+  addHabitAmount: async (habitId: string, day: string, delta: number) => {
+    if (!Number.isFinite(delta) || delta === 0 || Math.abs(delta) > 1000000) throw Error('Enter a valid amount.');
+    const d = await db();
+    let result = 0;
+    await d.withExclusiveTransactionAsync(async tx => { result = await writeHabitAmount(tx, habitId, day, current => nextAmount(current, delta)); });
+    return result;
   },
   toggleHabit: async (id: string, day: string) => { const d = await db(); await d.withExclusiveTransactionAsync(async tx => { const exists = await tx.getFirstAsync('SELECT id FROM habit_completions WHERE habit_id=? AND day=?', id, day); if (exists) await tx.runAsync('DELETE FROM habit_completions WHERE habit_id=? AND day=?', id, day); else await tx.runAsync('INSERT INTO habit_completions VALUES (?,?,?,?)', uid(), id, day, new Date().toISOString()); }); },
   setHabitCompletion: async (id: string, day: string, completed: boolean) => { const d = await db(); if (completed) await d.runAsync('INSERT OR IGNORE INTO habit_completions VALUES (?,?,?,?)', uid(), id, day, new Date().toISOString()); else await d.runAsync('DELETE FROM habit_completions WHERE habit_id=? AND day=?', id, day); },

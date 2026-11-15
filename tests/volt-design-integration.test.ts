@@ -73,11 +73,14 @@ describe('Volt progress geometry', () => {
 });
 
 describe('Volt screens keep the existing engine and the agreed exceptions', () => {
-  it('Habits uses tap interactions only (no swipe or drag gestures)', () => {
+  it('Habits is tap-only (no swipe or drag gestures) with visible controls for every action', () => {
     const habits = source('src/app/(tabs)/habits.tsx');
-    expect(habits).not.toMatch(/PanResponder|Swipeable|GestureDetector|Gesture\.Pan|onTouchMove|onResponderMove/);
+    expect(habits).not.toMatch(/PanResponder|Swipeable|GestureDetector|Gesture\.Pan|onTouchMove|onResponderMove|SwipeRow/);
+    expect(habits).toContain('accessibilityLabel={`More actions for ${habit.name}`}');
+    expect(habits).toMatch(/accessibilityRole=\{quantity \? 'button' : 'checkbox'\}/);
     expect(habits).toContain('repo.setHabitCompletion(id, today, completed)');
-    expect(habits).toContain('repo.setHabitAmount(habit.id, selected, next)');
+    // Measured habits step atomically in SQLite (read-add-write in one transaction).
+    expect(habits).toContain('repo.addHabitAmount(habit.id, day, delta)');
     expect(habits).toContain("router.push({ pathname: '/habit-history', params: { id: menu.id } })");
     expect(habits).toContain('repo.moveHabit(id, direction)');
   });

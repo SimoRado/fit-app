@@ -4,7 +4,7 @@ import { Link } from 'expo-router';
 import { Pressable, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '../../ui/LocalizedText';
-import { Button, Page, message } from '../../ui/components';
+import { Page, message } from '../../ui/components';
 import { BottomSheet } from '../../ui/BottomSheet';
 import { fonts, getAppearancePalette } from '../../ui/theme';
 import { dayKey, fromDay } from '../../core/date';
@@ -12,14 +12,14 @@ import { calorieHeadline, meals, sumNutrients, weekStats, type CalorieDisplay, t
 import { useReducedMotion } from '../../ui/motion';
 import { clampDay, moveSelectionByWeek, startOfWeek, weekDays, weekNavigation } from '../../core/weekCalendar';
 import { WeekCalendar } from '../../ui/WeekCalendar';
-import { calorieDisplay, customFoods, firstNutritionTarget, foodEntries, nutritionEnabled, nutritionTarget, type CustomFood, type FoodEntry, type NutritionTarget } from '../../data/nutrition';
+import { calorieDisplay, customFoods, firstNutritionTarget, foodEntries, nutritionTarget, type CustomFood, type FoodEntry, type NutritionTarget } from '../../data/nutrition';
 import { prepareFoodCatalog } from '../../data/foodCatalog';
 import { useApp } from '../../state/app';
 import { useScreenRevision } from '../../state/useScreenRevision';
 import { FoodSheet, TargetSetup, TargetsSheet } from '../../ui/NutritionSheets';
 import { AnimatedCollapse, AnimatedWeekBar } from '../../ui/MotionBlocks';
 import { MotionPressable } from '../../ui/MotionPressable';
-import { CircleButton, CountUp, EmptyAction, Horseshoe, IconBox, KpiRow, ListRow, MiniBar, PlusDot, RowValue, SectionLink, StatTrio, VCard, usePalette, type VoltIcon } from '../../ui/voltKit';
+import { CircleButton, CountUp, EmptyAction, Horseshoe, KpiRow, ListRow, MiniBar, PlusDot, RowValue, SectionLink, StatTrio, VCard, usePalette, type VoltIcon } from '../../ui/voltKit';
 
 const num = (value: number) => Math.round(value).toLocaleString();
 const dateLabel = (day: string) => new Intl.DateTimeFormat(undefined, { weekday: 'long', day: 'numeric', month: 'short' }).format(fromDay(day));
@@ -83,7 +83,6 @@ export default function NutritionScreen() {
   const [firstTarget, setFirstTarget] = useState<NutritionTarget | null>(null);
   const [display, setDisplay] = useState<CalorieDisplay>('remaining');
   const [foods, setFoods] = useState<CustomFood[]>([]);
-  const [enabled, setEnabled] = useState(true);
   const [ready, setReady] = useState(false);
   const [sheet, setSheet] = useState<'food' | 'targets' | null>(null);
   const [editing, setEditing] = useState<FoodEntry | null>(null);
@@ -92,8 +91,8 @@ export default function NutritionScreen() {
   useEffect(() => {
     let active = true;
     const days = weekDays(weekStartDay, 1);
-    void Promise.all([foodEntries(days[0], days[6]), Promise.all(days.map(nutritionTarget)), nutritionTarget(today), customFoods(), nutritionEnabled(), firstNutritionTarget(), calorieDisplay()])
-      .then(([nextEntries, nextTargets, nextCurrentTarget, nextFoods, nextEnabled, nextFirst, nextDisplay]) => { if (active) { setEntries(nextEntries); setTargets(nextTargets); setLoadedWeek(weekStartDay); setCurrentTarget(nextCurrentTarget); setFoods(nextFoods); setEnabled(nextEnabled); setFirstTarget(nextFirst); setDisplay(nextDisplay); setReady(true); } })
+    void Promise.all([foodEntries(days[0], days[6]), Promise.all(days.map(nutritionTarget)), nutritionTarget(today), customFoods(), firstNutritionTarget(), calorieDisplay()])
+      .then(([nextEntries, nextTargets, nextCurrentTarget, nextFoods, nextFirst, nextDisplay]) => { if (active) { setEntries(nextEntries); setTargets(nextTargets); setLoadedWeek(weekStartDay); setCurrentTarget(nextCurrentTarget); setFoods(nextFoods); setFirstTarget(nextFirst); setDisplay(nextDisplay); setReady(true); } })
       .catch(message);
     return () => { active = false; };
   }, [revision, weekStartDay, today]);
@@ -122,9 +121,9 @@ export default function NutritionScreen() {
   const moveWeek = (offset: number) => setSelected(current => moveSelectionByWeek(current, Math.sign(offset), rules));
   const p = palette;
   const headline = calorieHeadline(total.kcal, selectedTarget?.kcal ?? null, display);
-  const needsSetup = ready && enabled && !firstTarget;
+  const needsSetup = ready && !firstTarget;
   return <Page title="Nutrition" eyebrow={view === 'week' ? 'This week' : selected === today ? 'Today' : dateLabel(selected)} headerAction={<CircleButton icon="options-outline" label="Nutrition targets" onPress={() => setSheet('targets')}/>}>
-    {!ready ? <Text style={{ color: p.muted }}>Loading nutrition…</Text> : !enabled ? <VCard style={{ alignItems: 'center', gap: 12, paddingVertical: 36 }}><IconBox icon="restaurant-outline" size={48} radius={16} background={p.soft1}/><Text style={{ fontFamily: fonts.displayHeavy, fontSize: 17, color: p.text }}>Calorie tracking is off</Text><Text style={{ color: p.muted, textAlign: 'center' }}>Turn it on to log meals and see your daily targets.</Text><Button title="Turn on" onPress={() => setSheet('targets')}/></VCard> : needsSetup ? <TargetSetup day={today} onSaved={afterChange}/> : view === 'today' ? <Animated.View entering={reduced ? undefined : FadeIn.duration(320)} style={{ gap: 16 }}>
+    {!ready ? <Text style={{ color: p.muted }}>Loading nutrition…</Text> : needsSetup ? <TargetSetup day={today} onSaved={afterChange}/> : view === 'today' ? <Animated.View entering={reduced ? undefined : FadeIn.duration(320)} style={{ gap: 16 }}>
       <WeekCalendar selected={selected} onSelect={setSelected} rules={rules} todayLabel="Back to today"
         marker={day => summaries.find(item => item.day === day)?.logged ? <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: day === selected ? p.plInk : p.g1 }}/> : null}/>
       <VCard>
@@ -157,6 +156,6 @@ export default function NutritionScreen() {
     </>}
     <Text style={{ color: p.muted, fontSize: 11, marginTop: 20 }}>Food data: <Link href="https://www.opennutrition.app" style={{ textDecorationLine: 'underline' }}>OpenNutrition</Link> (ODbL). Includes data © <Link href="https://world.openfoodfacts.org" style={{ textDecorationLine: 'underline' }}>Open Food Facts contributors</Link>.</Text>
     <BottomSheet layout="fixed" visible={sheet === 'food'} title={editing ? 'Edit entry' : 'Add food'} onClose={() => setSheet(null)}>{close => <FoodSheet key={editing?.id ?? `${meal}:${selected}`} entry={editing} meal={meal} day={selected} close={close} onSaved={afterFoodChange}/>}</BottomSheet>
-    <BottomSheet visible={sheet === 'targets'} title="Nutrition settings" onClose={() => setSheet(null)}>{close => <TargetsSheet day={today} target={currentTarget} enabled={enabled} display={display} foods={foods} close={close} onSaved={afterChange} onDisplayChange={setDisplay}/>}</BottomSheet>
+    <BottomSheet visible={sheet === 'targets'} title="Nutrition settings" onClose={() => setSheet(null)}>{close => <TargetsSheet day={today} target={currentTarget} display={display} foods={foods} close={close} onSaved={afterChange} onDisplayChange={setDisplay}/>}</BottomSheet>
   </Page>;
 }
