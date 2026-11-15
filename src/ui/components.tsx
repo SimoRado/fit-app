@@ -11,6 +11,7 @@ import { Text } from './LocalizedText';
 import { useReducedMotion, useTabMotion } from './motion';
 import { PageReveal } from './PageReveal';
 import { MotionPressable } from './MotionPressable';
+import { GraffitiBackground } from './GraffitiBackground';
 
 export const styles = {
   get page() { return { flex: 1 as const, backgroundColor: colors.bg }; },
@@ -62,11 +63,13 @@ export function Page({ title, children, headerAction, eyebrow, headerContent, fo
       </View>}
       {titleNode}
     </View>;
-  const pageContent = <ScrollView style={styles.page} automaticallyAdjustKeyboardInsets contentContainerStyle={[styles.content, { paddingHorizontal: spacing.screen, paddingTop: insets.top + 4, paddingBottom: Math.max(insets.bottom, 16) + (tabRoute ? 96 : footer ? 104 : 42), direction: language === 'ar' ? 'rtl' : 'ltr' }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+  // Transparent so the fixed graffiti layer shows through, like the prototype's `.screen` over `.viewport::before`.
+  const pageContent = <ScrollView style={[styles.page, { backgroundColor: 'transparent' }]} automaticallyAdjustKeyboardInsets contentContainerStyle={[styles.content, { paddingHorizontal: spacing.screen, paddingTop: insets.top + 4, paddingBottom: Math.max(insets.bottom, 16) + (tabRoute ? 96 : footer ? 104 : 42), direction: language === 'ar' ? 'rtl' : 'ltr' }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
         {(!!title || showBack || headerAction || headerContent) && header}
         {children}
       </ScrollView>;
   return <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <GraffitiBackground fade={pathname !== '/onboarding'}/>
     <View style={{ flex: 1 }}>
       {tabRoute ? <PageReveal sequence={revealActive ? transition.sequence : 0}>{pageContent}</PageReveal> : pageContent}
     </View>
