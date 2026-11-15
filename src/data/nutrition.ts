@@ -1,6 +1,7 @@
 import { db } from './db';
 import { uid, validDay } from '../core/date';
-import { FoodInput, Meal, Nutrients, validateFood } from '../core/nutrition';
+import { FoodInput, Meal, Nutrients, parseCalorieDisplay, pickRecentFoods, recentFoodIdentity, validateFood, type CalorieDisplay } from '../core/nutrition';
+import type { FoodUnit } from '../core/foodUnits';
 
 export type NutritionTarget = Nutrients & { id: string; owner_id: string; effective_day: string; created_at: string };
 export type CustomFood = { id: string; owner_id: string; name: string; kcal_100: number; protein_100: number; carbs_100: number; fat_100: number; created_at: string };
@@ -37,11 +38,67 @@ export async function saveNutritionTarget(day: string, nutrients: Nutrients) {
     else await tx.runAsync('INSERT INTO nutrition_targets VALUES (?,?,?,?,?,?,?,?)', `${id}:${day}`, id, day, nutrients.kcal, nutrients.protein, nutrients.carbs, nutrients.fat, new Date().toISOString());
   });
 }
+/** The first target ever saved. Shown for days before any target existed so a
+ * newly set goal also gives earlier diary days a meaningful ring. */
+export async function firstNutritionTarget(): Promise<NutritionTarget | null> {
+  const id = await owner();
+  return (await db()).getFirstAsync<NutritionTarget>('SELECT * FROM nutrition_targets WHERE owner_id=? ORDER BY effective_day ASC LIMIT 1', id);
+}
+const CALORIE_DISPLAY_KEY = 'nutrition:calorie-display';
+export async function calorieDisplay(): Promise<CalorieDisplay> {
+  const row = await (await db()).getFirstAsync<{ value: string }>('SELECT value FROM preferences WHERE key=?', CALORIE_DISPLAY_KEY);
+  return parseCalorieDisplay(row?.value);
+}
+export async function setCalorieDisplay(mode: CalorieDisplay) {
+  await (await db()).runAsync('INSERT OR REPLACE INTO preferences(key,value) VALUES (?,?)', CALORIE_DISPLAY_KEY, parseCalorieDisplay(mode));
+}
+
+export type RecentFood = { key: string; food: ReusableFood; unit: SavedFoodUnit | null };
+/** Up to 10 distinct foods from the diary, most recently logged first. Derived
+ * from saved entries, so only successfully logged foods appear. */
+export async function recentFoods(limit = 10): Promise<RecentFood[]> {
+  const id = await owner();
+  const d = await db();
+  const rows = await d.getAllAsync<FoodEntry>('SELECT * FROM food_entries WHERE owner_id=? ORDER BY created_at DESC LIMIT 300', id);
+  const picked = pickRecentFoods(rows, limit);
+  if (!picked.length) return [];
+  const prefs = await d.getAllAsync<{ key: string; value: string }>(`SELECT key,value FROM preferences WHERE key IN (${picked.map(() => '?').join(',')})`, ...picked.map(entry => `food-unit:${entry.id}`));
+  const units = new Map(prefs.map(row => [row.key, row.value]));
+  return picked.map(entry => {
+    const per100 = !!entry.grams && entry.kcal_100 !== null && entry.protein_100 !== null && entry.carbs_100 !== null && entry.fat_100 !== null;
+    let unit: SavedFoodUnit | null = null;
+    try {
+      const parsed = JSON.parse(units.get(`food-unit:${entry.id}`) ?? 'null') as SavedFoodUnit | null;
+      if (parsed && typeof parsed.unit === 'string' && Number.isFinite(parsed.quantity) && parsed.quantity > 0) unit = parsed;
+    } catch { /* fall back to grams */ }
+    return {
+      key: recentFoodIdentity(entry),
+      unit: per100 ? unit : null,
+      food: {
+        key: `recent:${entry.id}`, name: entry.name, basis: per100 ? '100g' : 'serving',
+        nutrients: per100 ? { kcal: entry.kcal_100!, protein: entry.protein_100!, carbs: entry.carbs_100!, fat: entry.fat_100! } : { kcal: entry.kcal, protein: entry.protein, carbs: entry.carbs, fat: entry.fat },
+        foodId: entry.food_id, catalogId: entry.catalog_food_id, grams: per100 ? entry.grams : null,
+      },
+    };
+  });
+}
 export async function foodEntries(start: string, end: string): Promise<FoodEntry[]> {
   const id = await owner();
   return (await db()).getAllAsync<FoodEntry>('SELECT * FROM food_entries WHERE owner_id=? AND day BETWEEN ? AND ? ORDER BY day DESC, created_at DESC', id, start, end);
 }
-export async function saveFoodEntry(input: FoodInput, options: { id?: string; foodId?: string | null; catalogId?: string | null; per100?: Nutrients | null; saveCustom?: boolean } = {}) {
+export type SavedFoodUnit = { unit: FoodUnit; quantity: number };
+export async function foodEntryUnit(entryId: string): Promise<SavedFoodUnit | null> {
+  const id = await owner();
+  const d = await db();
+  if (!(await d.getFirstAsync('SELECT 1 FROM food_entries WHERE id=? AND owner_id=?', entryId, id))) return null;
+  const row = await d.getFirstAsync<{ value: string }>('SELECT value FROM preferences WHERE key=?', `food-unit:${entryId}`);
+  if (!row) return null;
+  try {
+    const parsed = JSON.parse(row.value) as SavedFoodUnit;
+    return typeof parsed.unit === 'string' && Number.isFinite(parsed.quantity) && parsed.quantity > 0 ? parsed : null;
+  } catch { return null; }
+}
+export async function saveFoodEntry(input: FoodInput, options: { id?: string; foodId?: string | null; catalogId?: string | null; per100?: Nutrients | null; saveCustom?: boolean; enteredUnit?: SavedFoodUnit | null } = {}) {
   const valid = validateFood(input);
   const id = await owner();
   const d = await db();
@@ -59,12 +116,18 @@ export async function saveFoodEntry(input: FoodInput, options: { id?: string; fo
       await tx.runAsync('INSERT INTO custom_foods VALUES (?,?,?,?,?,?,?,?)', foodId, id, valid.name, reference.kcal, reference.protein, reference.carbs, reference.fat, now);
     }
     await tx.runAsync('INSERT INTO food_entries(id,owner_id,food_id,day,meal,name,grams,kcal,protein,carbs,fat,kcal_100,protein_100,carbs_100,fat_100,created_at,catalog_food_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET food_id=excluded.food_id,day=excluded.day,meal=excluded.meal,name=excluded.name,grams=excluded.grams,kcal=excluded.kcal,protein=excluded.protein,carbs=excluded.carbs,fat=excluded.fat,kcal_100=excluded.kcal_100,protein_100=excluded.protein_100,carbs_100=excluded.carbs_100,catalog_food_id=excluded.catalog_food_id', entryId, id, foodId, valid.day, valid.meal, valid.name, valid.grams ?? null, valid.kcal, valid.protein, valid.carbs, valid.fat, reference?.kcal ?? null, reference?.protein ?? null, reference?.carbs ?? null, reference?.fat ?? null, now, options.catalogId ?? null);
+    if (options.enteredUnit && Number.isFinite(options.enteredUnit.quantity) && options.enteredUnit.quantity > 0 && valid.grams) {
+      await tx.runAsync('INSERT OR REPLACE INTO preferences(key,value) VALUES (?,?)', `food-unit:${entryId}`, JSON.stringify(options.enteredUnit));
+    } else await tx.runAsync('DELETE FROM preferences WHERE key=?', `food-unit:${entryId}`);
   });
   return entryId;
 }
 export async function deleteFoodEntry(entryId: string) {
   const id = await owner();
-  await (await db()).runAsync('DELETE FROM food_entries WHERE id=? AND owner_id=?', entryId, id);
+  await (await db()).withExclusiveTransactionAsync(async tx => {
+    await tx.runAsync('DELETE FROM food_entries WHERE id=? AND owner_id=?', entryId, id);
+    await tx.runAsync('DELETE FROM preferences WHERE key=?', `food-unit:${entryId}`);
+  });
 }
 export async function customFoods(): Promise<CustomFood[]> {
   const id = await owner();

@@ -3,6 +3,7 @@ const UNIT_ID = /^ca-app-pub-\d+\/\d+$/;
 const IOS_SAMPLE_APP_ID = 'ca-app-pub-3940256099942544~1458002511';
 const withLocalAndroidBuildSettings = require('./plugins/withLocalAndroidBuildSettings');
 const withAndroidWorkManagerRoomKeepRule = require('./plugins/withAndroidWorkManagerRoomKeepRule');
+const withAndroidDevVariant = require('./plugins/withAndroidDevVariant');
 
 module.exports = ({ config }) => {
   const androidAppId = process.env.GOOGLE_ADMOB_APP_ID;
@@ -22,6 +23,7 @@ module.exports = ({ config }) => {
       ...(config.plugins ?? []),
       withLocalAndroidBuildSettings,
       withAndroidWorkManagerRoomKeepRule,
+      withAndroidDevVariant,
       ['react-native-google-mobile-ads', {
         androidAppId,
         // No iOS ad requests are made. This official sample App ID keeps the

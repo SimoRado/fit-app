@@ -6,6 +6,10 @@ const config = getSentryExpoConfig(__dirname, {
   enableSourceContextInDevelopment: false,
 });
 
+// Limit parallel asset transforms only for local APK builds. The full bundled
+// food catalog is retained; everyday Metro development keeps its normal pool.
+if (process.env.CUBYFIT_LOCAL_APK_BUILD === 'true') config.maxWorkers = 1;
+
 // The complete OpenNutrition catalog is a verified gzip archive. Treat it as
 // a static Expo asset so standalone binaries can initialize the local SQLite
 // file without requiring Metro or a network request.

@@ -6,9 +6,11 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { convexTest } from 'convex-test';
 import { migrations } from '../src/data/schema';
-import { orderOutbox, type OutboxRow } from '../src/data/syncOrder';
+import { orderOutbox, upsertOrder, type OutboxRow, type SyncKind } from '../src/data/syncOrder';
+import { syncTables } from '../src/data/syncSchema';
 import { cloudUpsertSql } from '../src/data/syncSql';
 import schema from '../convex/schema';
+import { syncRecordFields } from '../convex/syncContract';
 import { api } from '../convex/_generated/api';
 
 const modules = import.meta.glob('../convex/**/*.{ts,js}');
@@ -17,6 +19,15 @@ const habit = { id: 'habit-1', owner_id: 'profile-1', name: 'Walk', description:
 const op = (n: number) => n.toString(16).padStart(32, '0');
 
 describe('durable SQLite queue', () => {
+  it('keeps every synchronized SQLite column in the strict server contract', () => {
+    const db = new DatabaseSync(':memory:');
+    for (const migration of migrations) db.exec(migration);
+    for (const table of syncTables) {
+      const columns = (db.prepare(`PRAGMA table_info(${table.name})`).all() as { name: string }[]).map(row => row.name);
+      expect([...syncRecordFields[table.name]].sort(), table.name).toEqual(columns.sort());
+    }
+    db.close();
+  });
   it('restores composite-key records, including rows with no mutable columns', () => {
     const db = new DatabaseSync(':memory:');
     for (const migration of migrations) db.exec(migration);
@@ -63,9 +74,109 @@ describe('durable SQLite queue', () => {
       reopened.close();
     } finally { rmSync(file, { force: true }); rmdirSync(folder); }
   });
+  it('keeps failure diagnostics across restart without acknowledging the operation', () => {
+    const folder = mkdtempSync(join(tmpdir(), 'fitapp-sync-failure-'));
+    const file = join(folder, 'account.db');
+    try {
+      const first = new DatabaseSync(file);
+      for (const migration of migrations) first.exec(migration);
+      first.exec("UPDATE sync_control SET choice='enabled' WHERE id=1");
+      first.prepare('INSERT INTO profile VALUES (?,?,?,?,?,?,?,?,?,?,?)').run(...Object.values(profile));
+      const queued = first.prepare("SELECT kind,record_id,operation_id FROM sync_outbox WHERE kind='profile'").get() as { kind: string; record_id: string; operation_id: string };
+      first.prepare('INSERT INTO sync_failures VALUES (?,?,?,?,?,?,?)').run(queued.kind, queued.record_id, queued.operation_id, 'validation', 'Rejected record', 1, 0);
+      first.close();
+      const reopened = new DatabaseSync(file);
+      expect(reopened.prepare('SELECT count(*) AS n FROM sync_outbox').get()?.n).toBe(1);
+      expect(reopened.prepare('SELECT category FROM sync_failures').get()?.category).toBe('validation');
+      reopened.close();
+    } finally { rmSync(file, { force: true }); rmdirSync(folder); }
+  });
+  it('records a failure only while its exact queued operation remains current', () => {
+    const db = new DatabaseSync(':memory:');
+    for (const migration of migrations) db.exec(migration);
+    db.exec("UPDATE sync_control SET choice='enabled' WHERE id=1");
+    db.prepare('INSERT INTO profile VALUES (?,?,?,?,?,?,?,?,?,?,?)').run(...Object.values(profile));
+    const queued = db.prepare("SELECT kind,record_id,operation_id FROM sync_outbox WHERE kind='profile'").get() as { kind: string; record_id: string; operation_id: string };
+    const sql = `INSERT INTO sync_failures(kind,record_id,operation_id,category,detail,attempts,next_retry_at)
+      SELECT kind,record_id,operation_id,?,?,?,? FROM sync_outbox WHERE kind=? AND record_id=? AND operation_id=?
+      ON CONFLICT(kind,record_id,operation_id) DO UPDATE SET category=excluded.category,detail=excluded.detail,attempts=excluded.attempts,next_retry_at=excluded.next_retry_at`;
+    db.prepare(sql).run('validation','Rejected',1,0,queued.kind,queued.record_id,queued.operation_id);
+    expect(db.prepare('SELECT count(*) AS n FROM sync_failures').get()?.n).toBe(1);
+    db.prepare('UPDATE profile SET name=? WHERE id=?').run('Updated', profile.id);
+    db.prepare(sql).run('validation','Rejected',1,0,queued.kind,queued.record_id,queued.operation_id);
+    const current = db.prepare("SELECT operation_id FROM sync_outbox WHERE kind='profile'").get() as { operation_id: string };
+    expect(current.operation_id).not.toBe(queued.operation_id);
+    expect(db.prepare('SELECT count(*) AS n FROM sync_failures WHERE operation_id=?').get(current.operation_id)?.n).toBe(0);
+    db.close();
+  });
 });
 
 describe('authenticated cloud sync', () => {
+  it('accepts and deletes representative records for every synchronized entity', async () => {
+    const local = new DatabaseSync(':memory:');
+    local.exec('PRAGMA foreign_keys=ON');
+    for (const migration of migrations) local.exec(migration);
+    local.prepare('INSERT INTO profile VALUES (?,?,?,?,?,?,?,?,?,?,?)').run(...Object.values(profile));
+    local.exec(`
+      INSERT INTO exercises VALUES ('exercise-1','Custom','weight_reps',1);
+      INSERT INTO habits (id,owner_id,name,description,category,icon,frequency,days,weekly_target,start_date,archived,reminder_time,created_at,reminder_enabled,reminder_times) VALUES ('habit-1','profile-1','Walk','','Fitness','x','daily','',3,'2026-11-15',0,NULL,'2026-11-15T12:00:00.000Z',1,'["09:30"]');
+      INSERT INTO habit_completions VALUES ('completion-1','habit-1','2026-11-15','2026-11-15T12:00:00.000Z');
+      INSERT INTO habit_progress VALUES ('habit-1:2026-11-15','habit-1','2026-11-15',1,1,'','2026-11-15T12:00:00.000Z');
+      INSERT INTO missions VALUES ('mission-1','profile-1','Walk','manual',1,'daily',1,'2026-11-15T12:00:00.000Z');
+      INSERT INTO mission_completions VALUES ('mission-completion-1','mission-1','2026-11-15');
+      INSERT INTO routines VALUES ('routine-1','profile-1','Test','2026-11-15T12:00:00.000Z');
+      INSERT INTO routine_exercises VALUES ('routine-exercise-1','routine-1','exercise-1',0);
+      INSERT INTO workouts (id,owner_id,name,day,started_at,duration_min,notes,completed,created_at,session_status,elapsed_seconds,running_since_ms,paused_since_ms,paused_seconds,finished_at_ms) VALUES ('workout-1','profile-1','Test','2026-11-15','2026-11-15T12:00:00.000Z',NULL,'',0,'2026-11-15T12:00:00.000Z','running',60,1794744000000,NULL,0,NULL);
+      INSERT INTO workout_exercises VALUES ('workout-exercise-1','workout-1','exercise-1',0);
+      INSERT INTO workout_sets (id,workout_exercise_id,set_number,reps,weight_kg,duration_sec,note,completed) VALUES ('set-1','workout-exercise-1',1,10,20,NULL,'',1);
+      INSERT INTO weights VALUES ('weight-1','profile-1','2026-11-15',75,'','2026-11-15T12:00:00.000Z');
+      INSERT INTO measurements VALUES ('measurement-1','profile-1','2026-11-15','waist',80,'cm');
+      INSERT INTO rest_days VALUES ('profile-1','2026-11-15');
+      INSERT INTO favorites VALUES ('home','profile-1');
+      INSERT INTO preferences VALUES ('nutrition:calorie-display','remaining');
+      INSERT INTO nutrition_preferences VALUES ('profile-1',1);
+      INSERT INTO nutrition_targets VALUES ('profile-1:2026-11-15','profile-1','2026-11-15',2000,100,200,60,'2026-11-15T12:00:00.000Z');
+      INSERT INTO custom_foods VALUES ('custom-food-1','profile-1','Test food',100,1,20,1,'2026-11-15T12:00:00.000Z');
+      INSERT INTO food_entries (id,owner_id,food_id,day,meal,name,grams,kcal,protein,carbs,fat,kcal_100,protein_100,carbs_100,fat_100,created_at,catalog_food_id) VALUES ('entry-1','profile-1','custom-food-1','2026-11-15','lunch','Test food',100,100,1,20,1,100,1,20,1,'2026-11-15T12:00:00.000Z','fd_2dObzdqa6o2J');
+    `);
+    const records = new Map<SyncKind, { id: string; payload: string }>();
+    const idFor = (kind: SyncKind, row: Record<string, string | number | null>) => kind === 'preferences' ? String(row.key)
+      : kind === 'nutrition_preferences' ? String(row.owner_id)
+      : kind === 'favorites' ? `${row.owner_id}:${row.card_id}`
+      : kind === 'rest_days' ? `${row.owner_id}:${row.day}`
+      : kind === 'habit_completions' || kind === 'habit_progress' ? `${row.habit_id}:${row.day}`
+      : kind === 'mission_completions' ? `${row.mission_id}:${row.day}` : String(row.id);
+    for (const kind of upsertOrder) {
+      const row = local.prepare(`SELECT * FROM ${kind}`).get() as Record<string, string | number | null>;
+      expect(row, kind).toBeTruthy();
+      records.set(kind, { id: idFor(kind, row), payload: JSON.stringify(row) });
+    }
+    local.close();
+    const t = convexTest(schema, modules);
+    const user = t.withIdentity({ subject: 'user_A', issuer: 'https://clerk.example' });
+    for (const [index, kind] of upsertOrder.entries()) {
+      const record = records.get(kind)!;
+      expect(await user.mutation(api.sync.apply, { kind, clientId: record.id, payload: record.payload, expectedRevision: 0, operationId: op(100 + index) }), kind).toMatchObject({ status: 'applied', revision: 1 });
+    }
+    for (const [index, kind] of [...upsertOrder].reverse().entries()) {
+      const record = records.get(kind)!;
+      expect(await user.mutation(api.sync.apply, { kind, clientId: record.id, payload: null, expectedRevision: 1, operationId: op(200 + index) }), kind).toMatchObject({ status: 'applied', revision: 2 });
+    }
+    const page = await user.query(api.sync.page, { paginationOpts: { numItems: 100, cursor: null } });
+    expect(page.page).toHaveLength(upsertOrder.length);
+    expect(page.page.every(row => row.deleted)).toBe(true);
+  });
+  it('accepts current workout session fields, catalog food IDs and reminder times', async () => {
+    const t = convexTest(schema, modules);
+    const user = t.withIdentity({ subject: 'user_A', issuer: 'https://clerk.example' });
+    await user.mutation(api.sync.apply, { kind: 'profile', clientId: profile.id, payload: JSON.stringify(profile), expectedRevision: 0, operationId: op(21) });
+    const workout = { id: 'workout-1', owner_id: profile.id, name: 'Test', day: '2026-11-15', started_at: '2026-11-15T12:00:00.000Z', duration_min: null, notes: '', completed: 0, created_at: '2026-11-15T12:00:00.000Z', session_status: 'running', elapsed_seconds: 60, running_since_ms: 1794744000000, paused_since_ms: null, paused_seconds: 0, finished_at_ms: null };
+    expect(await user.mutation(api.sync.apply, { kind: 'workouts', clientId: workout.id, payload: JSON.stringify(workout), expectedRevision: 0, operationId: op(22) })).toMatchObject({ status: 'applied' });
+    const currentHabit = { ...habit, habit_type: 'boolean', target_value: 1, unit: '', increment: 1, reminder_enabled: 1, reminder_times: '["09:30"]', sort_order: 0 };
+    expect(await user.mutation(api.sync.apply, { kind: 'habits', clientId: habit.id, payload: JSON.stringify(currentHabit), expectedRevision: 0, operationId: op(23) })).toMatchObject({ status: 'applied' });
+    const food = { id: 'food-1', owner_id: profile.id, food_id: null, day: '2026-11-15', meal: 'lunch', name: 'Test food', grams: 100, kcal: 100, protein: 1, carbs: 20, fat: 1, kcal_100: 100, protein_100: 1, carbs_100: 20, fat_100: 1, created_at: '2026-11-15T12:00:00.000Z', catalog_food_id: 'fd_2dObzdqa6o2J' };
+    expect(await user.mutation(api.sync.apply, { kind: 'food_entries', clientId: food.id, payload: JSON.stringify(food), expectedRevision: 0, operationId: op(24) })).toMatchObject({ status: 'applied' });
+  });
   it('rejects unauthenticated operations and isolates owners', async () => {
     const t = convexTest(schema, modules);
     const args = { kind: 'profile' as const, clientId: profile.id, payload: JSON.stringify(profile), expectedRevision: 0, operationId: op(1) };

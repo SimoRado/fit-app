@@ -27,6 +27,48 @@ export function parseNumber(text: string, label: string, max: number, optional =
   if (!Number.isFinite(value) || value < 0 || value > max) throw Error(`${label} must be between 0 and ${max}.`);
   return value;
 }
+/** Stable identity for "the same food" across diary entries. */
+export function recentFoodIdentity(entry: { catalog_food_id: string | null; food_id: string | null; name: string }) {
+  if (entry.catalog_food_id) return `catalog:${entry.catalog_food_id}`;
+  if (entry.food_id) return `food:${entry.food_id}`;
+  return `name:${entry.name.trim().toLowerCase()}`;
+}
+/** Most recently logged first, one row per food identity, at most `limit`. */
+export function pickRecentFoods<T extends { catalog_food_id: string | null; food_id: string | null; name: string; created_at: string }>(entries: T[], limit = 10): T[] {
+  const ordered = [...entries].sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0));
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const entry of ordered) {
+    const key = recentFoodIdentity(entry);
+    if (seen.has(key)) continue;
+    seen.add(key); out.push(entry);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+export type CalorieDisplay = 'remaining' | 'consumed';
+export const parseCalorieDisplay = (value: string | null | undefined): CalorieDisplay => value === 'consumed' ? 'consumed' : 'remaining';
+/** Big ring number and label. Same logs and target in both modes; only the presentation differs. */
+export function calorieHeadline(consumed: number, target: number | null, mode: CalorieDisplay) {
+  if (target === null || mode === 'consumed') return { value: consumed, label: 'kcal consumed', over: target !== null && consumed > target };
+  const left = target - consumed;
+  return left >= 0 ? { value: left, label: 'kcal left', over: false } : { value: -left, label: 'kcal over target', over: true };
+}
+
+export type TargetInput = { kcal: string; protein: string; carbs: string; fat: string };
+/** Validates the targets form. Calories required and positive; macros optional (blank = 0). */
+export function parseTargets(input: TargetInput): Nutrients {
+  const kcal = parseNumber(input.kcal, 'Calorie target', 10000);
+  if (kcal === null || kcal <= 0) throw Error('Calorie target must be above zero.');
+  return {
+    kcal,
+    protein: parseNumber(input.protein, 'Protein target', 2000, true) ?? 0,
+    carbs: parseNumber(input.carbs, 'Carbohydrate target', 2000, true) ?? 0,
+    fat: parseNumber(input.fat, 'Fat target', 2000, true) ?? 0,
+  };
+}
+
 export function weekStats(days: { logged: boolean; nutrients: Nutrients; target: Nutrients | null }[]) {
   const logged = days.filter(day => day.logged);
   const sum = sumNutrients(logged.map(day => day.nutrients));

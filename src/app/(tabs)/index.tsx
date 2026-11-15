@@ -9,9 +9,11 @@ import { habitStreak, missionProgress, scheduled } from '../../core/logic';
 import { Habit, HabitCompletion, HabitProgress, Mission, MissionCompletion, Routine, RoutineExercise, WeightEntry, Workout } from '../../core/types';
 import { repo } from '../../data/db';
 import { useApp } from '../../state/app';
+import { useScreenRevision } from '../../state/useScreenRevision';
 import { Button, Page, message } from '../../ui/components';
 import { colors, fonts } from '../../ui/theme';
 import { cards } from '../../core/cards';
+import { gymSchedulePreferenceKey, parseGymSchedule, resolveDayPlan, type GymDayPlan } from '../../core/gymSchedule';
 import { dailyProgressPercent } from '../../core/voltGeometry';
 import { foodEntries, nutritionEnabled, nutritionTarget, type FoodEntry, type NutritionTarget } from '../../data/nutrition';
 import { sumNutrients, type Meal, type Nutrients } from '../../core/nutrition';
@@ -38,7 +40,9 @@ const mealForHour = (hour: number): Meal => hour < 11 ? 'breakfast' : hour < 15 
 const mealTitle: Record<Meal, string> = { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner', snacks: 'Snacks' };
 
 export default function Home() {
-  const { profile, language, revision, changed } = useApp();
+  const { profile, language, changed } = useApp();
+  // Reloads only while this tab is focused (see useScreenRevision).
+  const revision = useScreenRevision();
   const p = usePalette();
   const [habits, setHabits] = useState<Habit[]>([]);
   const [completions, setCompletions] = useState<HabitCompletion[]>([]);
@@ -49,6 +53,8 @@ export default function Home() {
   const [weights, setWeights] = useState<WeightEntry[]>([]);
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [routineLinks, setRoutineLinks] = useState<RoutineExercise[]>([]);
+  const [weeklyPlan, setWeeklyPlan] = useState<GymDayPlan[]>([]);
+  const [restDays, setRestDays] = useState<string[]>([]);
   const [openWorkout, setOpenWorkout] = useState<OpenWorkout | null>(null);
   const [selectedDay, setSelectedDay] = useState(dayKey());
   const [calendarOpen, setCalendarOpen] = useState(false);
@@ -59,10 +65,10 @@ export default function Home() {
   useEffect(() => {
     if (!profile?.id) return;
     let active = true;
-    Promise.all([repo.habits(), repo.completions(), repo.habitProgress(), repo.missions(), repo.manual(), repo.trainingWorkouts(), repo.weights(), repo.routines(), repo.routineExercises(), repo.openWorkoutSession(profile.id)])
-      .then(([h, c, hp, m, mc, w, wt, r, re, open]) => {
+    Promise.all([repo.habits(), repo.completions(), repo.habitProgress(), repo.missions(), repo.manual(), repo.trainingWorkouts(), repo.weights(), repo.routines(), repo.routineExercises(), repo.openWorkoutSession(profile.id), repo.preferences(), repo.restDays()])
+      .then(([h, c, hp, m, mc, w, wt, r, re, open, prefs, rd]) => {
         if (!active) return;
-        setHabits(h); setCompletions(c); setHabitProgress(hp); setMissions(m); setManual(mc); setTraining(w); setWeights(wt); setRoutines(r); setRoutineLinks(re); setOpenWorkout(open);
+        setHabits(h); setCompletions(c); setHabitProgress(hp); setMissions(m); setManual(mc); setTraining(w); setWeights(wt); setRoutines(r); setRoutineLinks(re); setOpenWorkout(open); setWeeklyPlan(parseGymSchedule(prefs.find(item => item.key === gymSchedulePreferenceKey)?.value)); setRestDays(rd.map(row => row.day));
       }).catch(message);
     return () => { active = false; };
   }, [revision, profile?.id]);
@@ -114,7 +120,10 @@ export default function Home() {
   const nextHabit = selectedDay === today ? todo[0] : undefined;
   const nextMeal = mealForHour(new Date().getHours());
   const nextMealKcal = sumNutrients(nutrition?.entries.filter(entry => entry.meal === nextMeal) ?? []).kcal;
-  const routine = routines[0];
+  // Workout card follows the gym-day plan for the selected date, then falls back to the newest routine.
+  const dayPlan = resolveDayPlan(weeklyPlan, selectedDay, restDays, new Set(routines.map(item => item.id)));
+  const plannedRoutine = dayPlan?.kind === 'routine' ? routines.find(item => item.id === dayPlan.routineId) : undefined;
+  const routine = plannedRoutine ?? (dayPlan?.kind === 'rest' ? undefined : routines[0]);
   const routineExerciseCount = routine ? routineLinks.filter(link => link.routine_id === routine.id).length : 0;
 
   const handleWorkoutPress = () => {
@@ -142,7 +151,7 @@ export default function Home() {
       <View style={{ width: 40, height: 40, borderRadius: 12, overflow: 'hidden' }}><CubyMark size={40}/></View>
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text numberOfLines={1} accessibilityRole="header" style={{ color: p.text, fontFamily: fonts.displayHeavy, fontSize: 19, letterSpacing: -0.4 }}>Hi {firstName}</Text>
-        <Text numberOfLines={1} style={{ color: p.muted, fontFamily: fonts.medium, fontSize: 12.5 }}>Here&apos;s your day so far</Text>
+        <Text numberOfLines={1} style={{ color: p.muted, fontFamily: fonts.medium, fontSize: 12.5 }}>FAST REFRESH CHECK: LIVE</Text>
       </View>
       <Pressable accessibilityRole="button" accessibilityLabel="Account" hitSlop={8} onPress={() => router.push('/account')} style={{ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: p.c8, borderWidth: 1, borderColor: p.c8Line }}>
         <Text style={{ color: p.accent, fontFamily: fonts.displayHeavy, fontSize: 15 }}>{initials}</Text>
@@ -210,7 +219,7 @@ export default function Home() {
         <View style={{ position: 'absolute', top: 14, right: 14, width: 34, height: 34, borderRadius: 17, backgroundColor: p.g1, alignItems: 'center', justifyContent: 'center' }}><Ionicons name={selectedWorkout ? 'checkmark' : 'play'} size={15} color={p.plInk}/></View>
         <View style={{ marginTop: 'auto' }}>
           <Text numberOfLines={1} style={{ color: p.text, fontFamily: fonts.displayHeavy, fontSize: 16 }}>{selectedWorkout?.name ?? routine?.name ?? 'Workout'}</Text>
-          <Text numberOfLines={2} style={{ color: p.muted, fontFamily: fonts.medium, fontSize: 12 }}>{selectedWorkout ? `Done${selectedWorkout.duration_min ? ` · ${selectedWorkout.duration_min} min` : ''}` : routine ? `${routineExerciseCount} exercise${routineExerciseCount === 1 ? '' : 's'}` : 'Create your first routine'}</Text>
+          <Text numberOfLines={2} style={{ color: p.muted, fontFamily: fonts.medium, fontSize: 12 }}>{selectedWorkout ? `Done${selectedWorkout.duration_min ? ` · ${selectedWorkout.duration_min} min` : ''}` : routine ? `${plannedRoutine ? 'Planned · ' : ''}${routineExerciseCount} exercise${routineExerciseCount === 1 ? '' : 's'}` : dayPlan?.kind === 'rest' ? 'Rest day' : 'Create your first routine'}</Text>
         </View>
       </VCard>
       {nutrition?.enabled !== false

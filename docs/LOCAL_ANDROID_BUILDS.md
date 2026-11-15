@@ -22,9 +22,7 @@ For the Metro-connected development client, run:
 
     npm run android:apk:dev
 
-This writes [cubyfit-development.apk](/C:/Fit/builds/local/cubyfit-development.apk). It is an ARM64 debug APK containing Expo Dev Client. Start Metro after installing it:
-
-    npx expo start --dev-client
+This writes [cubyfit-development.apk](/C:/Fit/builds/local/cubyfit-development.apk). It is an ARM64 debug APK containing Expo Dev Client, installed as the separate app **Cubyfit Dev** (`com.bettereveryday.fitness.dev`, OAuth callback `betterday-dev://oauth-callback`) via `plugins/withAndroidDevVariant.js`. It installs beside the preview (`com.bettereveryday.fitness`, `betterday://oauth-callback`) and never replaces it. After installing it, run `npm run dev:android` to start Metro and connect the phone. See [ANDROID_FAST_REFRESH.md](/C:/Fit/docs/ANDROID_FAST_REFRESH.md) for USB/Wi-Fi steps and the current package/signature replacement behavior.
 
 For a self-contained preview APK, run:
 
@@ -40,7 +38,7 @@ Preview is a non-debuggable release APK. RevenueCat Test Store keys intentionall
 
 scripts/build-android-local.ps1 loads .env.local only into its own process, checks the JDK/SDK/NDK/CMake prerequisites, and invokes one bounded Gradle build. It regenerates Android native configuration only when the app configuration, package list, local build plugin, or Android AdMob App ID changes. Logs are saved under builds/local/logs/.
 
-On this Windows environment, Expo SDK 58 passed CMAKE_OBJECT_PATH_MAX=1024, allowing generated gesture-handler object paths to reach 263 characters. The bundled CMake 3.22.1 Ninja then failed creating those paths. The local config plugin sets the supported expo.android.cmakeObjectPathMax=240, which makes CMake hash deep object paths. It also limits Gradle to two workers and Kotlin to 1 GB on this 8 GB machine. If an old CMake cache still records the former value, the script removes only android/app/.cxx and android/app/build/intermediates/cxx and regenerates them.
+On this Windows environment, Expo SDK 58 passed CMAKE_OBJECT_PATH_MAX=1024, allowing generated gesture-handler object paths to reach 263 characters. The bundled CMake 3.22.1 Ninja then failed creating those paths. The local config plugin sets the supported expo.android.cmakeObjectPathMax=240, which makes CMake hash deep object paths. It also limits Gradle to two workers, Kotlin to 1 GB, and Ninja to two concurrent C++ compiles (CMake job pools) on this 8 GB machine; without the Ninja limit a full native recompile fails with `LLVM ERROR: out of memory`. If an old CMake cache still records the former value, the script removes only android/app/.cxx and android/app/build/intermediates/cxx and regenerates them.
 
 The generated Android project continues to include the existing Clerk deep links (betterday://oauth-callback and Clerk callback), secure storage, RevenueCat, AdMob/UMP, SQLite, food assets, notifications, Convex, Sentry, animations, and Expo modules. The build checks the generated React Native package list for AdMob, RevenueCat, and Sentry. The development build additionally checks Expo Dev Client; preview checks its embedded JavaScript and food catalog asset.
 
@@ -54,7 +52,7 @@ The build output prints its SHA-256 signer digest. Before manually installing, c
 
 This only reads the connected app’s base APK and compares certificate digests. It never installs, uninstalls, clears data, or changes the device.
 
-After confirming compatible signing and choosing to install manually:
+Because the dev APK has its own package ID, `adb install -r` of it can only create or update Cubyfit Dev; it cannot touch the preview. After confirming the APK and choosing to install manually:
 
     adb install -r builds/local/cubyfit-development.apk
 

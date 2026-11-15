@@ -1,5 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { DateField } from '../ui/DateField';
 import { Alert, Pressable, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import Animated, { FadeInDown, FadeOut, LinearTransition } from 'react-native-reanimated';
 import { router, useLocalSearchParams } from 'expo-router';
 import { localize } from '../core/i18n';
 import { Text } from '../ui/LocalizedText';
@@ -12,15 +15,20 @@ import { DraftExercise, DraftSet, WorkoutDraft } from '../state/workoutDraft';
 import { BottomSheet } from '../ui/BottomSheet';
 import { Button, Card, Choices, Field, message, Page, styles, confirm } from '../ui/components';
 import { ProgressBar } from '../ui/visuals';
-import { WorkoutSetRow } from '../ui/WorkoutSetRow';
+import { AddSetRow, SetHeader, SetRow } from '../ui/SetRow';
+import { activeExerciseIndex, formatPreviousSet, previousPerformance, removeAt, restRemaining, workoutTotals } from '../core/routineDraft';
+import { moveInList } from '../core/gymSchedule';
+import { useReducedMotion } from '../ui/motion';
 import { colors, fonts } from '../ui/theme';
-import { EmptyAction, SectionLink, StatTrio } from '../ui/voltKit';
+import { CircleButton, EmptyAction, MenuItem, StatTrio, usePalette } from '../ui/voltKit';
 import { ExerciseBrowser } from '../ui/ExerciseBrowser';
 import { interstitialManager } from '../services/adMob';
 
 const blankSet = (): DraftSet => ({ id: uid(), reps: '', weight: '', duration: '', note: '', completed: false });
 const emptyDraft = (): WorkoutDraft => ({ original: null, name: '', day: dayKey(), start: localTime(), duration: '', notes: '', completed: false, items: [], sessionStatus: 'draft', elapsedSeconds: 0, runningSinceMs: null, pausedSinceMs: null, pausedSeconds: 0, finishedAtMs: null });
 const currentTimestamp = () => Date.now();
+/** Default rest between sets, started when a set is checked off during a live session. */
+const REST_SECONDS = 90;
 const valueNumber = (value: string) => value.trim() && Number.isFinite(Number(value)) ? Number(value) : null;
 const timerState = (draft: WorkoutDraft): WorkoutTimerState => ({ session_status: draft.sessionStatus, elapsed_seconds: draft.elapsedSeconds, running_since_ms: draft.runningSinceMs, paused_since_ms: draft.pausedSinceMs, paused_seconds: draft.pausedSeconds, finished_at_ms: draft.finishedAtMs });
 const withTimer = (draft: WorkoutDraft, timer: WorkoutTimerState): WorkoutDraft => ({ ...draft, sessionStatus: timer.session_status, elapsedSeconds: timer.elapsed_seconds, runningSinceMs: timer.running_since_ms, pausedSinceMs: timer.paused_since_ms, pausedSeconds: timer.paused_seconds, finishedAtMs: timer.finished_at_ms });
@@ -110,7 +118,11 @@ export default function WorkoutForm() {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [timerActionBusy, setTimerActionBusy] = useState(false);
-  const [now, setNow] = useState(() => Date.now());
+  const [exerciseMenu, setExerciseMenu] = useState<number | null>(null);
+  const [restEndsAt, setRestEndsAt] = useState<number | null>(null);
+  const [previous, setPrevious] = useState<Map<string, WorkoutSet[]>>(new Map());
+  const [muscles, setMuscles] = useState<Map<string, string>>(new Map());
+  const reduced = useReducedMotion();
   const persistQueue = useRef<Promise<void>>(Promise.resolve());
   const actionLock = useRef(false);
   const changedRef = useRef(changed);
@@ -141,14 +153,26 @@ export default function WorkoutForm() {
     setDraft(loaded);
     readyRef.current = true;
     setReady(true);
-    setNow(currentTimestamp());
   }
 
   useEffect(() => {
     let active = true;
     repo.exercises().then(rows => { if (active) { setExercises(rows); setExercisesReady(true); } }).catch(error => { if (active) message(error); });
+    repo.exerciseMuscles().then(rows => { if (active) setMuscles(new Map(rows.map(row => [row.exercise_id, row.muscle_group]))); }).catch(() => undefined);
     return () => { active = false; };
   }, []);
+
+  // Previous performance: the latest other completed session for each exercise.
+  const currentWorkoutId = draft.original?.id ?? null;
+  useEffect(() => {
+    let active = true;
+    Promise.all([repo.trainingWorkouts(), repo.workoutExercises(), repo.workoutSets()])
+      .then(([workouts, links, sets]) => { if (active) setPrevious(previousPerformance(workouts, links, sets, currentWorkoutId)); })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, [currentWorkoutId]);
+
+
 
   useEffect(() => {
     if (!profileId) return;
@@ -181,12 +205,7 @@ export default function WorkoutForm() {
     return () => { active = false; };
   }, [profileId, id, routine, session]);
 
-  useEffect(() => {
-    if (!ready || draft.sessionStatus !== 'running') return;
-    setNow(currentTimestamp());
-    const tick = setInterval(() => setNow(currentTimestamp()), 1000);
-    return () => clearInterval(tick);
-  }, [ready, draft.sessionStatus]);
+  // The elapsed timer ticks inside <LiveTimer>, so the exercise list does not re-render every second.
 
   function updateItem(index: number, fn: (item: DraftExercise) => DraftExercise) {
     updateDraft(current => ({ ...current, items: current.items.map((item, position) => position === index ? fn(item) : item) }));
@@ -197,6 +216,47 @@ export default function WorkoutForm() {
   function chooseExercise(exercise: Exercise) {
     if (editingExercise !== null) updateItem(editingExercise, item => ({ ...item, exerciseId: exercise.id }));
     else updateDraft(current => ({ ...current, items: [...current.items, { id: uid(), exerciseId: exercise.id, sets: [blankSet()] }] }));
+  }
+  /** Picker selection: accidental duplicates are confirmed explicitly instead of added silently. */
+  function pickExercise(exercise: Exercise, close: (after?: () => void) => void) {
+    const duplicate = draftRef.current.items.some((item, index) => index !== editingExercise && item.exerciseId === exercise.id);
+    if (duplicate && editingExercise !== null) { Alert.alert(localize('Already in this workout', languageRef.current), localize('Choose a different exercise to replace it with.', languageRef.current)); return; }
+    if (duplicate) {
+      Alert.alert(localize('Already in this workout', languageRef.current), localize('Add this exercise a second time?', languageRef.current), [
+        { text: localize('Cancel', languageRef.current), style: 'cancel' },
+        { text: localize('Add again', languageRef.current), onPress: () => { chooseExercise(exercise); close(); } },
+      ]);
+      return;
+    }
+    chooseExercise(exercise); close();
+  }
+  /** New sets copy the previous set's values (not its completion) so the user only adjusts. */
+  function addSet(index: number) {
+    updateItem(index, item => { const last = item.sets.at(-1); return { ...item, sets: [...item.sets, last ? { ...blankSet(), reps: last.reps, weight: last.weight, duration: last.duration } : blankSet()] }; });
+  }
+  function removeSet(index: number, setIndex: number) {
+    const set = draftRef.current.items[index]?.sets[setIndex];
+    if (!set) return;
+    const apply = () => updateItem(index, item => ({ ...item, sets: removeAt(item.sets, setIndex) }));
+    if (set.completed) confirm('Remove completed set?', apply, 'This set is marked as done. Removing it also removes it from this workout’s totals.', 'Remove');
+    else apply();
+  }
+  function toggleSet(index: number, setIndex: number) {
+    const set = draftRef.current.items[index]?.sets[setIndex];
+    if (!set) return;
+    updateSet(index, setIndex, { completed: !set.completed });
+    const live = draftRef.current.sessionStatus === 'running' || draftRef.current.sessionStatus === 'paused';
+    if (!set.completed && live) setRestEndsAt(currentTimestamp() + REST_SECONDS * 1000);
+  }
+  function moveItem(index: number, direction: -1 | 1) {
+    updateDraft(current => ({ ...current, items: moveInList(current.items, index, index + direction) }));
+  }
+  function removeItem(index: number) {
+    const item = draftRef.current.items[index];
+    if (!item) return;
+    const apply = () => updateDraft(current => ({ ...current, items: removeAt(current.items, index) }));
+    if (item.sets.some(set => set.completed)) confirm('Remove exercise?', apply, 'It has completed sets in this workout. Your earlier workouts are not affected.', 'Remove');
+    else apply();
   }
   async function createCustom(close: () => void) {
     if (!custom.trim()) return;
@@ -258,7 +318,6 @@ export default function WorkoutForm() {
       const nextTimer = current.sessionStatus === 'running' ? pauseWorkoutTimer(state, timestamp) : resumeWorkoutTimer(state, timestamp);
       updateDraft(value => withTimer(value, nextTimer));
       await persistQueue.current;
-      setNow(currentTimestamp());
       changed();
     } catch (error) { message(error); }
     finally { actionLock.current = false; setTimerActionBusy(false); }
@@ -312,75 +371,141 @@ export default function WorkoutForm() {
   }
 
   const currentDraft = draftRef.current;
-  const totalSets = draft.items.reduce((sum, item) => sum + item.sets.length, 0);
-  const doneSets = draft.items.reduce((sum, item) => sum + item.sets.filter(set => set.completed).length, 0);
-  const completedVolume = draft.items.reduce((sum, item) => sum + item.sets.reduce((total, set) => total + (set.completed ? (Number(set.weight) || 0) * (Number(set.reps) || 0) : 0), 0), 0);
-  const activeExercise = draft.items.findIndex(item => item.sets.some(set => !set.completed));
+  // One derivation feeds the summary, the progress bar and every exercise block.
+  const totals = workoutTotals(draft.items);
+  const activeExercise = activeExerciseIndex(draft.items);
   const live = draft.sessionStatus === 'running' || draft.sessionStatus === 'paused';
-  const timerText = formatWorkoutElapsed(elapsedWorkoutSeconds(timerState(draft), now));
+  const menuItem = exerciseMenu !== null ? draft.items[exerciseMenu] : undefined;
+  const nameOf = (exerciseId: string) => exercises.find(row => row.id === exerciseId)?.name ?? 'Exercise';
 
-  return <Page title="">
+  return <Page title={live ? '' : draft.original?.completed ? 'Edit workout' : 'Log workout'}
+    headerContent={live ? <LiveTimer timer={timerState(draft)}/> : undefined}
+    headerAction={live && ready ? <Pressable accessibilityRole="button" accessibilityLabel="Finish workout" onPress={() => setFinishing(true)} style={({ pressed }) => ({ minWidth: 72, minHeight: 36, paddingHorizontal: 16, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.g2 === '#0B1446' ? '#0B1446' : colors.g1, transform: [{ scale: pressed ? 0.95 : 1 }] })}><Text style={{ color: colors.g2 === '#0B1446' ? '#FFFFFF' : colors.plInk, fontFamily: fonts.bold, fontSize: 13 }}>Finish</Text></Pressable> : undefined}
+    footer={ready ? <>
+      <View style={{ flex: 1 }}><Button title="+ Exercise" kind="ghost" disabled={!exercisesReady} onPress={() => { setEditingExercise(null); setPicker(true); }}/></View>
+      <View style={{ flex: 1.3 }}><Button title={live ? '✓  Complete' : saving ? 'Saving…' : 'Save workout'} disabled={saving} onPress={() => setFinishing(true)}/></View>
+    </> : undefined}>
     {!ready ? <Card><Text style={styles.muted}>Opening workout…</Text></Card> : <>
-      {live && <View style={{ gap: 10 }}>
-        {/* Volt active-workout header: centred timer with Finish pill. */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <View style={{ width: 72 }}/>
-          <Text accessibilityRole="timer" style={{ flex: 1, textAlign: 'center', color: colors.text, fontFamily: fonts.displayHeavy, fontSize: timerText.length > 5 ? 36 : 44, lineHeight: 50, letterSpacing: -1.2, fontVariant: ['tabular-nums'] }}>{timerText}</Text>
-          <Pressable accessibilityRole="button" accessibilityLabel="Finish workout" onPress={() => setFinishing(true)} style={{ width: 72, minHeight: 34, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.g2 === '#0B1446' ? '#0B1446' : colors.g1 }}><Text style={{ color: colors.g2 === '#0B1446' ? '#FFFFFF' : colors.plInk, fontFamily: fonts.bold, fontSize: 12.5 }}>Finish</Text></Pressable>
-        </View>
-        <Text style={{ textAlign: 'center', color: draft.sessionStatus === 'paused' ? colors.accent : colors.muted, fontFamily: fonts.bold, fontSize: 10.5, letterSpacing: 0.8, textTransform: 'uppercase' }}>{draft.sessionStatus === 'paused' ? 'Paused' : draft.name || 'Workout in progress'}</Text>
-        <Button title={timerActionBusy ? 'Please wait…' : draft.sessionStatus === 'paused' ? 'Resume' : 'Pause'} kind={draft.sessionStatus === 'paused' ? 'primary' : 'ghost'} disabled={timerActionBusy} onPress={togglePause}/>
+      {/* `.wprog` + routine name + pause control */}
+      <ProgressBar value={totals.totalSets ? totals.doneSets / totals.totalSets : 0}/>
+      {live && <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+        <Text numberOfLines={1} style={{ flexShrink: 1, color: draft.sessionStatus === 'paused' ? colors.accent : colors.muted, fontFamily: fonts.bold, fontSize: 10.5, letterSpacing: 0.8, textTransform: 'uppercase' }}>{draft.sessionStatus === 'paused' ? 'Paused · ' : ''}{draft.name || 'Workout in progress'}</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel={draft.sessionStatus === 'paused' ? 'Resume workout timer' : 'Pause workout timer'} disabled={timerActionBusy} onPress={togglePause} hitSlop={8} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: draft.sessionStatus === 'paused' ? colors.g1 : colors.bg === '#F5F9FF' ? colors.soft1 : colors.card2, opacity: timerActionBusy ? 0.5 : 1 }}>
+          <Ionicons name={draft.sessionStatus === 'paused' ? 'play' : 'pause'} size={12} color={draft.sessionStatus === 'paused' ? colors.plInk : colors.text}/>
+          <Text style={{ color: draft.sessionStatus === 'paused' ? colors.plInk : colors.text, fontFamily: fonts.bold, fontSize: 11.5 }}>{draft.sessionStatus === 'paused' ? 'Resume' : 'Pause'}</Text>
+        </Pressable>
       </View>}
-      <ProgressBar value={totalSets ? doneSets / totalSets : 0}/>
-      <StatTrio items={[{ label: 'Sets', value: `${doneSets}/${totalSets}` }, { label: 'Volume', value: `${Math.round(completedVolume)} kg` }, { label: 'Exercises', value: String(draft.items.length) }]}/>
-      <View style={{ gap: 10, paddingVertical: 8 }}>
-        <Field label="Workout name" value={draft.name} onChangeText={name => updateDraft(current => ({ ...current, name }))}/>
-        <Button title={detailsOpen ? 'Hide session details' : 'Session details'} kind="ghost" onPress={() => setDetailsOpen(!detailsOpen)}/>
-      </View>
+      <StatTrio items={[{ label: 'Sets', value: `${totals.doneSets}/${totals.totalSets}` }, { label: 'Volume', value: `${Math.round(totals.volume).toLocaleString()} kg` }, { label: 'Exercises', value: String(totals.exercises) }]}/>
+
+      {/* Exercise blocks (prototype `.exb`): flat, upcoming blocks dimmed. */}
+      {draft.items.map((item, i) => {
+        const exercise = exercises.find(row => row.id === item.exerciseId);
+        const metric = exercise?.metric ?? 'weight_reps';
+        const name = exercise?.name ?? 'Exercise';
+        const doneInExercise = item.sets.filter(set => set.completed).length;
+        const finished = item.sets.length > 0 && doneInExercise === item.sets.length;
+        const upcoming = live && activeExercise >= 0 && i > activeExercise;
+        const previousSets = previous.get(item.exerciseId);
+        return <Animated.View key={item.id} entering={reduced ? undefined : FadeInDown.duration(260)} exiting={reduced ? undefined : FadeOut.duration(160)} layout={reduced ? undefined : LinearTransition.duration(240)} style={{ marginTop: 14, opacity: live && (finished || upcoming) ? 0.55 : 1 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 8 }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={{ color: colors.text, fontFamily: fonts.displayHeavy, fontSize: 26, lineHeight: 28, letterSpacing: -0.8, includeFontPadding: false }}>{name}</Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 5 }}>
+                <Text numberOfLines={1} style={{ flexShrink: 1, color: colors.muted, fontFamily: fonts.bold, fontSize: 10.5, letterSpacing: 0.8, textTransform: 'uppercase' }}>{muscles.get(item.exerciseId) ?? (exercise?.custom ? 'Custom' : '')}</Text>
+                <Text style={{ color: colors.muted, fontFamily: fonts.bold, fontSize: 10.5, letterSpacing: 0.8 }}>{doneInExercise} / {item.sets.length}</Text>
+              </View>
+            </View>
+            <CircleButton icon="ellipsis-horizontal" size={34} label={`Options for ${name}`} onPress={() => setExerciseMenu(i)}/>
+          </View>
+          {item.sets.length ? <SetHeader metric={metric} live/> : <Text style={{ color: colors.muted, fontFamily: fonts.medium, fontSize: 12.5, paddingVertical: 6 }}>No sets. Add a set or remove this exercise.</Text>}
+          {item.sets.map((set, j) => <SetRow key={set.id} group={i} index={j} metric={metric} exerciseName={name} live completed={set.completed}
+            previous={formatPreviousSet(previousSets?.[j], metric)}
+            values={{ reps: set.reps, weight: set.weight, duration: set.duration, note: set.note }}
+            onChange={patch => updateSet(i, j, patch)}
+            onToggle={() => toggleSet(i, j)}
+            onRemove={() => removeSet(i, j)}/>)}
+          <AddSetRow onPress={() => addSet(i)}/>
+        </Animated.View>;
+      })}
+      {draft.items.length === 0 && <EmptyAction text="Add your first exercise" onPress={() => { setEditingExercise(null); setPicker(true); }}/>}
+
+      {/* Session details: name always; date/time/status only for manual (non-live) logging. */}
+      <Pressable accessibilityRole="button" accessibilityState={{ expanded: detailsOpen }} onPress={() => setDetailsOpen(!detailsOpen)} style={{ alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 10, marginTop: 8 }}>
+        <Ionicons name={detailsOpen ? 'chevron-up' : 'create-outline'} size={14} color={colors.accent}/><Text style={{ color: colors.accent, fontFamily: fonts.bold, fontSize: 12.5 }}>{detailsOpen ? 'Hide session details' : 'Session name, notes & details'}</Text>
+      </Pressable>
       {detailsOpen && <Card>
+        <Field label="Workout name" value={draft.name} onChangeText={name => updateDraft(current => ({ ...current, name }))}/>
         {live ? <Text style={styles.muted}>Started {draft.day} at {draft.start}. The timer saves active time automatically.</Text> : <>
-          <Field label="Date (YYYY-MM-DD)" value={draft.day} onChangeText={day => updateDraft(current => ({ ...current, day }))}/>
+          <DateField label="Date" value={draft.day} onChange={day => updateDraft(current => ({ ...current, day }))}/>
           <Field label="Start time (HH:MM local)" value={draft.start} onChangeText={start => updateDraft(current => ({ ...current, start }))} placeholder="18:30"/>
           <Field label="Duration (minutes, optional)" value={draft.duration} onChangeText={duration => updateDraft(current => ({ ...current, duration }))} keyboardType="numeric"/>
           <Choices label="Status" options={['Completed', 'Draft']} value={draft.completed ? 'Completed' : 'Draft'} onChange={value => updateDraft(current => ({ ...current, completed: value === 'Completed', sessionStatus: value === 'Completed' ? 'completed' : 'draft' }))}/>
         </>}
         <Field label="Notes" value={draft.notes} onChangeText={notes => updateDraft(current => ({ ...current, notes }))} multiline/>
       </Card>}
-      <SectionLink title="Exercises and sets"/>
-      {draft.items.map((item, i) => {
-        const exercise = exercises.find(row => row.id === item.exerciseId);
-        const doneInExercise = item.sets.filter(set => set.completed).length;
-        return <Card key={item.id} accent={i === activeExercise}>
-          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={{ color: colors.text, fontFamily: fonts.displayHeavy, fontSize: 24, lineHeight: 27, letterSpacing: -0.6, includeFontPadding: false }}>{exercise?.name ?? 'Exercise'}</Text>
-              <Text style={{ color: colors.muted, fontFamily: fonts.bold, fontSize: 10.5, letterSpacing: 0.8, marginTop: 4 }}>{doneInExercise} / {item.sets.length} SETS</Text>
-            </View>
-            <Pressable accessibilityRole="button" accessibilityLabel={`Change ${exercise?.name ?? 'exercise'}`} onPress={() => { setEditingExercise(i); setPicker(true); }} style={{ paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: colors.bg === '#F5F9FF' ? colors.soft1 : colors.card2 }}><Text style={{ color: colors.text, fontFamily: fonts.bold, fontSize: 12 }}>Edit</Text></Pressable>
-          </View>
-          {item.sets.map((set, j) => <WorkoutSetRow key={set.id} set={set} index={j} metric={exercise?.metric ?? 'weight_reps'} onChange={patch => updateSet(i, j, patch)} onRemove={() => updateItem(i, row => ({ ...row, sets: row.sets.filter((_, index) => index !== j) }))}/>) }
-          <EmptyAction text="Add set" onPress={() => updateItem(i, row => ({ ...row, sets: [...row.sets, blankSet()] }))}/>
-          <Pressable accessibilityRole="button" onPress={() => confirm('Remove exercise?', () => updateDraft(current => ({ ...current, items: current.items.filter((_, index) => index !== i) })))} style={{ alignSelf: 'center', paddingVertical: 6, paddingHorizontal: 10 }}><Text style={{ color: colors.muted, fontFamily: fonts.bold, fontSize: 12.5 }}>Remove exercise</Text></Pressable>
-        </Card>;
-      })}
-      <Button title="Add exercise" kind="ghost" disabled={!ready || !exercisesReady} onPress={() => { setEditingExercise(null); setPicker(true); }}/>
-      {live ? <>
-        <Button title="Save and Exit" kind="ghost" onPress={saveAndExit}/>
-        <Button title="Discard workout" kind="danger" onPress={discardWorkout}/>
-      </> : <>
-        <Button title={saving ? 'Saving…' : 'Save workout'} disabled={!ready || !exercisesReady || saving} onPress={() => setFinishing(true)}/>
-        {draft.original?.completed ? <Button title="Discard changes" kind="ghost" disabled={!ready || saving} onPress={() => router.back()}/> : <Button title="Discard changes" kind="ghost" disabled={!ready || saving} onPress={() => confirm('Discard workout changes?', () => router.back(), 'This removes unsaved changes only.', 'Discard')}/>}
-      </>}
-      <BottomSheet visible={picker} title="Add exercise" onClose={() => setPicker(false)}>{close => <>
-        <ExerciseBrowser onSelect={exercise => { chooseExercise(exercise); close(); }}/>
-        <Field label="Custom exercise name" value={custom} onChangeText={setCustom}/><Button title="Create custom exercise" onPress={() => createCustom(close)}/>
+      {!live && (draft.original?.completed ? <Button title="Discard changes" kind="ghost" disabled={saving} onPress={() => router.back()}/> : <Button title="Discard changes" kind="ghost" disabled={saving} onPress={() => confirm('Discard workout changes?', () => router.back(), 'This removes unsaved changes only.', 'Discard')}/>)}
+
+      {/* Rest timer chip, floating above the dock. */}
+      {restEndsAt !== null && <RestTimer endsAt={restEndsAt} onAdjust={delta => setRestEndsAt(value => value === null ? null : Math.max(currentTimestamp() + 5000, value + delta * 1000))} onSkip={() => setRestEndsAt(null)}/>}
+
+      <BottomSheet visible={picker} title={editingExercise !== null ? 'Replace exercise' : 'Add exercise'} onClose={() => setPicker(false)}>{close => <>
+        <ExerciseBrowser selectedIds={new Set(draft.items.filter((_, index) => index !== editingExercise).map(item => item.exerciseId))} onSelect={exercise => pickExercise(exercise, close)}/>
+        <Field label="Custom exercise name" value={custom} onChangeText={setCustom}/><Button title="Create custom exercise" kind="ghost" disabled={!custom.trim()} onPress={() => createCustom(close)}/>
       </>}</BottomSheet>
+
+      <BottomSheet visible={!!menuItem} title={menuItem ? nameOf(menuItem.exerciseId) : 'Exercise'} onClose={() => setExerciseMenu(null)}>{close => menuItem && exerciseMenu !== null && <View style={{ gap: 6 }}>
+        <MenuItem icon="arrow-up" label="Move up" disabled={exerciseMenu <= 0} onPress={() => { moveItem(exerciseMenu, -1); setExerciseMenu(exerciseMenu - 1); }}/>
+        <MenuItem icon="arrow-down" label="Move down" disabled={exerciseMenu >= draft.items.length - 1} onPress={() => { moveItem(exerciseMenu, 1); setExerciseMenu(exerciseMenu + 1); }}/>
+        <MenuItem icon="swap-horizontal" label="Replace exercise" onPress={() => { const index = exerciseMenu; close(() => { setEditingExercise(index); setPicker(true); }); }}/>
+        <MenuItem icon="trash-outline" label="Remove exercise" danger onPress={() => { const index = exerciseMenu; close(() => removeItem(index)); }}/>
+      </View>}</BottomSheet>
+
       <BottomSheet visible={finishing} title={live ? 'Finish workout?' : 'Save workout'} onClose={() => setFinishing(false)}>{close => <>
-        <Text style={styles.text}>{live ? `Active time: ${formatWorkoutElapsed(elapsedWorkoutSeconds(timerState(currentDraft), now))}` : `Completed sets: ${doneSets}/${totalSets}`}</Text>
-        <Text style={styles.muted}>Only completed sets count toward workout statistics and records.</Text>
+        <StatTrio items={[{ label: 'Sets', value: `${totals.doneSets}/${totals.totalSets}` }, { label: 'Volume', value: `${Math.round(totals.volume).toLocaleString()} kg` }, { label: 'Exercises', value: String(totals.exercises) }]}/>
+        {live && <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><Text style={styles.muted}>Active time</Text><LiveTimer timer={timerState(currentDraft)} size={18}/></View>}
+        <Text style={styles.muted}>Only completed sets count toward workout statistics and records.{live && totals.doneSets < totals.totalSets ? ` ${totals.totalSets - totals.doneSets} set${totals.totalSets - totals.doneSets === 1 ? ' is' : 's are'} not checked yet.` : ''}</Text>
         <Button title={saving ? 'Saving…' : live ? 'Finish workout' : 'Save workout'} disabled={saving} onPress={async () => { if (live) await finishLiveWorkout(close); else { const result = await saveManual(); if (result) close(() => { router.back(); if (result.completedWorkoutId) interstitialManager.afterWorkoutSaved(result.completedWorkoutId); }); } }}/>
-        <Button title="Back" kind="ghost" onPress={() => close()}/>
+        {live && <Button title="Save and Exit" kind="ghost" disabled={saving} onPress={() => close(() => { void saveAndExit(); })}/>}
+        {live && <Button title="Discard workout" kind="danger" disabled={saving} onPress={() => close(discardWorkout)}/>}
+        <Button title="Keep training" kind="ghost" onPress={() => close()}/>
       </>}</BottomSheet>
     </>}
   </Page>;
+}
+
+/** Floating rest countdown (`absolute` end time, so it never drifts on re-render). */
+/** Self-ticking elapsed workout time; only this text re-renders each second. */
+function LiveTimer({ timer, size = 42 }: { timer: WorkoutTimerState; size?: number }) {
+  const [now, setNow] = useState(currentTimestamp);
+  const running = timer.session_status === 'running';
+  useEffect(() => {
+    setNow(currentTimestamp());
+    if (!running) return;
+    const tick = setInterval(() => setNow(currentTimestamp()), 1000);
+    return () => clearInterval(tick);
+  }, [running, timer.running_since_ms, timer.elapsed_seconds]);
+  const text = formatWorkoutElapsed(elapsedWorkoutSeconds(timer, now));
+  const fontSize = size >= 40 && text.length > 5 ? size * 0.8 : size;
+  return <Text accessibilityRole="timer" accessibilityLabel={`Elapsed ${text}`} style={{ textAlign: 'center', color: colors.text, fontFamily: fonts.displayHeavy, fontSize, lineHeight: Math.round(fontSize * 1.15), letterSpacing: size >= 40 ? -1.2 : 0, fontVariant: ['tabular-nums'] }}>{text}</Text>;
+}
+
+function RestTimer({ endsAt, onAdjust, onSkip }: { endsAt: number; onAdjust: (delta: number) => void; onSkip: () => void }) {
+  const p = usePalette();
+  const [now, setNow] = useState(currentTimestamp);
+  useEffect(() => {
+    setNow(currentTimestamp());
+    const tick = setInterval(() => setNow(currentTimestamp()), 500);
+    return () => clearInterval(tick);
+  }, [endsAt]);
+  const seconds = restRemaining(endsAt, now);
+  const reduced = useReducedMotion();
+  const done = seconds <= 0;
+  const chip = { width: 34, height: 34, borderRadius: 17, alignItems: 'center' as const, justifyContent: 'center' as const, backgroundColor: 'rgba(255,255,255,0.14)' };
+  return <Animated.View entering={reduced ? undefined : FadeInDown.duration(220)} exiting={reduced ? undefined : FadeOut.duration(160)} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10, paddingVertical: 8, paddingLeft: 16, paddingRight: 8, borderRadius: 22, backgroundColor: done ? p.lime : p.heroCard }}>
+    <Ionicons name={done ? 'notifications' : 'timer-outline'} size={18} color={done ? '#0B1446' : '#FFFFFF'}/>
+    <Text accessibilityLiveRegion="polite" style={{ flex: 1, color: done ? '#0B1446' : '#FFFFFF', fontFamily: fonts.displayHeavy, fontSize: 18, fontVariant: ['tabular-nums'] }}>{done ? 'Rest over' : `Rest ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`}</Text>
+    {!done && <Pressable accessibilityRole="button" accessibilityLabel="Rest 15 seconds less" onPress={() => onAdjust(-15)} style={chip}><Text style={{ color: '#FFFFFF', fontFamily: fonts.bold, fontSize: 11 }}>−15</Text></Pressable>}
+    {!done && <Pressable accessibilityRole="button" accessibilityLabel="Rest 15 seconds more" onPress={() => onAdjust(15)} style={chip}><Text style={{ color: '#FFFFFF', fontFamily: fonts.bold, fontSize: 11 }}>+15</Text></Pressable>}
+    <Pressable accessibilityRole="button" accessibilityLabel={done ? 'Dismiss rest timer' : 'Skip rest'} onPress={onSkip} style={{ paddingHorizontal: 12, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: done ? '#0B1446' : '#DFFF1F' }}><Text style={{ color: done ? '#FFFFFF' : '#0B1446', fontFamily: fonts.bold, fontSize: 12 }}>{done ? 'OK' : 'Skip'}</Text></Pressable>
+  </Animated.View>;
 }

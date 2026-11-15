@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { DateField } from '../ui/DateField';
 import { router, useLocalSearchParams } from 'expo-router';
 import { dayKey, uid, validDay } from '../core/date';
 import { Measurement } from '../core/types';
@@ -38,7 +39,7 @@ export default function MeasurementForm() {
   }
 
   return <Page title={id ? 'Edit measurement' : 'Add measurement'}><Card>
-    <Field label="Date (YYYY-MM-DD)" value={day} onChangeText={setDay}/>
+    <DateField label="Date" value={day} onChange={setDay} limits={{ max: dayKey(), maxMessage: 'Measurements cannot be in the future.' }}/>
     <Choices label="Type" options={[...standardTypes, 'Custom']} value={type} onChange={setType}/>
     {type === 'Custom' && <Field label="Custom name" value={customName} onChangeText={setCustomName}/>}
     <Field label="Value" value={value} onChangeText={setValue} keyboardType="decimal-pad"/>

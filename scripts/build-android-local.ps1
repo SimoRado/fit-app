@@ -106,7 +106,9 @@ function Get-NativeConfigFingerprint([string]$ProjectRoot) {
     (Join-Path $ProjectRoot 'app.json'),
     (Join-Path $ProjectRoot 'app.config.js'),
     (Join-Path $ProjectRoot 'package.json'),
-    (Join-Path $ProjectRoot 'plugins\withLocalAndroidBuildSettings.js')
+    (Join-Path $ProjectRoot 'plugins\withLocalAndroidBuildSettings.js'),
+    (Join-Path $ProjectRoot 'plugins\withAndroidWorkManagerRoomKeepRule.js'),
+    (Join-Path $ProjectRoot 'plugins\withAndroidDevVariant.js')
   )
   $content = ($inputs | ForEach-Object { Get-FileSha256 $_ }) -join ':'
   $content += ':' + [Environment]::GetEnvironmentVariable('GOOGLE_ADMOB_APP_ID', 'Process')
@@ -138,6 +140,9 @@ if ($freeDiskGiB -lt 5) { Fail "At least 5 GiB free disk space is required. Foun
 Set-EnvValue 'EXPO_PUBLIC_ADMOB_PRODUCTION_ADS_ENABLED' 'false'
 Set-EnvValue 'EXPO_PUBLIC_CUBYFIT_ADMOB_TESTING' 'true'
 Set-EnvValue 'CUBYFIT_ADMOB_BUILD_CHANNEL' "local-$Mode"
+# The 85 MiB bundled catalog can exhaust memory when Metro transforms it
+# alongside many JavaScript modules on an 8 GiB Windows machine.
+Set-EnvValue 'CUBYFIT_LOCAL_APK_BUILD' 'true'
 
 foreach ($name in @(
   'EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY',
@@ -257,14 +262,21 @@ try {
   Copy-Item -LiteralPath $sourceApk -Destination $targetApk -Force
 
   Write-Section 'Verify APK'
+  # Preview keeps the verified identity; the dev client installs beside it
+  # (plugins/withAndroidDevVariant.js) with its own OAuth callback scheme.
+  $expectedPackage = if ($Mode -eq 'dev') { 'com.bettereveryday.fitness.dev' } else { 'com.bettereveryday.fitness' }
+  $expectedScheme = if ($Mode -eq 'dev') { 'betterday-dev' } else { 'betterday' }
   $badging = & $aapt dump badging $targetApk
-  if ($LASTEXITCODE -ne 0 -or -not ($badging -match "package: name='com.bettereveryday.fitness'")) {
-    Fail 'APK does not contain the expected com.bettereveryday.fitness package ID.'
+  if ($LASTEXITCODE -ne 0 -or -not ($badging -match "package: name='$([regex]::Escape($expectedPackage))'")) {
+    Fail "APK does not contain the expected $expectedPackage package ID."
   }
   $manifest = & $aapt dump xmltree $targetApk AndroidManifest.xml
-  foreach ($required in @('betterday', 'com.google.android.gms.ads.APPLICATION_ID')) {
+  foreach ($required in @("`"$expectedScheme`"", 'com.google.android.gms.ads.APPLICATION_ID')) {
     if (-not ($manifest -match [regex]::Escape($required))) { Fail "APK manifest is missing $required." }
   }
+  if ($Mode -eq 'preview' -and ($manifest -match [regex]::Escape('"betterday-dev"'))) { Fail 'Preview APK must not register the dev callback scheme.' }
+  if ($Mode -eq 'dev' -and ($manifest -match [regex]::Escape('"betterday"'))) { Fail 'Dev APK must not register the preview callback scheme.' }
+  if ($manifest -match [regex]::Escape('${')) { Fail 'APK manifest contains an unresolved placeholder.' }
   $packageList = Get-ChildItem (Join-Path $projectRoot 'android\app\build\generated') -Recurse -Filter PackageList.java | Select-Object -First 1
   if (-not $packageList) { Fail 'React Native autolinking output was not generated.' }
   $linkedPackages = Get-Content -LiteralPath $packageList.FullName -Raw
@@ -296,9 +308,9 @@ try {
     if ($state -ne 'device') {
       Write-Host 'No authorized Android device is connected; skipped installed-signature comparison.'
     } else {
-      $installedPath = (& $adb shell pm path com.bettereveryday.fitness | Select-Object -First 1).ToString().Replace('package:', '').Trim()
+      $installedPath = ([string](& $adb shell pm path $expectedPackage | Select-Object -First 1)).Replace('package:', '').Trim()
       if ([string]::IsNullOrWhiteSpace($installedPath)) {
-        Write-Host 'Cubyfit is not installed on the connected device; skipped installed-signature comparison.'
+        Write-Host "$expectedPackage is not installed on the connected device; installing it will not replace any other Cubyfit app."
       } else {
         $installedApk = Join-Path $outputRoot 'installed-cubyfit-base.apk'
         & $adb pull $installedPath $installedApk | Out-Null

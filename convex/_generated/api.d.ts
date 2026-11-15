@@ -17,6 +17,7 @@ import type * as profile from "../profile.js";
 import type * as records from "../records.js";
 import type * as security from "../security.js";
 import type * as sync from "../sync.js";
+import type * as syncContract from "../syncContract.js";
 import type * as weights from "../weights.js";
 
 import type {
@@ -35,6 +36,7 @@ declare const fullApi: ApiFromModules<{
   records: typeof records;
   security: typeof security;
   sync: typeof sync;
+  syncContract: typeof syncContract;
   weights: typeof weights;
 }>;
 

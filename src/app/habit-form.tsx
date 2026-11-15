@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { DateField } from '../ui/DateField';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Text } from '../ui/LocalizedText';
 import { dayKey, uid, validDay } from '../core/date';
@@ -68,7 +69,7 @@ export default function HabitForm() {
     <Choices label="Frequency" options={['daily', 'days', 'quota'] as const} value={frequency} onChange={setFrequency}/>
     {frequency === 'days' && <Field label="Weekdays (0=Sun, 1=Mon, … 6=Sat)" value={days} onChangeText={setDays}/>}
     {frequency === 'quota' && <Field label="Days per week" value={weeklyTarget} onChangeText={setWeeklyTarget} keyboardType="numeric"/>}
-    <Field label="Start date (YYYY-MM-DD)" value={start} onChangeText={setStart}/>
+    <DateField label="Start date" value={start} onChange={setStart}/>
     <Choices label="Reminder" options={['Off', 'On'] as const} value={reminderEnabled ? 'On' : 'Off'} onChange={value => setReminderEnabled(value === 'On')}/>
     {reminderEnabled && <>{times.map((time, index) => <React.Fragment key={index}><Field label={`Reminder ${index + 1} (HH:MM)`} value={time} onChangeText={value => setTimes(current => current.map((item, position) => position === index ? value : item))}/>{times.length > 1 && <Button title={`Remove reminder ${index + 1}`} kind="ghost" onPress={() => setTimes(current => current.filter((_, position) => position !== index))}/>}</React.Fragment>)}{times.length < 6 && <Button title="Add another reminder" kind="ghost" onPress={() => setTimes(current => [...current, '12:00'])}/>}<Text style={styles.muted}>Times use your device&apos;s local time. Delivery may be delayed by your phone&apos;s notification settings.</Text></>}
     {id && <Button title={archived ? 'Restore habit' : 'Archive habit'} kind="ghost" onPress={() => setArchived(!archived)}/>}

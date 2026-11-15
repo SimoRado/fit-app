@@ -10,6 +10,7 @@ import { habitRate, missionProgress, personalRecords, weightGoalProgress, weight
 import { Exercise, Habit, HabitCompletion, Mission, MissionCompletion, WeightEntry, Workout, WorkoutExercise, WorkoutSet } from '../../core/types';
 import { repo } from '../../data/db';
 import { useApp } from '../../state/app';
+import { useScreenRevision } from '../../state/useScreenRevision';
 import { Page, message } from '../../ui/components';
 import { fonts } from '../../ui/theme';
 import { useReducedMotion } from '../../ui/motion';
@@ -32,7 +33,9 @@ function periodRange(period: Period, offset: number, today: string): { start: st
 
 /** Volt Progress (prototype "Statistics"): weight hero card, period tabs and minimal charts. */
 export default function Progress() {
-  const { revision, profile, language } = useApp();
+  const { profile, language } = useApp();
+  // Reloads only while this tab is focused (see useScreenRevision).
+  const revision = useScreenRevision();
   const p = usePalette();
   const [habits, setHabits] = useState<Habit[]>([]);
   const [completions, setCompletions] = useState<HabitCompletion[]>([]);

@@ -4,22 +4,21 @@
  * chip8, trio tiles, pg-tabs, seg2). Components read the palette through the
  * theme context so they re-render when Shore/Abyss changes.
  */
-import React, { useEffect, useId, useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 import { LayoutChangeEvent, Pressable, StyleProp, View, ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { Easing, FadeInDown, interpolate, useAnimatedProps, useAnimatedStyle, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
-import Svg, { Circle, Defs, G, LinearGradient, Path, Rect, Stop, Text as SvgText } from 'react-native-svg';
+import Svg, { Defs, G, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 import { Text } from './LocalizedText';
 import { MotionPressable } from './MotionPressable';
 import { useReducedMotion } from './motion';
 import { easing, fonts, type Palette } from './theme';
-import { HORSESHOE, SQUARE_RINGS, horseshoeArc, horseshoeBadge, horseshoeLength, ringFraction, squareRing } from '../core/voltGeometry';
+import { HORSESHOE, SQUARE_RINGS, horseshoeArc, horseshoeLength, ringFraction, squareRing } from '../core/voltGeometry';
 import { useVoltTheme } from './VoltThemeProvider';
 
 export type VoltIcon = React.ComponentProps<typeof Ionicons>['name'];
 const AnimatedRect = Animated.createAnimatedComponent(Rect);
 const AnimatedPath = Animated.createAnimatedComponent(Path);
-const AnimatedG = Animated.createAnimatedComponent(G);
 const outEase = Easing.bezier(...easing.out);
 
 export function usePalette(): Readonly<Palette> { return useVoltTheme().palette; }
@@ -134,7 +133,7 @@ function GradientFill({ from, to, radius }: { from: string; to: string; radius: 
   </View>;
 }
 
-export type DayPill = { key: string; number: string; label: string; disabled?: boolean; accessibilityLabel?: string; marker?: React.ReactNode };
+export type DayPill = { key: string; number: string; label: string; disabled?: boolean; accessibilityLabel?: string; marker?: React.ReactNode; today?: boolean };
 /** `.pills` — seven rounded day pills with a gradient selected state. */
 export function DayPills({ days, selected, onSelect }: { days: DayPill[]; selected: string; onSelect: (key: string) => void }) {
   const p = usePalette();
@@ -144,9 +143,10 @@ export function DayPills({ days, selected, onSelect }: { days: DayPill[]; select
       const on = day.key === selected;
       return <MotionPressable key={day.key} selected={on} pressScale={0.92} accessibilityRole="tab" accessibilityLabel={day.accessibilityLabel} accessibilityState={{ selected: on, disabled: !!day.disabled }} disabled={day.disabled} onPress={() => onSelect(day.key)}
         style={{ flex: 1, minWidth: 0, minHeight: 56, borderRadius: 999, alignItems: 'center', justifyContent: 'center', gap: 2, backgroundColor: on ? p.g1 : p.c8, opacity: day.disabled ? 0.4 : 1,
-          ...(on ? { shadowColor: p.g1, shadowOpacity: 0.32, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 4 } : light ? { shadowColor: p.navShadow, shadowOpacity: 0.06, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 1 } : { borderWidth: 1, borderColor: p.c8Line }) }}>
+          ...(on ? { shadowColor: p.g1, shadowOpacity: 0.32, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 4 } : light ? { shadowColor: p.navShadow, shadowOpacity: 0.06, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 1 } : { borderWidth: 1, borderColor: p.c8Line }),
+          ...(!on && day.today ? { borderWidth: 1.5, borderColor: p.accent } : {}) }}>
         {on && <GradientFill from={p.g2} to={p.g1} radius={999}/>}
-        <Text style={{ color: on ? p.plInk : p.text, fontFamily: fonts.displayHeavy, fontSize: 15, lineHeight: 18 }}>{day.number}</Text>
+        <Text style={{ color: on ? p.plInk : day.today ? p.accent : p.text, fontFamily: fonts.displayHeavy, fontSize: 15, lineHeight: 18 }}>{day.number}</Text>
         <Text numberOfLines={1} style={{ color: on ? p.plInk : p.muted, opacity: on ? 0.82 : 1, fontFamily: fonts.semibold, fontSize: 10.5 }}>{day.label}</Text>
         {day.marker}
       </MotionPressable>;
@@ -182,23 +182,52 @@ export function SquareRings({ values, size = 128, accessibilityLabel }: { values
 }
 
 /** `Horseshoe` — 240° calorie gauge with dotted inner rail and a moving percent badge. */
-export function Horseshoe({ value, big, label, width = 240, percentLabel }: { value: number; big: string; label: string; width?: number; percentLabel?: string }) {
+/** Number that tweens to `value` (JS-side, re-renders only itself). Ends exactly on `value`. */
+export function CountUp({ value, format, duration = 700 }: { value: number; format: (value: number) => string; duration?: number }) {
+  const reduced = useReducedMotion();
+  const [shown, setShown] = useState(value);
+  const current = useRef(value);
+  useEffect(() => {
+    if (reduced || !Number.isFinite(value)) { current.current = value; setShown(value); return; }
+    const from = current.current;
+    if (from === value) return;
+    const started = Date.now();
+    let frame = 0;
+    const step = () => {
+      const k = Math.min(1, (Date.now() - started) / duration);
+      const next = from + (value - from) * (1 - Math.pow(1 - k, 3));
+      current.current = k >= 1 ? value : next;
+      setShown(current.current);
+      if (k < 1) frame = requestAnimationFrame(step);
+    };
+    frame = requestAnimationFrame(step);
+    // A newer value cancels this tween and continues from wherever it got to.
+    return () => cancelAnimationFrame(frame);
+  }, [value, reduced, duration]);
+  return <>{format(shown)}</>;
+}
+
+export function Horseshoe({ value, big, label, width = 240, percentLabel, duration = 1300 }: { value: number; big: React.ReactNode; label: string; width?: number; percentLabel?: string; duration?: number }) {
   const p = usePalette();
   const reduced = useReducedMotion();
   const id = `hs${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
   const f = Math.max(0, value || 0), clamped = Math.min(1, f);
   const R = HORSESHOE.radius, arc = horseshoeArc, length = horseshoeLength();
-  const [bx, by] = horseshoeBadge(clamped);
   const shown = Math.max(0.02, clamped);
   const progress = useSharedValue(reduced ? shown : 0);
   const badge = useSharedValue(reduced ? 1 : 0);
-  useEffect(() => {
-    progress.value = reduced ? shown : withTiming(shown, { duration: 1300, easing: outEase });
-    badge.value = reduced ? 1 : withDelay(1050, withTiming(1, { duration: 400 }));
-  }, [badge, progress, reduced, shown]);
+  // The ring always continues from where it is (date switches, edits); it never resets to zero.
+  useEffect(() => { progress.value = reduced ? shown : withTiming(shown, { duration, easing: outEase }); }, [progress, reduced, shown, duration]);
+  useEffect(() => { badge.value = reduced ? 1 : withDelay(Math.min(1050, duration), withTiming(1, { duration: 400 })); }, [badge, reduced, duration]);
   const arcProps = useAnimatedProps(() => ({ strokeDashoffset: length * (1 - progress.value) }));
-  const badgeProps = useAnimatedProps(() => ({ opacity: badge.value }));
   const height = width * 196 / 240;
+  const scale = width / 240, size = 47.5 * scale;
+  const { cx, cy, start, end } = HORSESHOE;
+  // The % badge rides the end of the arc on the UI thread.
+  const badgeStyle = useAnimatedStyle(() => {
+    const angle = start - (start - end) * progress.value;
+    return { opacity: badge.value, transform: [{ translateX: (cx + R * Math.cos(angle)) * scale - size / 2 }, { translateY: (cy - R * Math.sin(angle)) * scale - size / 2 }] };
+  });
   return <View style={{ width, height, alignSelf: 'center' }}>
     <Svg width={width} height={height} viewBox="0 0 240 196">
       <Defs><LinearGradient id={id} x1="0" y1="0" x2="1" y2="0"><Stop offset="0" stopColor={p.g1}/><Stop offset="1" stopColor={p.g2}/></LinearGradient></Defs>
@@ -206,11 +235,10 @@ export function Horseshoe({ value, big, label, width = 240, percentLabel }: { va
       <Path d={arc(R)} fill="none" stroke={p.hsTrack} strokeWidth={27} strokeLinecap="round"/>
       <AnimatedPath d={arc(R)} fill="none" stroke={`url(#${id})`} strokeWidth={25} strokeLinecap="round" strokeDasharray={`${length} ${length}`} animatedProps={arcProps}/>
       <Path d={arc(66)} fill="none" stroke={p.hsDot} strokeWidth={5.5} strokeLinecap="round" strokeDasharray="0 11.5"/>
-      <AnimatedG animatedProps={badgeProps}>
-        <Circle cx={bx} cy={by} r={21} fill={p.c8} stroke={p.g2} strokeWidth={5.5}/>
-        <SvgText x={bx} y={by + 4.4} textAnchor="middle" fill={p.text} fontFamily={fonts.bold} fontSize={12} fontWeight="800">{percentLabel ?? `${Math.round(f * 100)}%`}</SvgText>
-      </AnimatedG>
     </Svg>
+    <Animated.View pointerEvents="none" style={[{ position: 'absolute', left: 0, top: 0, width: size, height: size, borderRadius: size / 2, alignItems: 'center', justifyContent: 'center', backgroundColor: p.c8, borderWidth: 5.5 * scale, borderColor: p.g2 }, badgeStyle]}>
+      <Text numberOfLines={1} style={{ color: p.text, fontFamily: fonts.bold, fontSize: 12 * scale, includeFontPadding: false }}>{percentLabel ?? <CountUp value={Math.round(f * 100)} duration={duration} format={next => `${Math.round(next)}%`}/>}</Text>
+    </Animated.View>
     <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: height * 0.25, alignItems: 'center', gap: 2 }}>
       <View style={{ width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: p.hsIb, marginBottom: 4 }}><Ionicons name="flame" size={18} color={p.hsIc}/></View>
       <Text style={{ color: p.text, fontFamily: fonts.displayHeavy, fontSize: 42, lineHeight: 46, letterSpacing: -1.9 }}>{big}</Text>
@@ -220,11 +248,11 @@ export function Horseshoe({ value, big, label, width = 240, percentLabel }: { va
 }
 
 /** Thin animated bar (`.mbar`, `.pg-hb`, `.pg-gb`). */
-export function MiniBar({ value, color, track, height = 6 }: { value: number; color: string; track: string; height?: number }) {
+export function MiniBar({ value, color, track, height = 6, duration = 900 }: { value: number; color: string; track: string; height?: number; duration?: number }) {
   const reduced = useReducedMotion();
   const target = Math.max(0, Math.min(1, value));
   const progress = useSharedValue(reduced ? target : 0);
-  useEffect(() => { progress.value = reduced ? target : withTiming(target, { duration: 900, easing: outEase }); }, [progress, reduced, target]);
+  useEffect(() => { progress.value = reduced ? target : withTiming(target, { duration, easing: outEase }); }, [progress, reduced, target, duration]);
   const style = useAnimatedStyle(() => ({ width: `${progress.value * 100}%` }));
   return <View style={{ height, borderRadius: height / 2, backgroundColor: track, overflow: 'hidden' }}><Animated.View style={[{ height: '100%', borderRadius: height / 2, backgroundColor: color }, style]}/></View>;
 }
@@ -309,4 +337,14 @@ export function KpiRow({ items }: { items: { value: string; label: string }[] })
       <Text numberOfLines={1} style={{ color: p.muted, fontFamily: fonts.semibold, fontSize: 11.5 }}>{item.label}</Text>
     </View>)}
   </View>;
+}
+
+/** Action-menu row (prototype `.am-b`). */
+export function MenuItem({ icon, label, onPress, disabled, danger }: { icon: VoltIcon; label: string; onPress: () => void; disabled?: boolean; danger?: boolean }) {
+  const p = usePalette();
+  return <MotionPressable pressScale={0.97} accessibilityRole="button" accessibilityState={{ disabled: !!disabled }} disabled={disabled} onPress={onPress}
+    style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 16, backgroundColor: isLight(p) ? p.soft1 : p.card2, opacity: disabled ? 0.4 : 1 }}>
+    <View style={{ width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: danger ? p.g1 : p.c8 }}><Ionicons name={icon} size={18} color={danger ? p.plInk : p.text}/></View>
+    <Text style={{ color: p.text, fontFamily: fonts.bold, fontSize: 15 }}>{label}</Text>
+  </MotionPressable>;
 }

@@ -99,12 +99,21 @@ async function recordBundledFull(file: File) {
   } satisfies ActiveRelease));
 }
 
+/**
+ * The bundled archive ships inside the signed APK and its SHA-256 values are verified at build time
+ * (tests/foodCatalog.test.ts). Re-hashing 85 MB + 313 MB in JavaScript on the phone blocked the JS
+ * thread for a long time on first launch, so the bundled install relies on the exact byte size plus
+ * SQLite's native `PRAGMA integrity_check`, schema version and food count instead.
+ * Network downloads keep full SHA-256 verification.
+ */
 async function verifiedBundledFull(file: File) {
   const full = bundledManifest.catalogs.full;
-  if (!file.exists || file.size !== full.sqlite_bytes || await hashFile(file) !== full.sqlite_sha256) return false;
-  const checked = await validate(file, full.food_count, true);
-  await checked.closeAsync();
-  return true;
+  if (!file.exists || file.size !== full.sqlite_bytes) return false;
+  try {
+    const checked = await validate(file, full.food_count, true);
+    await checked.closeAsync();
+    return true;
+  } catch { return false; }
 }
 
 async function installBundledFullCatalog(): Promise<File> {
@@ -129,7 +138,7 @@ async function installBundledFullCatalog(): Promise<File> {
     const asset = await Asset.fromModule(bundledFullAsset).downloadAsync();
     if (!asset.localUri) throw Error('Bundled food library is unavailable.');
     const archive = new File(asset.localUri);
-    if (archive.size !== full.compressed_bytes || await hashFile(archive) !== full.sha256) throw Error('Bundled food library checksum failed.');
+    if (archive.size !== full.compressed_bytes) throw Error('Bundled food library is incomplete.');
     try {
       await decompress(archive, staged, () => false);
       if (!await verifiedBundledFull(staged)) throw Error('Bundled food library integrity check failed.');
@@ -180,20 +189,36 @@ async function openCatalogOnce(): Promise<SQLite.SQLiteDatabase> {
     }
   }
   if (!next) {
-    try {
-      const full = await installBundledFullCatalog();
-      next = await validate(full, bundledManifest.catalogs.full.food_count, false);
-      openedName = full.name;
-    } catch {
-      const starter = await ensureStarter();
-      next = await validate(starter, bundledManifest.catalogs.starter.food_count, false);
-      openedName = starter.name;
-    }
+    // First launch: open the small bundled starter catalog immediately so food search responds,
+    // and prepare the complete library in the background, switching to it once it is verified.
+    const starter = await ensureStarter();
+    next = await validate(starter, bundledManifest.catalogs.starter.food_count, false);
+    openedName = starter.name;
+    scheduleBundledUpgrade();
   }
   const previous = active as { name: string; db: SQLite.SQLiteDatabase } | null;
   active = { name: openedName, db: next };
   if (previous) await previous.db.closeAsync();
   return next;
+}
+
+let upgradeScheduled = false;
+/** Installs the bundled complete catalog without blocking searches, then swaps it in. */
+function scheduleBundledUpgrade() {
+  if (upgradeScheduled) return;
+  upgradeScheduled = true;
+  setTimeout(() => {
+    void installBundledFullCatalog()
+      .then(full => validate(full, bundledManifest.catalogs.full.food_count, false).then(database => ({ full, database })))
+      .then(({ full, database }) => {
+        const previous = active;
+        active = { name: full.name, db: database };
+        // Let in-flight starter queries finish before closing the starter connection.
+        if (previous && previous.name !== full.name) setTimeout(() => { void previous.db.closeAsync().catch(() => undefined); }, 10000);
+      })
+      .catch(() => { /* The starter catalog stays active; the next app start retries. */ })
+      .finally(() => { upgradeScheduled = false; });
+  }, 3000);
 }
 
 export function openFoodCatalog(): Promise<SQLite.SQLiteDatabase> {
@@ -280,6 +305,12 @@ export async function searchFoodCatalog(query: string, category: string | null =
   });
 }
 
+/** Resolve one selected food for editing without hydrating the catalog. */
+export async function catalogFoodById(id: string): Promise<CatalogFood | null> {
+  return readCatalog(d => d.getFirstAsync<CatalogFood>(
+    'SELECT id,name,category,kcal_100,protein_100,carbs_100,fat_100,fiber_100,sugar_100,sodium_100,serving_name,serving_quantity,serving_grams,sources_json,micronutrients_json FROM foods WHERE id=?', id));
+}
+
 export async function foodCategories(): Promise<string[]> {
   return readCatalog(async d => {
     const rows = await d.getAllAsync<{ category: string }>('SELECT DISTINCT category FROM foods WHERE category IS NOT NULL ORDER BY category');
@@ -287,14 +318,21 @@ export async function foodCategories(): Promise<string[]> {
   });
 }
 
+/** Gives React Native a turn to handle touches and frames between heavy JavaScript chunks. */
+export const yieldToUi = () => new Promise<void>(resolve => setTimeout(resolve, 0));
+/** Compressed bytes inflated per slice; small enough to keep each JS slice to a few frames on a phone. */
+export const INFLATE_CHUNK_BYTES = 64 * 1024;
+export const HASH_CHUNK_BYTES = 256 * 1024;
+
 async function hashFile(file: File) {
   const hash = sha256.create();
   const handle = file.open(FileMode.ReadOnly);
   try {
     for (;;) {
-      const bytes = await handle.readBytes(1024 * 1024);
+      const bytes = await handle.readBytes(HASH_CHUNK_BYTES);
       if (!bytes.length) break;
       hash.update(bytes);
+      await yieldToUi();
     }
   } finally { handle.close(); }
   return bytesToHex(hash.digest());
@@ -309,10 +347,11 @@ async function decompress(source: File, destination: File, shouldAbort: () => bo
   try {
     for (;;) {
       if (shouldAbort()) throw Error('Download paused.');
-      const bytes = await reader.readBytes(256 * 1024);
+      const bytes = await reader.readBytes(INFLATE_CHUNK_BYTES);
       if (!bytes.length) break;
       gunzip.push(bytes, false);
       await writes;
+      await yieldToUi();
     }
     gunzip.push(new Uint8Array(), true);
     await writes;

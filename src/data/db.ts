@@ -6,12 +6,72 @@ import { exerciseSeeds, migrations } from './schema';
 import { trainingWorkoutsQuery } from './queries';
 import { localDatabaseName } from './account';
 import { exerciseSearchQuery, importExerciseCatalog, normalizeExerciseText, type ExerciseDetail } from './exerciseCatalog';
+import { deleteRoutine, insertRoutineSessionExercises, loadRoutineDraft, saveRoutineDraft } from './routineStore';
+import type { RoutineDraft } from '../core/routineDraft';
 import { reportFailure } from '../core/monitoring';
+import { perfMark, perfNow } from '../core/perf';
 
 let promise: Promise<SQLite.SQLiteDatabase> | undefined;
 let activeAccount: string | null = null;
 const connections = new Map<string, Promise<SQLite.SQLiteDatabase>>();
 const removals = new Map<string, Promise<void>>();
+
+// ---------------------------------------------------------------------------
+// Write serialization.
+//
+// expo-sqlite opens a *new native connection* for every withExclusiveTransactionAsync call and
+// documents that, once it writes, "other async write queries will abort with `database is
+// locked`". The bundled SQLite has no busy timeout, no WAL and no default foreign keys, so
+// overlapping writes (sync, reminders, a user save) failed immediately and cascades did not run
+// inside those transactions. Every account database therefore:
+//   1. uses WAL (readers never block the writer) and a 5 s busy timeout on all connections;
+//   2. runs exclusive transactions one at a time on one long-lived writer connection with the busy
+//      timeout (BEGIN IMMEDIATE takes the write lock up front).
+// Foreign-key enforcement on the writer stays as before (off): turning it on would newly reject
+// guest-import and cloud-restore rows that are accepted today. Deletes that need child rows removed
+// do so explicitly.
+const BUSY_TIMEOUT_MS = 5000;
+type Writer = { name: string; connection: Promise<SQLite.SQLiteDatabase> | null; queue: Promise<unknown> };
+const writers = new Map<string, Writer>();
+
+async function openWriter(name: string) {
+  const connection = await SQLite.openDatabaseAsync(name, { useNewConnection: true });
+  await connection.execAsync(`PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS};`);
+  return connection;
+}
+
+/** Runs `task` in a serialized IMMEDIATE transaction on the account's writer connection. */
+function serializedTransaction(writer: Writer, task: (tx: SQLite.SQLiteDatabase) => Promise<void>): Promise<void> {
+  const queuedAt = perfNow();
+  const run = async () => {
+    perfMark('write waited in queue', queuedAt, 50);
+    const startedAt = perfNow();
+    if (!writer.connection) writer.connection = openWriter(writer.name).catch(cause => { writer.connection = null; throw cause; });
+    const tx = await writer.connection;
+    await tx.execAsync('BEGIN IMMEDIATE');
+    try {
+      await task(tx);
+      await tx.execAsync('COMMIT');
+      perfMark('write transaction', startedAt, 50);
+    } catch (cause) {
+      try { await tx.execAsync('ROLLBACK'); } catch { /* SQLite may already have rolled back. */ }
+      throw cause;
+    }
+  };
+  const result = writer.queue.catch(() => undefined).then(run);
+  writer.queue = result;
+  return result;
+}
+
+async function closeWriter(name: string) {
+  const writer = writers.get(name);
+  writers.delete(name);
+  if (!writer?.connection) return;
+  await writer.queue.catch(() => undefined);
+  await (await writer.connection.catch(() => null))?.closeAsync().catch(() => undefined);
+}
+
+export { storageErrorMessage } from '../core/errors';
 
 export function setLocalAccount(userId: string | null) {
   if (userId !== null) localDatabaseName(userId);
@@ -24,7 +84,9 @@ async function removeAccountDatabase(userId: string) {
   if (activeAccount === userId) { activeAccount = null; promise = undefined; }
   const connection = connections.get(userId);
   connections.delete(userId);
+  await closeWriter(name);
   if (connection) await (await connection).closeAsync();
+  catalogStates.delete(userId);
   await SQLite.deleteDatabaseAsync(name);
 }
 
@@ -42,9 +104,12 @@ export async function db() {
   if (!promise) {
     let attempt!: Promise<SQLite.SQLiteDatabase>;
     attempt = (async () => {
-      const d = await SQLite.openDatabaseAsync(localDatabaseName(requestedAccount));
+      const name = localDatabaseName(requestedAccount);
+      const d = await SQLite.openDatabaseAsync(name);
       try {
-        await d.execAsync('PRAGMA foreign_keys = ON');
+        await d.execAsync(`PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS}; PRAGMA foreign_keys = ON;`);
+        // WAL is a persistent file property; readers then never block the single writer.
+        await d.getFirstAsync('PRAGMA journal_mode = WAL');
         const row = await d.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
         for (let i = row?.user_version ?? 0; i < migrations.length; i++) {
           await d.withExclusiveTransactionAsync(async tx => { await tx.execAsync(migrations[i]); await tx.execAsync(`PRAGMA user_version = ${i + 1}`); });
@@ -52,8 +117,14 @@ export async function db() {
         await d.withExclusiveTransactionAsync(async tx => {
           for (const [id, name] of exerciseSeeds) await tx.runAsync('INSERT OR IGNORE INTO exercises VALUES (?,?,?,0)', id, name, id === 'plank' || id === 'running' ? 'duration' : id === 'pullup' ? 'reps' : 'weight_reps');
         });
-        await importExerciseCatalog(d);
         if (activeAccount !== requestedAccount) throw new Error('Account changed while opening local data');
+        // From here on, every exclusive transaction is serialized on one writer connection.
+        await closeWriter(name);
+        const writer: Writer = { name, connection: null, queue: Promise.resolve() };
+        writers.set(name, writer);
+        d.withExclusiveTransactionAsync = task => serializedTransaction(writer, task as (tx: SQLite.SQLiteDatabase) => Promise<void>);
+        // The ~1,300-exercise catalog imports in the background instead of blocking every query.
+        scheduleCatalogImport(requestedAccount);
         return d;
       } catch (cause) {
         await d.closeAsync().catch(() => undefined);
@@ -70,6 +141,51 @@ export async function db() {
   }
   return promise;
 }
+// ---------------------------------------------------------------------------
+// Exercise catalog: imported once per catalog version, off the database-open critical path.
+
+export type CatalogState = { status: 'idle' | 'loading' | 'ready' | 'error'; error: string | null };
+const catalogStates = new Map<string, { state: CatalogState; promise: Promise<void> | null }>();
+const catalogListeners = new Set<() => void>();
+const notifyCatalog = () => { for (const listener of catalogListeners) listener(); };
+
+const IDLE_CATALOG: CatalogState = Object.freeze({ status: 'idle', error: null });
+/** Stable snapshot (same object until the state changes), safe for useSyncExternalStore. */
+export function exerciseCatalogState(): CatalogState {
+  return (activeAccount && catalogStates.get(activeAccount)?.state) || IDLE_CATALOG;
+}
+export function subscribeExerciseCatalog(listener: () => void) { catalogListeners.add(listener); return () => { catalogListeners.delete(listener); }; }
+
+/** Resolves once the exercise catalog is available for the active account; retries after a failure. */
+export function ensureExerciseCatalog(): Promise<void> {
+  const account = activeAccount;
+  if (!account) return Promise.reject(new Error('Sign in before accessing local fitness data'));
+  const entry = catalogStates.get(account) ?? { state: { status: 'idle', error: null } as CatalogState, promise: null };
+  catalogStates.set(account, entry);
+  if (entry.state.status === 'ready') return Promise.resolve();
+  if (entry.promise) return entry.promise;
+  entry.state = { status: 'loading', error: null };
+  notifyCatalog();
+  const started = perfNow();
+  entry.promise = (async () => {
+    const database = await db();
+    await importExerciseCatalog(database);
+  })().then(() => {
+    entry.state = { status: 'ready', error: null };
+    perfMark('exercise catalog ready', started);
+  }, cause => {
+    entry.state = { status: 'error', error: 'The exercise library could not be prepared on this device.' };
+    reportFailure('exercise-catalog', cause);
+    throw cause;
+  }).finally(() => { entry.promise = null; notifyCatalog(); });
+  return entry.promise;
+}
+
+function scheduleCatalogImport(account: string) {
+  // Let the first screen render and respond to taps before the import starts.
+  setTimeout(() => { if (activeAccount === account) ensureExerciseCatalog().catch(() => undefined); }, 1500);
+}
+
 export async function all<T>(table: string, order = ''): Promise<T[]> { return (await db()).getAllAsync<T>(`SELECT * FROM ${table} ${order}`); }
 export async function one<T>(table: string, id: string): Promise<T | null> { return (await db()).getFirstAsync<T>(`SELECT * FROM ${table} WHERE id = ?`, id); }
 export async function put(table: string, record: Record<string, unknown>) { const cols = Object.keys(record); await (await db()).runAsync(`INSERT INTO ${table} (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')}) ON CONFLICT(id) DO UPDATE SET ${cols.filter(c=>c!=='id').map(c=>`${c}=excluded.${c}`).join(',')}`, ...(Object.values(record) as (string | number | null)[])); }
@@ -137,18 +253,20 @@ export const repo = {
   saveWeight: (w: WeightEntry) => put('weights', w),
   measurements: () => all<Measurement>('measurements', 'ORDER BY day DESC'),
   saveMeasurement: (m: Measurement) => put('measurements', m),
-  exercises: () => all<Exercise>('exercises', 'ORDER BY custom, name'),
+  exercises: async () => { await ensureExerciseCatalog(); return all<Exercise>('exercises', 'ORDER BY custom, name'); },
   searchExercises: async (search = '', muscle = '', equipment = '', category = '', limit = 60) => {
+    await ensureExerciseCatalog();
     const d = await db();
     const term = normalizeExerciseText(search);
     return d.getAllAsync<Exercise & { muscle_group: string | null; equipment: string | null; category: string | null }>(exerciseSearchQuery, term, term, muscle, muscle, equipment, equipment, category, category, limit);
   },
   exerciseFilters: async () => {
+    await ensureExerciseCatalog();
     const d = await db();
     const rows = await d.getAllAsync<{ muscle_group_key: string; equipment_key: string; category: string }>('SELECT DISTINCT muscle_group_key,equipment_key,category FROM exercise_catalog');
     return { muscles: [...new Set(rows.map(row => row.muscle_group_key))].sort(), equipment: [...new Set(rows.map(row => row.equipment_key))].sort(), categories: [...new Set(rows.map(row => row.category))].sort() };
   },
-  exerciseDetail: async (id: string) => (await db()).getFirstAsync<ExerciseDetail>('SELECT * FROM exercise_catalog WHERE exercise_id=?', id),
+  exerciseDetail: async (id: string) => { await ensureExerciseCatalog(); return (await db()).getFirstAsync<ExerciseDetail>('SELECT * FROM exercise_catalog WHERE exercise_id=?', id); },
   saveExercise: (e: Exercise) => put('exercises', e),
   workouts: () => all<Workout>('workouts', 'ORDER BY day DESC, created_at DESC'),
   trainingWorkouts: async () => (await db()).getAllAsync<Workout>(trainingWorkoutsQuery),
@@ -188,14 +306,8 @@ export const repo = {
       };
       await tx.runAsync(`INSERT INTO workouts (id,owner_id,name,day,started_at,duration_min,notes,completed,created_at,session_status,elapsed_seconds,running_since_ms,paused_since_ms,paused_seconds,finished_at_ms)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, workout.id, workout.owner_id, workout.name, workout.day, workout.started_at, null, workout.notes, 0, workout.created_at, 'running', 0, stamp, null, 0, null);
-      const exercises: WorkoutBundle['exercises'] = [];
-      for (const [position, source] of routineLinks.entries()) {
-        const link: WorkoutExercise = { id: uid(), workout_id: workout.id, exercise_id: source.exercise_id, position };
-        const set: WorkoutSet = { id: uid(), workout_exercise_id: link.id, set_number: 1, reps: null, weight_kg: null, duration_sec: null, note: '', completed: 0 };
-        await tx.runAsync('INSERT INTO workout_exercises VALUES (?,?,?,?)', link.id, link.workout_id, link.exercise_id, link.position);
-        await tx.runAsync('INSERT INTO workout_sets (id,workout_exercise_id,set_number,reps,weight_kg,duration_sec,note,completed) VALUES (?,?,?,?,?,?,?,?)', set.id, set.workout_exercise_id, set.set_number, set.reps, set.weight_kg, set.duration_sec, set.note, 0);
-        exercises.push({ link, sets: [set] });
-      }
+      // Planned routine sets (reps/weight targets) are prefilled but not completed.
+      const exercises: WorkoutBundle['exercises'] = routineId ? await insertRoutineSessionExercises(tx, workout.id, routineId, routineLinks) : [];
       result = { bundle: { workout, exercises }, existing: false };
     });
     if (!result) throw Error('Could not start the workout.');
@@ -235,6 +347,9 @@ export const repo = {
     await d.withExclusiveTransactionAsync(async tx => {
       const row = await tx.getFirstAsync<{ session_status: string; completed: number }>('SELECT session_status,completed FROM workouts WHERE id=? AND owner_id=?', workoutId, ownerId);
       if (!row || row.completed || (row.session_status !== 'running' && row.session_status !== 'paused')) throw Error('Only this account’s unfinished workout can be discarded.');
+      // Child rows are removed explicitly: transaction connections do not enforce cascades.
+      await tx.runAsync('DELETE FROM workout_sets WHERE workout_exercise_id IN (SELECT id FROM workout_exercises WHERE workout_id=?)', workoutId);
+      await tx.runAsync('DELETE FROM workout_exercises WHERE workout_id=?', workoutId);
       await tx.runAsync('DELETE FROM workouts WHERE id=? AND owner_id=?', workoutId, ownerId);
     });
   },
@@ -253,6 +368,11 @@ export const repo = {
   routineExercises: () => all<RoutineExercise>('routine_exercises', 'ORDER BY position'),
   saveRoutine: (r: Routine) => put('routines', r),
   saveRoutineExercise: (r: RoutineExercise) => put('routine_exercises', r),
+  routineDraft: async (ownerId: string, routineId: string) => loadRoutineDraft(await db(), ownerId, routineId),
+  saveRoutineDraft: async (ownerId: string, draft: RoutineDraft, names?: ReadonlyMap<string, string>) => { await ensureExerciseCatalog(); return saveRoutineDraft(await db(), ownerId, draft, names); },
+  deleteRoutine: async (ownerId: string, routineId: string) => deleteRoutine(await db(), ownerId, routineId),
+  /** Muscle group and target muscle for catalog exercises (custom exercises have none). */
+  exerciseMuscles: async () => { await ensureExerciseCatalog(); return (await db()).getAllAsync<{ exercise_id: string; muscle_group: string; target_muscle: string }>('SELECT exercise_id,muscle_group,target_muscle FROM exercise_catalog'); },
   restDays: async () => (await db()).getAllAsync<{ day: string }>('SELECT day FROM rest_days'),
   toggleRest: async (owner: string, day: string) => { const d = await db(); await d.withExclusiveTransactionAsync(async tx=>{const x=await tx.getFirstAsync('SELECT day FROM rest_days WHERE owner_id=? AND day=?',owner,day);if(x)await tx.runAsync('DELETE FROM rest_days WHERE owner_id=? AND day=?',owner,day);else await tx.runAsync('INSERT INTO rest_days VALUES (?,?)',owner,day);}); },
   favorites: () => all<Favorite>('favorites'),

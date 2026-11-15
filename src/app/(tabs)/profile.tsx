@@ -24,7 +24,7 @@ export default function ProfileScreen() {
   const { width } = useWindowDimensions();
   const { user } = useUser();
   const { signOut } = useAuth();
-  const { profile, revision, refresh, appearance, setAppearance } = useApp();
+  const { profile, revision, refresh, appearance, setAppearance, measurementSystem, setMeasurementSystem } = useApp();
   const [name, setName] = useState('');
   const [birth, setBirth] = useState('');
   const [height, setHeight] = useState('');
@@ -74,6 +74,10 @@ export default function ProfileScreen() {
     ].map(([label, value]) => <View key={label} style={{ width: width < 360 ? '48%' : '23%', minHeight: 95, backgroundColor: colors.card, borderRadius: 24, padding: 10, gap: 5, alignItems: 'center', justifyContent: 'center' }}><Text numberOfLines={1} style={{ color: colors.muted, fontFamily: fonts.bold, fontSize: 9, textTransform: 'uppercase' }}>{label}</Text><Text numberOfLines={1} adjustsFontSizeToFit style={{ color: colors.ink, fontFamily: fonts.displayHeavy, fontSize: 27 }}>{value}</Text></View>)}</View>
     <SectionHeader title="Appearance"/>
     <VoltAppearanceSelector value={appearance} onChange={async next => { try { await setAppearance(next); } catch (error) { message(error); } }}/>
+    <SectionHeader title="Food measurements"/>
+    <View style={{ flexDirection: 'row', borderRadius: 20, borderWidth: 1, borderColor: colors.border, overflow: 'hidden', backgroundColor: colors.card }}>
+      {(['metric', 'us'] as const).map((system, index) => <React.Fragment key={system}>{index > 0 && <View style={{ width: 1, height: 25, alignSelf: 'center', backgroundColor: colors.borderStrong }}/>}<Pressable accessibilityRole="button" accessibilityLabel={system === 'metric' ? 'Metric measurements' : 'US customary measurements'} accessibilityState={{ selected: measurementSystem === system }} onPress={() => { void setMeasurementSystem(system).catch(message); }} style={{ flex: 1, minHeight: 48, alignItems: 'center', justifyContent: 'center', backgroundColor: measurementSystem === system ? colors.sun : colors.card }}><Text style={{ color: measurementSystem === system ? colors.accentInk : colors.text, fontFamily: fonts.bold }}>{system === 'metric' ? 'Metric' : 'US customary'}</Text></Pressable></React.Fragment>)}
+    </View>
     <SectionHeader title="Settings"/>
     <Card><Text style={styles.label}>Signed-in account</Text><Text style={styles.text}>{user?.fullName || user?.firstName || 'Account'}</Text><Text style={styles.muted}>{user?.primaryEmailAddress?.emailAddress ?? ''}</Text><Button title="Manage account" kind="ghost" onPress={() => router.push('/account')}/><Button title="Sign out" kind="ghost" onPress={async () => { try { await signOut(); await clearAccountReminders(); } catch (error) { message(error); } }}/></Card>
     {[

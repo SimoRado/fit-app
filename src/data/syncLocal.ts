@@ -1,8 +1,10 @@
 import * as SQLite from 'expo-sqlite';
-import { db, getLocalAccount } from './db';
+import { db, ensureExerciseCatalog, getLocalAccount } from './db';
 import { syncTables } from './syncSchema';
 import { orderOutbox, upsertOrder, type CloudRow, type OutboxRow, type SyncKind } from './syncOrder';
 import { cloudUpsertSql } from './syncSql';
+import type { FailureCategory } from '../services/syncFailures';
+import { syncRecordFields } from '../../convex/syncContract';
 
 export type SyncChoice = 'ask' | 'local' | 'enabled';
 export type { SyncKind, OutboxRow, CloudRow } from './syncOrder';
@@ -16,12 +18,15 @@ export async function syncChoice(): Promise<SyncChoice> {
 
 export async function localSyncStatus() {
   const d = await db();
-  const [choice, pending, conflicts] = await Promise.all([
+  const [choice, pending, conflicts, failureCount, failures, lastCheck] = await Promise.all([
     syncChoice(),
     d.getFirstAsync<{ n: number }>('SELECT count(*) AS n FROM sync_outbox WHERE conflict=0'),
     d.getFirstAsync<{ n: number }>('SELECT count(*) AS n FROM sync_outbox WHERE conflict=1'),
+    d.getFirstAsync<{ n: number }>('SELECT count(*) AS n FROM sync_outbox o JOIN sync_failures f ON f.kind=o.kind AND f.record_id=o.record_id AND f.operation_id=o.operation_id'),
+    d.getAllAsync<{ kind: string; action: string; operation_id: string; category: string; detail: string; next_retry_at: number }>(`SELECT o.kind,o.action,o.operation_id,f.category,f.detail,f.next_retry_at FROM sync_outbox o JOIN sync_failures f ON f.kind=o.kind AND f.record_id=o.record_id AND f.operation_id=o.operation_id ORDER BY f.next_retry_at LIMIT 5`),
+    d.getFirstAsync<{ value: string }>("SELECT value FROM sync_meta WHERE key='last_cloud_check'"),
   ]);
-  return { choice, pending: pending?.n ?? 0, conflicts: conflicts?.n ?? 0 };
+  return { choice, pending: pending?.n ?? 0, conflicts: conflicts?.n ?? 0, failureCount: failureCount?.n ?? 0, failures, lastCheck: lastCheck?.value ?? null };
 }
 
 export async function chooseSync(choice: 'local' | 'enabled') {
@@ -39,7 +44,9 @@ export async function chooseSync(choice: 'local' | 'enabled') {
 }
 
 export async function pendingOperations() {
-  const rows = await (await db()).getAllAsync<OutboxRow>('SELECT * FROM sync_outbox');
+  const d = await db();
+  await d.runAsync('DELETE FROM sync_failures WHERE NOT EXISTS (SELECT 1 FROM sync_outbox o WHERE o.kind=sync_failures.kind AND o.record_id=sync_failures.record_id AND o.operation_id=sync_failures.operation_id)');
+  const rows = await d.getAllAsync<OutboxRow>('SELECT o.*,f.category AS failure_category,COALESCE(f.attempts,0) AS attempts,COALESCE(f.next_retry_at,0) AS next_retry_at FROM sync_outbox o LEFT JOIN sync_failures f ON f.kind=o.kind AND f.record_id=o.record_id AND f.operation_id=o.operation_id');
   return orderOutbox(rows);
 }
 
@@ -81,6 +88,27 @@ export async function markConflict(op: OutboxRow) {
   await (await db()).runAsync('UPDATE sync_outbox SET conflict=1 WHERE kind=? AND record_id=? AND operation_id=?', op.kind, op.record_id, op.operation_id);
 }
 
+export async function markFailure(op: OutboxRow, category: FailureCategory, detail: string, attempts: number, retryAt: number) {
+  const d = await db();
+  await d.runAsync(`INSERT INTO sync_failures(kind,record_id,operation_id,category,detail,attempts,next_retry_at)
+    SELECT kind,record_id,operation_id,?,?,?,? FROM sync_outbox WHERE kind=? AND record_id=? AND operation_id=?
+    ON CONFLICT(kind,record_id,operation_id) DO UPDATE SET category=excluded.category,detail=excluded.detail,attempts=excluded.attempts,next_retry_at=excluded.next_retry_at`,
+    category, detail, attempts, retryAt, op.kind, op.record_id, op.operation_id);
+  if (!op.failure_category) console.warn(`[sync] ${op.kind} ${op.action} ${op.operation_id.slice(0, 8)}: ${category}; retry=${retryAt > 0}; blocked=${category === 'validation' || category === 'auth'}`);
+}
+
+export async function retrySyncFailures() {
+  const d = await db();
+  await d.runAsync("UPDATE sync_failures SET category='temporary',next_retry_at=0 WHERE EXISTS (SELECT 1 FROM sync_outbox o WHERE o.kind=sync_failures.kind AND o.record_id=sync_failures.record_id AND o.operation_id=sync_failures.operation_id)");
+}
+
+export async function recordSyncSuccess(account: string) {
+  if (getLocalAccount() !== account) throw Error('Account changed during synchronization');
+  const d = await db();
+  if (getLocalAccount() !== account) throw Error('Account changed during synchronization');
+  await d.runAsync("INSERT INTO sync_meta(key,value) VALUES ('last_cloud_check',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", new Date().toISOString());
+}
+
 function cloudOrder(a: CloudRow, b: CloudRow) {
   const index = (row: CloudRow) => upsertOrder.indexOf(row.kind as SyncKind);
   return (a.deleted ? 1 : 0) - (b.deleted ? 1 : 0) || (a.deleted ? -1 : 1) * (index(a) - index(b));
@@ -88,6 +116,8 @@ function cloudOrder(a: CloudRow, b: CloudRow) {
 
 export async function applyCloud(rows: CloudRow[], account: string) {
   if (getLocalAccount() !== account) throw Error('Account changed during restore');
+  // Cloud rows can reference catalog exercises; make sure they exist before applying.
+  await ensureExerciseCatalog();
   const d = await db();
   let applied = 0, conflicts = 0;
   await d.withExclusiveTransactionAsync(async tx => {
@@ -109,8 +139,10 @@ export async function applyCloud(rows: CloudRow[], account: string) {
       else {
         if (!cloud.payload) throw Error('Missing cloud payload');
         const row = JSON.parse(cloud.payload) as Record<string, string | number | null>;
+        if (!row || typeof row !== 'object' || Array.isArray(row)) throw Error('Invalid cloud payload');
         const columns = Object.keys(row);
-        if (!columns.length || columns.some(column => !/^[a-z_]+$/.test(column))) throw Error('Invalid cloud payload');
+        const allowed = syncRecordFields[kind];
+        if (!columns.length || columns.some(column => !allowed.includes(column))) throw Error('Invalid cloud payload');
         const pk = primary[kind] ?? 'id';
         await tx.runAsync(cloudUpsertSql(kind, columns, pk), ...Object.values(row));
       }

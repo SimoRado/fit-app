@@ -7,7 +7,6 @@ import { useSSO } from '@clerk/expo';
 import { useSignInWithApple } from '@clerk/expo/apple';
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
-import { router } from 'expo-router';
 import { Text } from './LocalizedText';
 import { AuthError } from './auth';
 import { colors, fonts } from './theme';
@@ -16,6 +15,7 @@ import { appleOAuthMessage, googleOAuthMessage, googleOAuthOutcome, oauthOutcome
 import { authDiagnostic, runtimeSignals } from '../core/runtime';
 import { canStartGoogleOAuth, isNativeRuntime } from '../core/runtimeClassification';
 import { googleRedirect } from '../core/googleRedirect';
+import { oauthScheme } from '../core/appVariant';
 import { activateClerkSession } from '../core/googleSession';
 import { appleAuthMode, appleAuthUnavailableMessage, appleAvailabilityReason, appleButtonPresentation } from '../core/appleAuth';
 
@@ -54,13 +54,14 @@ export function SocialAuth() {
       executionEnvironment: runtime.executionEnvironment,
       appOwnership: runtime.appOwnership,
       hasExpoGoConfig: runtime.hasExpoGoConfig,
+      isRunningInExpoGo: runtime.isRunningInExpoGo,
       expoVersionPresent: Boolean(runtime.expoVersion),
       debugMode: runtime.debugMode,
       appIdMatches: runtime.appIdMatches,
       expoGoModule: runtime.expoGoModule,
       legacyPurchasesBridgeModule: runtime.legacyPurchasesBridgeModule,
     });
-  }, [runtime.kind, runtime.executionEnvironment, runtime.appOwnership, runtime.hasExpoGoConfig, runtime.expoVersion, runtime.debugMode, runtime.appIdMatches, runtime.expoGoModule, runtime.legacyPurchasesBridgeModule]);
+  }, [runtime.kind, runtime.executionEnvironment, runtime.appOwnership, runtime.hasExpoGoConfig, runtime.isRunningInExpoGo, runtime.expoVersion, runtime.debugMode, runtime.appIdMatches, runtime.expoGoModule, runtime.legacyPurchasesBridgeModule]);
   useEffect(() => {
     authDiagnostic('availability', { platform: Platform.OS, runtime: runtime.kind, androidFlag: appleBrowserConfigured, iosFlag: appleNativeConfigured, button: applePresentation ?? 'hidden', reason: appleReason }, 'APPLE');
   }, [runtime.kind, appleBrowserConfigured, appleNativeConfigured, applePresentation, appleReason]);
@@ -89,8 +90,10 @@ export function SocialAuth() {
       }
       if (provider === 'apple' && !appleMode) return;
       const usesBrowser = provider === 'google' || appleMode === 'browser';
-      const redirect = usesBrowser ? googleRedirect(Constants.expoConfig?.scheme, AuthSession.makeRedirectUri) : null;
-      if (redirect) authDiagnostic('initiation', { runtime: runtime.kind, redirectScheme: Constants.expoConfig?.scheme as string, callbackPath: 'oauth-callback', generatedMatches: redirect.generatedMatches }, logCategory);
+      // The installed binary decides the callback scheme (preview: betterday, dev client: betterday-dev).
+      const scheme = oauthScheme(runtime.nativeApplicationId, Constants.expoConfig?.scheme);
+      const redirect = usesBrowser ? googleRedirect(scheme, AuthSession.makeRedirectUri) : null;
+      if (redirect) authDiagnostic('initiation', { runtime: runtime.kind, redirectScheme: typeof scheme === 'string' ? scheme : null, callbackPath: 'oauth-callback', generatedMatches: redirect.generatedMatches }, logCategory);
       let result;
       if (usesBrowser) {
         stage = 'browser';
@@ -107,8 +110,9 @@ export function SocialAuth() {
         authDiagnostic('session activation started', {}, logCategory);
         await activateClerkSession(result);
         authDiagnostic('session activation completed', {}, logCategory);
+        // The root Clerk gate switches from the auth stack to the protected
+        // stack after activation. An immediate replace can race that switch.
         authDiagnostic('navigation handed to protected router', {}, logCategory);
-        router.replace('/');
       } else if (result.signIn?.status === 'needs_second_factor' || result.signIn?.status === 'needs_client_trust' || result.signUp?.status === 'missing_requirements') {
         setError(`${provider === 'google' ? 'Google' : 'Apple'} sign-in needs another account step. Please try email sign-in or contact support.`);
       } else if (provider === 'google' || appleMode === 'browser') {

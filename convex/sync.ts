@@ -2,33 +2,9 @@ import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
 import { mutation, query, type MutationCtx } from './_generated/server';
 import { day, requireOwner, timestamp } from './security';
+import { kinds, syncRecordFields, type Kind } from './syncContract';
 
-const kinds = ['profile','exercises','habits','habit_completions','habit_progress','missions','mission_completions','routines','routine_exercises','workouts','workout_exercises','workout_sets','weights','measurements','rest_days','favorites','preferences','nutrition_preferences','nutrition_targets','custom_foods','food_entries'] as const;
 const kind = v.union(...kinds.map(v.literal));
-type Kind = typeof kinds[number];
-const fields: Record<Kind, readonly string[]> = {
-  profile: ['id','name','birth_date','height_cm','start_weight','target_weight','experience','fitness_goal','growth_goals','language','completed_at'],
-  exercises: ['id','name','metric','custom'],
-  habits: ['id','owner_id','name','description','category','icon','frequency','days','weekly_target','start_date','archived','reminder_time','created_at','habit_type','target_value','unit','increment','reminder_enabled','reminder_times','sort_order'],
-  habit_completions: ['id','habit_id','day','created_at'],
-  habit_progress: ['id','habit_id','day','amount','target_snapshot','unit_snapshot','updated_at'],
-  missions: ['id','owner_id','title','type','target','period','active','created_at'],
-  mission_completions: ['id','mission_id','day'],
-  routines: ['id','owner_id','name','created_at'],
-  routine_exercises: ['id','routine_id','exercise_id','position'],
-  workouts: ['id','owner_id','name','day','started_at','duration_min','notes','completed','created_at'],
-  workout_exercises: ['id','workout_id','exercise_id','position'],
-  workout_sets: ['id','workout_exercise_id','set_number','reps','weight_kg','duration_sec','note','completed'],
-  weights: ['id','owner_id','day','kg','note','created_at'],
-  measurements: ['id','owner_id','day','type','value','unit'],
-  rest_days: ['owner_id','day'],
-  favorites: ['card_id','owner_id'],
-  preferences: ['key','value'],
-  nutrition_preferences: ['owner_id','enabled'],
-  nutrition_targets: ['id','owner_id','effective_day','kcal','protein','carbs','fat','created_at'],
-  custom_foods: ['id','owner_id','name','kcal_100','protein_100','carbs_100','fat_100','created_at'],
-  food_entries: ['id','owner_id','food_id','day','meal','name','grams','kcal','protein','carbs','fat','kcal_100','protein_100','carbs_100','fat_100','created_at','catalog_food_id'],
-};
 const parent: Partial<Record<Kind, { kind: Kind; field: string }>> = {
   habits: { kind: 'profile', field: 'owner_id' }, missions: { kind: 'profile', field: 'owner_id' }, routines: { kind: 'profile', field: 'owner_id' },
   workouts: { kind: 'profile', field: 'owner_id' }, weights: { kind: 'profile', field: 'owner_id' }, measurements: { kind: 'profile', field: 'owner_id' },
@@ -41,14 +17,14 @@ const parent: Partial<Record<Kind, { kind: Kind; field: string }>> = {
 const seedExercises = new Set(['bench','squat','deadlift','shoulder','curl','pullup','lat','legpress','plank','running']);
 const numeric: Partial<Record<Kind, readonly string[]>> = {
   profile: ['height_cm','start_weight','target_weight'], exercises: ['custom'], habits: ['weekly_target','archived','target_value','increment','reminder_enabled','sort_order'], habit_progress: ['amount','target_snapshot'],
-  missions: ['target','active'], routine_exercises: ['position'], workouts: ['duration_min','completed'],
+  missions: ['target','active'], routine_exercises: ['position'], workouts: ['duration_min','completed','elapsed_seconds','running_since_ms','paused_since_ms','paused_seconds','finished_at_ms'],
   workout_exercises: ['position'], workout_sets: ['set_number','reps','weight_kg','duration_sec','completed'],
   weights: ['kg'], measurements: ['value'],
   nutrition_preferences: ['enabled'], nutrition_targets: ['kcal','protein','carbs','fat'], custom_foods: ['kcal_100','protein_100','carbs_100','fat_100'], food_entries: ['grams','kcal','protein','carbs','fat','kcal_100','protein_100','carbs_100','fat_100'],
 };
-const nullable = new Set(['target_weight','reminder_time','duration_min','reps','weight_kg','duration_sec','food_id','catalog_food_id','grams','kcal_100','protein_100','carbs_100','fat_100']);
-const integral = new Set(['custom','weekly_target','archived','reminder_enabled','sort_order','target','active','position','duration_min','completed','set_number','reps','duration_sec','enabled']);
-const nonnegative = new Set(['position','sort_order','amount','duration_min','reps','weight_kg','duration_sec','value','grams','kcal','protein','carbs','fat','kcal_100','protein_100','carbs_100','fat_100']);
+const nullable = new Set(['target_weight','reminder_time','duration_min','reps','weight_kg','duration_sec','food_id','catalog_food_id','grams','kcal_100','protein_100','carbs_100','fat_100','running_since_ms','paused_since_ms','finished_at_ms']);
+const integral = new Set(['custom','weekly_target','archived','reminder_enabled','sort_order','target','active','position','duration_min','completed','set_number','reps','duration_sec','enabled','elapsed_seconds','running_since_ms','paused_since_ms','paused_seconds','finished_at_ms']);
+const nonnegative = new Set(['position','sort_order','amount','duration_min','reps','weight_kg','duration_sec','value','grams','kcal','protein','carbs','fat','kcal_100','protein_100','carbs_100','fat_100','elapsed_seconds','running_since_ms','paused_since_ms','paused_seconds','finished_at_ms']);
 const booleanNumber = new Set(['custom','archived','reminder_enabled','active','completed','enabled']);
 
 function parseRow(kind: Kind, id: string, payload: string) {
@@ -57,18 +33,19 @@ function parseRow(kind: Kind, id: string, payload: string) {
   try { raw = JSON.parse(payload); } catch { throw Error('Invalid record'); }
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw Error('Invalid record');
   const row = raw as Record<string, unknown>;
-  const allowed = fields[kind];
+  const allowed = syncRecordFields[kind];
   const legacyHabit = kind === 'habits' && Object.keys(row).length === allowed.length - 7 && allowed.slice(0, -7).every(key => key in row);
   const legacyFoodEntry = kind === 'food_entries' && Object.keys(row).length === allowed.length - 1 && allowed.slice(0, -1).every(key => key in row);
   if (!legacyHabit && !legacyFoodEntry && (Object.keys(row).length !== allowed.length || allowed.some(key => !(key in row)))) throw Error('Invalid record fields');
   for (const [field, value] of Object.entries(row)) {
     if (value === null && nullable.has(field) && !(kind === 'custom_foods' && field.endsWith('_100'))) continue;
     if (numeric[kind]?.includes(field)) {
-      if (typeof value !== 'number' || !Number.isFinite(value) || Math.abs(value) > 1e9 || (integral.has(field) && !Number.isInteger(value)) || (nonnegative.has(field) && value < 0) || (booleanNumber.has(field) && value !== 0 && value !== 1)) throw Error('Invalid record value');
+      const max = field.endsWith('_ms') ? 1e13 : 1e9;
+      if (typeof value !== 'number' || !Number.isFinite(value) || Math.abs(value) > max || (integral.has(field) && !Number.isInteger(value)) || (nonnegative.has(field) && value < 0) || (booleanNumber.has(field) && value !== 0 && value !== 1)) throw Error('Invalid record value');
     } else if (typeof value !== 'string' || value.length > (field === 'notes' || field === 'description' ? 10000 : 2000) || (['id','owner_id','habit_id','mission_id','routine_id','workout_id','workout_exercise_id','exercise_id','key'].includes(field) && !value)) throw Error('Invalid record value');
   }
   for (const field of ['day','birth_date','start_date','effective_day']) if (typeof row[field] === 'string') day(row[field]);
-  for (const field of ['created_at','completed_at','started_at']) if (typeof row[field] === 'string') timestamp(row[field]);
+  for (const field of ['created_at','completed_at','started_at','updated_at']) if (typeof row[field] === 'string') timestamp(row[field]);
   if (kind === 'weights' && (row.kg as number) <= 0) throw Error('Invalid weight');
   if (kind === 'profile' && ((row.height_cm as number) <= 0 || (row.start_weight as number) <= 0 || (row.target_weight !== null && (row.target_weight as number) <= 0))) throw Error('Invalid profile');
   if (kind === 'habits' && (!['daily','days','quota'].includes(String(row.frequency)) || (row.weekly_target as number) < 1 || (row.weekly_target as number) > 7)) throw Error('Invalid habit');
@@ -76,7 +53,7 @@ function parseRow(kind: Kind, id: string, payload: string) {
     if (!['boolean','quantity'].includes(String(row.habit_type)) || (row.target_value as number) <= 0 || (row.increment as number) <= 0 || (row.target_value as number) > 1000000 || (row.increment as number) > 1000000) throw Error('Invalid habit target');
     let times: unknown;
     try { times = JSON.parse(String(row.reminder_times)); } catch { throw Error('Invalid reminder times'); }
-    if (!Array.isArray(times) || times.length > 6 || times.some(time => typeof time !== 'string' || !/^([01]\\d|2[0-3]):[0-5]\\d$/.test(time))) throw Error('Invalid reminder times');
+    if (!Array.isArray(times) || times.length > 6 || times.some(time => typeof time !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time))) throw Error('Invalid reminder times');
   }
   if (kind === 'habit_progress' && ((row.amount as number) > 100000000 || (row.target_snapshot as number) <= 0 || row.id !== `${row.habit_id}:${row.day}`)) throw Error('Invalid habit progress');
   if (kind === 'exercises' && !['weight_reps','reps','duration'].includes(String(row.metric))) throw Error('Invalid exercise');
@@ -84,6 +61,7 @@ function parseRow(kind: Kind, id: string, payload: string) {
   if (kind === 'nutrition_targets' && (row.kcal as number) <= 0) throw Error('Invalid calorie target');
   if (kind === 'nutrition_targets' && row.id !== `${row.owner_id}:${row.effective_day}`) throw Error('Invalid target ID');
   if (kind === 'food_entries' && (!['breakfast','lunch','dinner','snacks'].includes(String(row.meal)) || (row.grams !== null && (row.grams as number) <= 0))) throw Error('Invalid food entry');
+  if (kind === 'workouts' && !['draft','running','paused','completed'].includes(String(row.session_status))) throw Error('Invalid workout status');
   if ((kind === 'custom_foods' || kind === 'food_entries') && !(row.name as string).trim()) throw Error('Invalid food name');
   if ((kind === 'custom_foods' || kind === 'food_entries') && (row.name as string).length > 120) throw Error('Invalid food name');
   if (kind === 'food_entries' && row.grams !== null && (row.grams as number) > 10000) throw Error('Invalid portion');

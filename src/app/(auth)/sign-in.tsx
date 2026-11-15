@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useSignIn } from '@clerk/expo';
-import { AuthAction, AuthError, AuthField, AuthLink, AuthPage, clerkMessage } from '../../ui/auth';
+import { AuthAction, AuthError, AuthField, AuthLink, AuthPage, clerkErrorCode, clerkMessage } from '../../ui/auth';
 import { SocialAuth } from '../../ui/SocialAuth';
 import { Text } from '../../ui/LocalizedText';
 import { styles } from '../../ui/components';
@@ -16,7 +16,7 @@ export default function SignIn() {
     authDiagnostic('sign-in initiated', { method: 'email_password' }, 'EMAIL');
     try {
       const result = await signIn.password({ emailAddress: email.trim(), password });
-      authDiagnostic('sign-in result', { success: !result.error, status: signIn.status ?? null }, 'EMAIL');
+      authDiagnostic('sign-in result', { success: !result.error, status: signIn.status ?? null, errorCode: clerkErrorCode(result.error) || null }, 'EMAIL');
       if (result.error) { setError(clerkMessage(result.error)); return; }
       if (signIn.status === 'needs_client_trust' || signIn.status === 'needs_second_factor') {
         const sent = await signIn.mfa.sendEmailCode();
@@ -27,7 +27,7 @@ export default function SignIn() {
       const final = await signIn.finalize();
       authDiagnostic('sign-in activation result', { success: !final.error }, 'EMAIL');
       if (final.error) setError(clerkMessage(final.error));
-    } catch (cause) { authDiagnostic('sign-in failed', {}, 'EMAIL'); setError(clerkMessage(cause)); } finally { setBusy(false); }
+    } catch (cause) { authDiagnostic('sign-in failed', { errorCode: clerkErrorCode(cause) || null }, 'EMAIL'); setError(clerkMessage(cause)); } finally { setBusy(false); }
   }
   async function verify() {
     if (!code.trim()) { setError('Enter the verification code.'); return; }

@@ -4,7 +4,8 @@ import { Tabs } from 'expo-router';
 import type { BottomTabBarProps } from 'expo-router/js-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated, { Easing, interpolate, interpolateColor, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
+import Animated, { Easing, interpolate, interpolateColor, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import { PRESS_IN_DURATION_MS, PRESS_OUT_DURATION_MS, TAB_SELECTION_DURATION_MS } from '../../core/pressMotion';
 import { useApp } from '../../state/app';
 import { Key, t } from '../../core/i18n';
 import { fonts, radii, shadows } from '../../ui/theme';
@@ -25,7 +26,7 @@ function AnimatedTab({ title, icon, selected, width, activeBackground, activeTex
   const pressed = useSharedValue(1);
   const reduced = useReducedMotion();
   useEffect(() => {
-    progress.value = reduced ? (selected ? 1 : 0) : withSpring(selected ? 1 : 0, { damping: 12, stiffness: 155, mass: 0.75, overshootClamping: false, energyThreshold: 0.001 });
+    progress.value = reduced ? (selected ? 1 : 0) : withTiming(selected ? 1 : 0, { duration: TAB_SELECTION_DURATION_MS, easing: Easing.out(Easing.cubic) });
   }, [progress, reduced, selected]);
   const tabStyle = useAnimatedStyle(() => ({
     width: interpolate(progress.value, [0, 1], [width, width * 2.7]),
@@ -40,8 +41,8 @@ function AnimatedTab({ title, icon, selected, width, activeBackground, activeTex
   }), [width]);
   return <Animated.View style={[{ height: '100%', borderRadius: radii.pill, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }, selected ? { shadowColor: activeBackground, shadowOpacity: 0.3, shadowRadius: 9, shadowOffset: { width: 0, height: 5 }, elevation: 3 } : null, tabStyle]}>
     <Pressable accessibilityRole="tab" accessibilityState={{ selected }} accessibilityLabel={title} onPress={onPress} onLongPress={onLongPress}
-      onPressIn={() => { pressed.set(reduced ? 1 : withTiming(0.94, { duration: 110, easing: Easing.out(Easing.quad) })); }}
-      onPressOut={() => { pressed.set(reduced ? 1 : withSpring(1, { damping: 14, stiffness: 250 })); }}
+      onPressIn={() => { pressed.set(reduced ? 1 : withTiming(0.98, { duration: PRESS_IN_DURATION_MS, easing: Easing.out(Easing.quad) })); }}
+      onPressOut={() => { pressed.set(reduced ? 1 : withTiming(1, { duration: PRESS_OUT_DURATION_MS, easing: Easing.out(Easing.quad) })); }}
       style={{ width: '100%', height: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
       <Ionicons name={icon} size={19} color={selected ? activeIcon : inactiveText}/>
       <Animated.Text numberOfLines={1} style={[{ color: selected ? activeText : inactiveText, fontFamily: fonts.bold, fontSize: 12, includeFontPadding: false, overflow: 'hidden' }, labelStyle]}>{title}</Animated.Text>

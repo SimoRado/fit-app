@@ -1,5 +1,6 @@
 import Constants from 'expo-constants';
 import * as Application from 'expo-application';
+import { isRunningInExpoGo } from 'expo';
 import { NativeModules, Platform } from 'react-native';
 import { classifyExpoRuntime } from './runtimeClassification';
 
@@ -12,6 +13,7 @@ export function runtimeSignals() {
   const hasExpoGoConfig = Boolean(Constants.expoGoConfig);
   const nativeApplicationId = Application.applicationId ?? null;
   const expectedApplicationId = PlatformApplicationId();
+  const expoGoRuntime = isRunningInExpoGo();
   const expoVersion = Constants.expoVersion ?? null;
   const debugMode = Constants.debugMode;
   return {
@@ -19,6 +21,7 @@ export function runtimeSignals() {
       appOwnership,
       executionEnvironment,
       hasExpoGoConfig,
+      isRunningInExpoGo: expoGoRuntime,
       expoVersion,
       debugMode,
       nativeApplicationId,
@@ -29,6 +32,7 @@ export function runtimeSignals() {
     executionEnvironment,
     appOwnership: appOwnership ?? 'none',
     hasExpoGoConfig,
+    isRunningInExpoGo: expoGoRuntime,
     expoVersion,
     debugMode,
     nativeApplicationId,

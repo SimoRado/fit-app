@@ -1,21 +1,25 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { WeekCalendar } from '../../ui/WeekCalendar';
 import { router } from 'expo-router';
 import { NativeScrollEvent, NativeSyntheticEvent, Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { Text } from '../../ui/LocalizedText';
-import { addDays, dayKey, fromDay, weekStart } from '../../core/date';
+import { addDays, dayKey, fromDay } from '../../core/date';
+import { GymDayPlan, gymSchedulePreferenceKey, parseGymSchedule, planForWeekday, resolveDayPlan, serializeGymSchedule, setGymDayPlan } from '../../core/gymSchedule';
+import { decodeRoutineTargets, routineSetsPreferenceKey, type TargetSet } from '../../core/routineDraft';
 import { workoutStats } from '../../core/logic';
 import { Exercise, Routine, RoutineExercise, Workout } from '../../core/types';
 import { repo } from '../../data/db';
 import { useApp } from '../../state/app';
+import { useScreenRevision } from '../../state/useScreenRevision';
 import { Button, Page, message, confirm } from '../../ui/components';
 import { fonts } from '../../ui/theme';
 import { WorkoutInProgressCard } from '../../ui/WorkoutInProgressCard';
 import { BottomSheet } from '../../ui/BottomSheet';
 import { MotionPressable } from '../../ui/MotionPressable';
 import { useReducedMotion } from '../../ui/motion';
-import { CircleButton, EmptyAction, IconBox, SectionLink, StatTrio, isLight, useEntering, usePalette } from '../../ui/voltKit';
+import { CircleButton, EmptyAction, IconBox, MenuItem, SectionLink, StatTrio, isLight, useEntering, usePalette } from '../../ui/voltKit';
 import type { OpenWorkout } from '../../data/db';
 
 const covers = [
@@ -33,7 +37,9 @@ const lastDoneLabel = (day: string | undefined, today: string) => {
 
 /** Volt Train (prototype `tr12`): routine gallery, exercise preview, history and actions. */
 export default function Workouts() {
-  const { profile, language, revision, changed } = useApp();
+  const { profile, language, changed } = useApp();
+  // Reloads only while this tab is focused (see useScreenRevision).
+  const revision = useScreenRevision();
   const p = usePalette();
   const { width } = useWindowDimensions();
   const [workouts, setWorkouts] = useState<Workout[]>([]);
@@ -42,22 +48,25 @@ export default function Workouts() {
   const [links, setLinks] = useState<RoutineExercise[]>([]);
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [rest, setRest] = useState<string[]>([]);
+  const [weeklyPlan, setWeeklyPlan] = useState<GymDayPlan[]>([]);
+  const [preferences, setPreferences] = useState<Map<string, string>>(new Map());
+  const [planningDay, setPlanningDay] = useState<string | null>(null);
+  const [calendarDay, setCalendarDay] = useState(dayKey());
   const [openWorkout, setOpenWorkout] = useState<OpenWorkout | null>(null);
   const [active, setActive] = useState(0);
   const [routineMenu, setRoutineMenu] = useState<Routine | null>(null);
 
   useEffect(() => {
     if (!profile?.id) return;
-    Promise.all([repo.workouts(), repo.trainingWorkouts(), repo.routines(), repo.routineExercises(), repo.exercises(), repo.restDays(), repo.openWorkoutSession(profile.id)])
-      .then(([allWorkouts, completedWorkouts, savedRoutines, routineLinks, allExercises, days, open]) => {
-        setWorkouts(allWorkouts); setTraining(completedWorkouts); setRoutines(savedRoutines); setLinks(routineLinks); setExercises(allExercises); setRest(days.map(x => x.day)); setOpenWorkout(open);
+    Promise.all([repo.workouts(), repo.trainingWorkouts(), repo.routines(), repo.routineExercises(), repo.exercises(), repo.restDays(), repo.preferences(), repo.openWorkoutSession(profile.id)])
+      .then(([allWorkouts, completedWorkouts, savedRoutines, routineLinks, allExercises, days, preferences, open]) => {
+        setWorkouts(allWorkouts); setTraining(completedWorkouts); setRoutines(savedRoutines); setLinks(routineLinks); setExercises(allExercises); setRest(days.map(x => x.day)); setWeeklyPlan(parseGymSchedule(preferences.find(item => item.key === gymSchedulePreferenceKey)?.value)); setPreferences(new Map(preferences.map(item => [item.key, item.value]))); setOpenWorkout(open);
       }).catch(message);
   }, [revision, profile?.id]);
 
   const stats = workoutStats(training);
   const today = dayKey();
   const locale = language === 'fr' ? 'fr-FR' : language === 'ar' ? 'ar-u-nu-arab' : 'en-US';
-  const week = Array.from({ length: 7 }, (_, index) => addDays(weekStart(today), index));
   const recentWorkouts = workouts.filter(workout => workout.id !== openWorkout?.id);
   const last30 = training.filter(workout => workout.day >= addDays(today, -29));
   const avgMinutes = last30.filter(workout => workout.duration_min).length ? Math.round(last30.reduce((sum, workout) => sum + (workout.duration_min ?? 0), 0) / last30.filter(workout => workout.duration_min).length) : null;
@@ -65,39 +74,82 @@ export default function Workouts() {
   const current = routines[Math.min(active, Math.max(0, routines.length - 1))];
   const exerciseName = useMemo(() => new Map(exercises.map(exercise => [exercise.id, exercise])), [exercises]);
   const currentLinks = current ? links.filter(link => link.routine_id === current.id) : [];
+  const selectedPlan = planningDay ? planForWeekday(weeklyPlan, fromDay(planningDay).getDay()) : null;
+  const selectedPlanRoutine = selectedPlan?.kind === 'routine' ? routines.find(routine => routine.id === selectedPlan.routineId) : null;
   const onScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const index = Math.round(event.nativeEvent.contentOffset.x / (cardWidth + 12));
     if (index !== active) setActive(Math.max(0, Math.min(routines.length - 1, index)));
   };
   const startRoutine = (routine: Routine) => router.push({ pathname: '/workout-form', params: { routine: routine.id } });
+  const routineIds = useMemo(() => new Set(routines.map(routine => routine.id)), [routines]);
+  const linksOf = (routineId: string) => links.filter(link => link.routine_id === routineId);
+  /** Planned sets for a routine, aligned with its exercise order (empty when none were planned). */
+  const plannedSets = (routineId: string) => decodeRoutineTargets(preferences.get(routineSetsPreferenceKey(routineId)), linksOf(routineId).map(link => link.exercise_id));
+  const setCountOf = (routineId: string) => plannedSets(routineId).reduce((sum, sets) => sum + Math.max(1, sets.length), 0);
+  const todayPlan = resolveDayPlan(weeklyPlan, today, rest, routineIds);
+  const todayRoutine = todayPlan?.kind === 'routine' ? routines.find(routine => routine.id === todayPlan.routineId) : undefined;
+  const trainedToday = training.some(workout => workout.day === today);
+  function deleteRoutineConfirmed(routine: Routine, close: (after?: () => void) => void) {
+    confirm(`Delete “${routine.name}”?`, async () => {
+      if (!profile) return;
+      await repo.deleteRoutine(profile.id, routine.id);
+      close(); changed();
+    }, 'The routine and its planned sets are removed and it is cleared from your weekly plan. Workouts you already completed stay in your history.', 'Delete routine');
+  }
+  async function updateWeeklyPlan(next: GymDayPlan | null) {
+    if (!planningDay) return;
+    const weekday = fromDay(planningDay).getDay();
+    const updated = setGymDayPlan(weeklyPlan, weekday, next);
+    await repo.setPreference(gymSchedulePreferenceKey, serializeGymSchedule(updated));
+    setWeeklyPlan(updated);
+    changed();
+  }
 
   return <Page title="Train" eyebrow={`${stats.week} session${stats.week === 1 ? '' : 's'} this week`} headerAction={<CircleButton icon="add" tone="accent" label="Create routine" onPress={() => router.push('/routine-form')}/>}>
-    {/* Week strip (`.wa-days`) */}
-    <View style={{ flexDirection: language === 'ar' ? 'row-reverse' : 'row', gap: 5 }}>{week.map(day => {
-      const done = training.some(workout => workout.day === day);
-      const restDay = rest.includes(day);
-      return <View key={day} style={{ flex: 1, minWidth: 0, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: done ? p.g1 : p.c8, borderWidth: day === today ? 1.5 : 1, borderColor: day === today ? p.text : p.c8Line }}>
-        <Text style={{ color: done ? p.plInk : p.muted, fontFamily: fonts.bold, fontSize: 10.5 }}>{restDay && !done ? 'R' : new Intl.DateTimeFormat(locale, { weekday: 'narrow' }).format(fromDay(day))}</Text>
-      </View>;
-    })}</View>
+    {/* Shared week selector: today and future days only; never navigates before this week. */}
+    <WeekCalendar selected={calendarDay} onSelect={setCalendarDay} onDayPress={setPlanningDay} locale={locale} rules={{ minDay: today, startsOn: 1 }}
+      marker={day => {
+        const done = training.some(workout => workout.day === day);
+        const resolved = resolveDayPlan(weeklyPlan, day, rest, routineIds);
+        return done ? <Ionicons name="checkmark" size={11} color={day === calendarDay ? p.plInk : p.accent}/>
+          : resolved?.kind === 'routine' ? <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: day === calendarDay ? p.plInk : p.g1 }}/>
+            : resolved?.kind === 'rest' ? <Ionicons name="moon" size={10} color={day === calendarDay ? p.plInk : p.muted}/> : null;
+      }}/>
+    <Text style={{ color: p.muted, fontFamily: fonts.medium, fontSize: 11.5 }}>Tap today or a future day to plan a routine or rest. Weekly plans repeat every week; past days stay as they were.</Text>
+
+    {/* Today's plan (`.nx` style): start the scheduled routine in one tap. */}
+    {!openWorkout && (todayRoutine ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, paddingLeft: 12, paddingRight: 10, borderRadius: 22, backgroundColor: p.c8, borderWidth: 1, borderColor: p.c8Line }}>
+      <IconBox icon={trainedToday ? 'checkmark' : 'calendar-outline'} size={42} radius={14} background={trainedToday ? p.lime : p.soft1} color={trainedToday ? '#0B1446' : p.accent}/>
+      <Pressable accessibilityRole="button" accessibilityLabel={`Edit ${todayRoutine.name}`} onPress={() => router.push({ pathname: '/routine-form', params: { id: todayRoutine.id } })} style={{ flex: 1, minWidth: 0 }}>
+        <Text style={{ color: p.muted, fontFamily: fonts.semibold, fontSize: 11.5 }}>{trainedToday ? 'Planned today · done' : 'Planned today'}</Text>
+        <Text numberOfLines={1} style={{ color: p.text, fontFamily: fonts.displayHeavy, fontSize: 15 }}>{todayRoutine.name}</Text>
+        <Text style={{ color: p.accent, fontFamily: fonts.semibold, fontSize: 11.5 }}>{linksOf(todayRoutine.id).length} exercises · {setCountOf(todayRoutine.id)} sets</Text>
+      </Pressable>
+      <MotionPressable pressScale={0.86} accessibilityRole="button" accessibilityLabel={`Start ${todayRoutine.name}`} onPress={() => startRoutine(todayRoutine)} style={{ width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', backgroundColor: p.g1 }}><Ionicons name="play" size={20} color={p.plInk}/></MotionPressable>
+    </View> : todayPlan?.kind === 'rest' ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 22, backgroundColor: p.soft2 }}>
+      <IconBox icon="moon-outline" size={42} radius={14}/>
+      <View style={{ flex: 1 }}><Text style={{ color: p.text, fontFamily: fonts.displayHeavy, fontSize: 15 }}>Rest day</Text><Text style={{ color: p.muted, fontSize: 12 }}>{todayPlan.oneOff ? 'Marked for today only.' : 'Part of your weekly plan.'} Recovery is training too.</Text></View>
+    </View> : null)}
 
     {openWorkout && <WorkoutInProgressCard workout={openWorkout}/>}
 
     {/* Routine gallery (`.wg`) */}
+    <SectionLink title="My routines" action="New" onPress={() => router.push('/routine-form')}/>
     {routines.length ? <>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} snapToInterval={cardWidth + 12} decelerationRate="fast" disableIntervalMomentum onScroll={onScroll} scrollEventThrottle={32}
         style={{ marginHorizontal: -18 }} contentContainerStyle={{ paddingHorizontal: 18, paddingVertical: 4, gap: 12 }}>
         {routines.map((routine, index) => {
           const lastDone = training.filter(workout => workout.name === routine.name).map(workout => workout.day).sort().at(-1);
-          const count = links.filter(link => link.routine_id === routine.id).length;
-          return <GalleryCard key={routine.id} width={cardWidth} index={index} on={index === active} cover={covers[index % covers.length]} eyebrow={lastDoneLabel(lastDone, today)} title={routine.name} meta={`${count} exercise${count === 1 ? '' : 's'}`}
+          const count = linksOf(routine.id).length;
+          const plannedDays = weeklyPlan.filter(item => item.kind === 'routine' && item.routineId === routine.id).map(item => new Intl.DateTimeFormat(locale, { weekday: 'short' }).format(new Date(2024, 0, 7 + item.weekday, 12)));
+          return <GalleryCard key={routine.id} width={cardWidth} index={index} on={index === active} cover={covers[index % covers.length]} eyebrow={plannedDays.length ? `Every ${plannedDays.join(', ')}` : lastDoneLabel(lastDone, today)} title={routine.name} meta={`${count} exercise${count === 1 ? '' : 's'} · ${count ? setCountOf(routine.id) : 0} sets`}
             onStart={() => startRoutine(routine)} onMore={() => setRoutineMenu(routine)}/>;
         })}
       </ScrollView>
       {routines.length > 1 && <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 6 }}>{routines.map((routine, index) => <View key={routine.id} style={{ width: index === active ? 20 : 6, height: 6, borderRadius: 3, backgroundColor: index === active ? p.text : p.borderStrong }}/>)}</View>}
       {current && <>
         <SectionLink title={`${current.name} exercises`} action="Edit" onPress={() => router.push({ pathname: '/routine-form', params: { id: current.id } })}/>
-        {currentLinks.length ? <View style={{ gap: 8 }}>{currentLinks.slice(0, 5).map((link, index) => <ExerciseRow key={link.id} index={index} number={index + 1} name={exerciseName.get(link.exercise_id)?.name ?? 'Exercise'} metric={exerciseName.get(link.exercise_id)?.metric}/>)}
+        {currentLinks.length ? <View style={{ gap: 8 }}>{currentLinks.slice(0, 5).map((link, index) => <ExerciseRow key={link.id} index={index} number={index + 1} name={exerciseName.get(link.exercise_id)?.name ?? 'Exercise'} metric={exerciseName.get(link.exercise_id)?.metric} sets={plannedSets(current.id)[index]}/>)}
           {currentLinks.length > 5 && <Text style={{ color: p.muted, fontFamily: fonts.semibold, fontSize: 12, textAlign: 'center' }}>+{currentLinks.length - 5} more in {current.name}</Text>}</View>
           : <EmptyAction text="This routine has no exercises yet. Add some." onPress={() => router.push({ pathname: '/routine-form', params: { id: current.id } })}/>}
       </>}
@@ -117,10 +169,24 @@ export default function Workouts() {
       onDelete={() => confirm('Delete workout?', async () => { await repo.remove('workouts', workout.id); changed(); })}/>)}</View>
       : <EmptyAction text={workouts.length > 0 && openWorkout ? 'Your current workout is shown above.' : 'Finished workouts will appear here.'}/>}
 
-    <BottomSheet visible={!!routineMenu} title={routineMenu?.name ?? 'Routine'} onClose={() => setRoutineMenu(null)}>{close => routineMenu && <View style={{ gap: 10 }}>
-      <Button title="Start" onPress={() => close(() => startRoutine(routineMenu))}/>
-      <Button title="Edit" kind="ghost" onPress={() => close(() => router.push({ pathname: '/routine-form', params: { id: routineMenu.id } }))}/>
-      <Button title="Delete" kind="danger" onPress={() => confirm('Delete routine?', async () => { await repo.remove('routines', routineMenu.id); close(); changed(); })}/>
+    <BottomSheet visible={!!routineMenu} title={routineMenu?.name ?? 'Routine'} onClose={() => setRoutineMenu(null)}>{close => routineMenu && <View style={{ gap: 6 }}>
+      <MenuItem icon="play" label="Start workout" onPress={() => close(() => startRoutine(routineMenu))}/>
+      <MenuItem icon="create-outline" label="Edit routine" onPress={() => close(() => router.push({ pathname: '/routine-form', params: { id: routineMenu.id } }))}/>
+      <MenuItem icon="trash-outline" label="Delete routine" danger onPress={() => deleteRoutineConfirmed(routineMenu, close)}/>
+    </View>}</BottomSheet>
+
+    <BottomSheet visible={!!planningDay} title={planningDay ? `Plan ${new Intl.DateTimeFormat(locale, { weekday: 'long' }).format(fromDay(planningDay))}` : 'Plan day'} onClose={() => setPlanningDay(null)}>{close => planningDay && <View style={{ gap: 6 }}>
+      <Text style={{ color: p.muted, fontFamily: fonts.bold, fontSize: 10.5, letterSpacing: 0.8 }}>EVERY {new Intl.DateTimeFormat(locale, { weekday: 'long' }).format(fromDay(planningDay)).toUpperCase()}</Text>
+      {routines.map(routine => <PlanOption key={routine.id} icon="barbell-outline" label={routine.name} detail={`${linksOf(routine.id).length} exercises · ${setCountOf(routine.id)} sets`} selected={selectedPlan?.kind === 'routine' && selectedPlan.routineId === routine.id}
+        onPress={async () => { await updateWeeklyPlan({ weekday: fromDay(planningDay).getDay(), kind: 'routine', routineId: routine.id }); close(); }}/>)}
+      {!routines.length && <EmptyAction text="Create a routine to plan it on this day." onPress={() => close(() => router.push('/routine-form'))}/>}
+      <PlanOption icon="moon-outline" label="Weekly rest day" selected={selectedPlan?.kind === 'rest'} onPress={async () => { await updateWeeklyPlan({ weekday: fromDay(planningDay).getDay(), kind: 'rest' }); close(); }}/>
+      <PlanOption icon="remove-circle-outline" label="No plan" detail="Remove this day’s assignment" selected={!selectedPlan || (selectedPlan.kind === 'routine' && !selectedPlanRoutine)} onPress={async () => { await updateWeeklyPlan(null); close(); }}/>
+      {planningDay >= today && <>
+        <Text style={{ color: p.muted, fontFamily: fonts.bold, fontSize: 10.5, letterSpacing: 0.8, marginTop: 8 }}>ONLY {planningDay === today ? 'TODAY' : new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short' }).format(fromDay(planningDay)).toUpperCase()}</Text>
+        <PlanOption icon="bed-outline" label={rest.includes(planningDay) ? 'Undo one-off rest day' : 'Rest on this date only'} selected={rest.includes(planningDay)} onPress={async () => { if (!profile) return; await repo.toggleRest(profile.id, planningDay); changed(); close(); }}/>
+      </>}
+      {selectedPlanRoutine && planningDay === today && !rest.includes(today) && <View style={{ marginTop: 8 }}><Button title={`Start ${selectedPlanRoutine.name}`} onPress={() => close(() => startRoutine(selectedPlanRoutine))}/></View>}
     </View>}</BottomSheet>
   </Page>;
 }
@@ -149,12 +215,12 @@ function GalleryCard({ width, index, on, cover, eyebrow, title, meta, onStart, o
   </Animated.View>;
 }
 
-function ExerciseRow({ number, name, metric, index }: { number: number; name: string; metric?: Exercise['metric']; index: number }) {
+function ExerciseRow({ number, name, metric, index, sets }: { number: number; name: string; metric?: Exercise['metric']; index: number; sets?: TargetSet[] }) {
   const p = usePalette();
   const entering = useEntering(index);
   return <Animated.View entering={entering} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 11, paddingHorizontal: 12, borderRadius: 20, backgroundColor: p.c8, borderWidth: 1, borderColor: p.c8Line }}>
     <View style={{ width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: p.soft1 }}><Text style={{ color: p.accent, fontFamily: fonts.displayHeavy, fontSize: 14 }}>{number}</Text></View>
-    <View style={{ flex: 1, minWidth: 0 }}><Text numberOfLines={1} style={{ color: p.text, fontFamily: fonts.displayHeavy, fontSize: 14 }}>{name}</Text><Text style={{ color: p.muted, fontFamily: fonts.medium, fontSize: 12 }}>{metric === 'duration' ? 'Timed' : metric === 'reps' ? 'Bodyweight reps' : 'Weight × reps'}</Text></View>
+    <View style={{ flex: 1, minWidth: 0 }}><Text numberOfLines={1} style={{ color: p.text, fontFamily: fonts.displayHeavy, fontSize: 14 }}>{name}</Text><Text style={{ color: p.muted, fontFamily: fonts.medium, fontSize: 12 }}>{plannedSummary(sets, metric)}</Text></View>
     <IconBox icon={metric === 'duration' ? 'timer-outline' : 'barbell-outline'} size={30} radius={10} background="transparent" color={isLight(p) ? p.line3 : p.muted}/>
   </Animated.View>;
 }
@@ -174,4 +240,28 @@ function HistoryRow({ workout, locale, onOpen, onDelete, index }: { workout: Wor
     </Pressable>
     <Pressable accessibilityRole="button" accessibilityLabel="Delete workout" hitSlop={6} onPress={onDelete} style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: isLight(p) ? p.soft1 : p.card2 }}><Ionicons name="trash-outline" size={16} color={p.muted}/></Pressable>
   </Animated.View>;
+}
+
+/** "3 sets · 10 reps · 60 kg" style summary of a routine exercise's planned sets. */
+function plannedSummary(sets: TargetSet[] | undefined, metric: Exercise['metric'] = 'weight_reps') {
+  const count = Math.max(1, sets?.length ?? 0);
+  const first = sets?.[0];
+  const parts = [`${count} set${count === 1 ? '' : 's'}`];
+  if (metric === 'duration') { if (first?.durationSec) parts.push(`${first.durationSec} s`); }
+  else {
+    if (first?.reps) parts.push(`${first.reps} reps`);
+    if (metric === 'weight_reps' && first?.weightKg !== null && first?.weightKg !== undefined) parts.push(`${first.weightKg} kg`);
+  }
+  return parts.join(' · ');
+}
+
+/** Selectable plan option row with a check when selected. */
+function PlanOption({ icon, label, detail, selected, onPress }: { icon: React.ComponentProps<typeof Ionicons>['name']; label: string; detail?: string; selected: boolean; onPress: () => void | Promise<void> }) {
+  const p = usePalette();
+  return <MotionPressable pressScale={0.98} accessibilityRole="radio" accessibilityState={{ selected }} onPress={() => { void Promise.resolve(onPress()).catch(message); }}
+    style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 18, backgroundColor: p.c8, borderWidth: 1.5, borderColor: selected ? p.text : p.c8Line }}>
+    <IconBox icon={icon} size={36} background={isLight(p) ? p.soft1 : p.card2}/>
+    <View style={{ flex: 1, minWidth: 0 }}><Text numberOfLines={1} style={{ color: p.text, fontFamily: fonts.displayHeavy, fontSize: 14.5 }}>{label}</Text>{!!detail && <Text numberOfLines={1} style={{ color: p.muted, fontSize: 12 }}>{detail}</Text>}</View>
+    {selected && <Ionicons name="checkmark" size={20} color={p.text}/>}
+  </MotionPressable>;
 }

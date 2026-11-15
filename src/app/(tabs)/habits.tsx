@@ -10,6 +10,7 @@ import { Habit, HabitCompletion, HabitProgress } from '../../core/types';
 import { filterHabits, habitProgressOn, reminderTimes, weeklyConsistency } from '../../core/habitExtras';
 import { repo } from '../../data/db';
 import { useApp } from '../../state/app';
+import { useScreenRevision } from '../../state/useScreenRevision';
 import { Button, Field, Page, confirm, message } from '../../ui/components';
 import { BottomSheet } from '../../ui/BottomSheet';
 import { fonts } from '../../ui/theme';
@@ -24,7 +25,9 @@ import { CircleButton, EmptyAction, MiniBar, SectionLink, VCard, isLight, useEnt
  * the row's "⋯" button opens the same actions in a sheet.
  */
 export default function Habits() {
-  const { revision, changed, language } = useApp();
+  const { changed, language } = useApp();
+  // Reloads only while this tab is focused (see useScreenRevision).
+  const revision = useScreenRevision();
   const p = usePalette();
   const [habits, setHabits] = useState<Habit[]>([]);
   const [completions, setCompletions] = useState<HabitCompletion[]>([]);

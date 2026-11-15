@@ -57,6 +57,8 @@ export const migrations = [
    CREATE TABLE IF NOT EXISTS exercise_catalog_sources (source_id TEXT PRIMARY KEY, exercise_id TEXT NOT NULL REFERENCES exercises(id));
    CREATE TABLE IF NOT EXISTS exercise_catalog_imports (source TEXT PRIMARY KEY, version TEXT NOT NULL);`,
   `ALTER TABLE food_entries ADD COLUMN catalog_food_id TEXT;`,
+  `CREATE TABLE IF NOT EXISTS sync_failures (kind TEXT NOT NULL, record_id TEXT NOT NULL, operation_id TEXT NOT NULL, category TEXT NOT NULL, detail TEXT NOT NULL, attempts INTEGER NOT NULL, next_retry_at INTEGER NOT NULL, PRIMARY KEY(kind,record_id,operation_id));
+   CREATE TABLE IF NOT EXISTS sync_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);`,
 ] as const;
 
 export const exerciseSeeds: readonly [string, string][] = [
