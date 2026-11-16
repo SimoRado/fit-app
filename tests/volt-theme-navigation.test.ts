@@ -111,6 +111,7 @@ describe('Volt primary navigation', () => {
     expect(home).toContain("router.push('/missions')");
     expect(home).toContain("router.push('/weight')");
     expect(home).toContain("router.push('/motivation')");
-    expect(profile).toContain("router.push('/account')");
+    expect(profile).toContain("router.push('/delete-account')");
+    expect(source('src/ui/ProfileSheets.tsx')).toContain("router.push('/account')");
   });
 });

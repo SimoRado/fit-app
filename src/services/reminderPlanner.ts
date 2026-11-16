@@ -9,6 +9,8 @@ export type ReminderDefinition = {
   minute: number;
   weekday?: number;
   habitId?: string;
+  /** Extra behaviour flag delivered in the notification data (e.g. 'streak'). */
+  kind?: 'streak';
 };
 
 type ReminderOperations = {

@@ -67,7 +67,7 @@ function AuthenticatedStack({ signedIn }: { signedIn: boolean }) {
       <Stack.Screen name="habit-form"/><Stack.Screen name="habit-history"/><Stack.Screen name="workout-form"/>
       <Stack.Screen name="routine-form"/><Stack.Screen name="weight"/><Stack.Screen name="weight-form"/>
       <Stack.Screen name="measurement-form"/><Stack.Screen name="mission-form"/><Stack.Screen name="missions"/>
-      <Stack.Screen name="motivation"/><Stack.Screen name="reminders"/><Stack.Screen name="account"/><Stack.Screen name="premium-test"/><Stack.Screen name="cloud-sync"/><Stack.Screen name="delete-account"/><Stack.Screen name="admob-testing"/>
+      <Stack.Screen name="motivation"/><Stack.Screen name="reminders"/><Stack.Screen name="account"/><Stack.Screen name="premium-test"/><Stack.Screen name="paywall" options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}/><Stack.Screen name="cloud-sync"/><Stack.Screen name="delete-account"/><Stack.Screen name="admob-testing"/>
     </Stack.Protected>
   </Stack>;
 }
@@ -81,7 +81,7 @@ function AuthStack() {
       <Stack.Screen name="habit-form"/><Stack.Screen name="habit-history"/><Stack.Screen name="workout-form"/>
       <Stack.Screen name="routine-form"/><Stack.Screen name="weight"/><Stack.Screen name="weight-form"/>
       <Stack.Screen name="measurement-form"/><Stack.Screen name="mission-form"/><Stack.Screen name="missions"/>
-      <Stack.Screen name="motivation"/><Stack.Screen name="reminders"/><Stack.Screen name="account"/><Stack.Screen name="premium-test"/><Stack.Screen name="cloud-sync"/><Stack.Screen name="delete-account"/><Stack.Screen name="admob-testing"/>
+      <Stack.Screen name="motivation"/><Stack.Screen name="reminders"/><Stack.Screen name="account"/><Stack.Screen name="premium-test"/><Stack.Screen name="paywall" options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}/><Stack.Screen name="cloud-sync"/><Stack.Screen name="delete-account"/><Stack.Screen name="admob-testing"/>
     </Stack.Protected>
   </Stack>;
 }

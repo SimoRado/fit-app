@@ -14,6 +14,7 @@ import { clampDay, moveSelectionByWeek, startOfWeek, weekDays, weekNavigation } 
 import { WeekCalendar } from '../../ui/WeekCalendar';
 import { calorieDisplay, customFoods, firstNutritionTarget, foodEntries, nutritionTarget, type CustomFood, type FoodEntry, type NutritionTarget } from '../../data/nutrition';
 import { prepareFoodCatalog } from '../../data/foodCatalog';
+import { syncAutoTargets } from '../../data/nutritionPlan';
 import { useApp } from '../../state/app';
 import { useScreenRevision } from '../../state/useScreenRevision';
 import { FoodSheet, TargetSetup, TargetsSheet } from '../../ui/NutritionSheets';
@@ -79,7 +80,6 @@ export default function NutritionScreen() {
   // Week whose entries/targets are in state; until a newly selected week loads, the dashboard keeps its last values.
   const [loadedWeek, setLoadedWeek] = useState<string | null>(null);
   const [targets, setTargets] = useState<(NutritionTarget | null)[]>([]);
-  const [currentTarget, setCurrentTarget] = useState<NutritionTarget | null>(null);
   const [firstTarget, setFirstTarget] = useState<NutritionTarget | null>(null);
   const [display, setDisplay] = useState<CalorieDisplay>('remaining');
   const [foods, setFoods] = useState<CustomFood[]>([]);
@@ -91,8 +91,9 @@ export default function NutritionScreen() {
   useEffect(() => {
     let active = true;
     const days = weekDays(weekStartDay, 1);
-    void Promise.all([foodEntries(days[0], days[6]), Promise.all(days.map(nutritionTarget)), nutritionTarget(today), customFoods(), firstNutritionTarget(), calorieDisplay()])
-      .then(([nextEntries, nextTargets, nextCurrentTarget, nextFoods, nextFirst, nextDisplay]) => { if (active) { setEntries(nextEntries); setTargets(nextTargets); setLoadedWeek(weekStartDay); setCurrentTarget(nextCurrentTarget); setFoods(nextFoods); setFirstTarget(nextFirst); setDisplay(nextDisplay); setReady(true); } })
+    // In auto mode today's target follows the profile estimate (goal, weight, age…); custom targets are untouched.
+    void syncAutoTargets(today).catch(() => false).then(() => Promise.all([foodEntries(days[0], days[6]), Promise.all(days.map(nutritionTarget)), customFoods(), firstNutritionTarget(), calorieDisplay()]))
+      .then(([nextEntries, nextTargets, nextFoods, nextFirst, nextDisplay]) => { if (active) { setEntries(nextEntries); setTargets(nextTargets); setLoadedWeek(weekStartDay); setFoods(nextFoods); setFirstTarget(nextFirst); setDisplay(nextDisplay); setReady(true); } })
       .catch(message);
     return () => { active = false; };
   }, [revision, weekStartDay, today]);
@@ -123,7 +124,7 @@ export default function NutritionScreen() {
   const headline = calorieHeadline(total.kcal, selectedTarget?.kcal ?? null, display);
   const needsSetup = ready && !firstTarget;
   return <Page title="Nutrition" eyebrow={view === 'week' ? 'This week' : selected === today ? 'Today' : dateLabel(selected)} headerAction={<CircleButton icon="options-outline" label="Nutrition targets" onPress={() => setSheet('targets')}/>}>
-    {!ready ? <Text style={{ color: p.muted }}>Loading nutrition…</Text> : needsSetup ? <TargetSetup day={today} onSaved={afterChange}/> : view === 'today' ? <Animated.View entering={reduced ? undefined : FadeIn.duration(320)} style={{ gap: 16 }}>
+    {!ready ? <Text style={{ color: p.muted }}>Loading nutrition…</Text> : needsSetup ? <TargetSetup onSaved={afterChange}/> : view === 'today' ? <Animated.View entering={reduced ? undefined : FadeIn.duration(320)} style={{ gap: 16 }}>
       <WeekCalendar selected={selected} onSelect={setSelected} rules={rules} todayLabel="Back to today"
         marker={day => summaries.find(item => item.day === day)?.logged ? <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: day === selected ? p.plInk : p.g1 }}/> : null}/>
       <VCard>
@@ -156,6 +157,6 @@ export default function NutritionScreen() {
     </>}
     <Text style={{ color: p.muted, fontSize: 11, marginTop: 20 }}>Food data: <Link href="https://www.opennutrition.app" style={{ textDecorationLine: 'underline' }}>OpenNutrition</Link> (ODbL). Includes data © <Link href="https://world.openfoodfacts.org" style={{ textDecorationLine: 'underline' }}>Open Food Facts contributors</Link>.</Text>
     <BottomSheet layout="fixed" visible={sheet === 'food'} title={editing ? 'Edit entry' : 'Add food'} onClose={() => setSheet(null)}>{close => <FoodSheet key={editing?.id ?? `${meal}:${selected}`} entry={editing} meal={meal} day={selected} close={close} onSaved={afterFoodChange}/>}</BottomSheet>
-    <BottomSheet visible={sheet === 'targets'} title="Nutrition settings" onClose={() => setSheet(null)}>{close => <TargetsSheet day={today} target={currentTarget} display={display} foods={foods} close={close} onSaved={afterChange} onDisplayChange={setDisplay}/>}</BottomSheet>
+    <BottomSheet visible={sheet === 'targets'} title="Nutrition settings" onClose={() => setSheet(null)}>{close => <TargetsSheet display={display} foods={foods} close={close} onSaved={afterChange} onDisplayChange={setDisplay}/>}</BottomSheet>
   </Page>;
 }

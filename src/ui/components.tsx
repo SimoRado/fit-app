@@ -39,7 +39,11 @@ export function Page({ title, children, headerAction, eyebrow, headerContent, fo
   const { language } = useApp();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
-  const pathname = usePathname();
+  // The app-wide path changes when another screen (a form, the paywall) is pushed
+  // over this one. Keep the route this Page was opened on so its layout — and its
+  // ScrollView, with the user's scroll position — is not rebuilt underneath.
+  const currentPath = usePathname();
+  const [pathname] = useState(currentPath);
   const tabRoute = ['/', '/nutrition', '/habits', '/workouts', '/progress', '/profile'].includes(pathname);
   const tabName = pathname === '/' ? 'index' : pathname.slice(1).split('/')[0];
   const { transition } = useTabMotion();

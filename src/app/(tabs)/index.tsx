@@ -153,7 +153,7 @@ export default function Home() {
         <Text numberOfLines={1} accessibilityRole="header" style={{ color: p.text, fontFamily: fonts.displayHeavy, fontSize: 19, letterSpacing: -0.4 }}>Hi {firstName}</Text>
         <Text numberOfLines={1} style={{ color: p.muted, fontFamily: fonts.medium, fontSize: 12.5 }}>FAST REFRESH CHECK: LIVE</Text>
       </View>
-      <Pressable accessibilityRole="button" accessibilityLabel="Account" hitSlop={8} onPress={() => router.push('/account')} style={{ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: p.c8, borderWidth: 1, borderColor: p.c8Line }}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Profile" hitSlop={8} onPress={() => router.navigate('/profile')} style={{ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: p.c8, borderWidth: 1, borderColor: p.c8Line }}>
         <Text style={{ color: p.accent, fontFamily: fonts.displayHeavy, fontSize: 15 }}>{initials}</Text>
       </Pressable>
     </View>

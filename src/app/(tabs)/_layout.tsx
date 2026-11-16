@@ -79,6 +79,7 @@ function FloatingTabBar({ state, emitter, navigateToTab }: BottomTabBarProps) {
 export default function Layout() {
   return <TabMotionProvider><Tabs tabBar={props => <FloatingTabBar {...props}/>} screenOptions={{ headerShown: false }}>
     {primaryTabRoutes.map(name => <Tabs.Screen key={name} name={name}/>)}
-    {secondaryTabRoutes.map(name => <Tabs.Screen key={name} name={name} options={{ href: null }}/>) }
+    {/* Secondary tabs stay navigable; the custom tab bar only draws routes listed in `items`. (`href: null` now hides AND redirects the route.) */}
+    {secondaryTabRoutes.map(name => <Tabs.Screen key={name} name={name}/>)}
   </Tabs></TabMotionProvider>;
 }

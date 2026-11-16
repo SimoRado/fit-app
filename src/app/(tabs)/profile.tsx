@@ -1,108 +1,175 @@
-import React, { useEffect, useState, useSyncExternalStore } from 'react';
-import { Pressable, useWindowDimensions, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Alert, Platform, View } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Language } from '../../core/types';
-import { validateProfileValues } from '../../core/validation';
-import { repo } from '../../data/db';
-import { useApp } from '../../state/app';
-import { Button, Card, Choices, Field, message, MultiChoices, Page, styles, notify, confirm } from '../../ui/components';
-import { Text } from '../../ui/LocalizedText';
-import { colors, fonts } from '../../ui/theme';
-import { habitStreak, weightSummary } from '../../core/logic';
+import { useAuth } from '@clerk/expo';
 import { dayKey } from '../../core/date';
-import { SectionHeader } from '../../ui/visuals';
-import { useAuth, useUser } from '@clerk/expo';
+import { habitStreak, weightSummary } from '../../core/logic';
+import { goalLabels, parseGoal } from '../../core/nutritionTargets';
+import { localize } from '../../core/i18n';
+import { repo } from '../../data/db';
+import { nutritionTarget } from '../../data/nutrition';
+import { syncAutoTargets } from '../../data/nutritionPlan';
 import { clearAccountReminders } from '../../services/reminders';
-import { ensureNoPendingBeforeLocalDelete } from '../../data/syncLocal';
-import { BirthDateField } from '../../ui/BirthDateField';
-import { admobTestingEnabled, interstitialManager } from '../../services/adMob';
-import { VoltAppearanceSelector } from '../../ui/volt';
+import { admobTestingEnabled } from '../../services/adMob';
+import { useApp } from '../../state/app';
+import { useSubscription } from '../../state/subscriptions';
+import { subscriptionPackages } from '../../services/subscriptionLogic';
+import { buildPlans, planSubtitle } from '../../services/paywallLogic';
+import { BottomSheet } from '../../ui/BottomSheet';
+import { CubyMark } from '../../ui/CubyMark';
+import { Page, message } from '../../ui/components';
+import { Text } from '../../ui/LocalizedText';
+import { MotionPressable } from '../../ui/MotionPressable';
+import { AppearanceSheet, EditProfileSheet, GoalsSheet, LanguageSheet, NotificationsSheet, NutritionTargetsSheet, languageNames, notificationsOn } from '../../ui/ProfileSheets';
+import { fonts } from '../../ui/theme';
+import { ScreenTop, cardShadow, usePalette, useEntering, type VoltIcon } from '../../ui/voltKit';
+import Animated from 'react-native-reanimated';
+
+type Sheet = 'edit' | 'goals' | 'nutrition' | 'notifications' | 'language' | 'appearance';
+type Summary = { weight: number | null; workouts: number; habits: number; streak: number; kcal: number | null; notifications: boolean };
+const sheetTitles: Record<Sheet, string> = { edit: 'Edit profile', goals: 'Goals', nutrition: 'Nutrition · Target', notifications: 'Notifications', language: 'Language', appearance: 'Appearance' };
+const num = (value: number) => Math.round(value).toLocaleString('en-US');
+
+function StatCard({ label, value }: { label: string; value: string }) {
+  const p = usePalette();
+  return <View style={{ flex: 1, minWidth: 0, minHeight: 84, alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 6, borderRadius: 20, backgroundColor: p.c8, borderWidth: 1, borderColor: p.c8Line, ...cardShadow(p) }}>
+    <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: p.muted, fontFamily: fonts.bold, fontSize: 9.5, letterSpacing: 0.7, textTransform: 'uppercase' }}>{label}</Text>
+    <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: p.text, fontFamily: fonts.displayHeavy, fontSize: 22 }}>{value}</Text>
+  </View>;
+}
+
+function SettingsRow({ icon, title, value, onPress, danger, last, index }: { icon: VoltIcon; title: string; value?: string; onPress: () => void; danger?: boolean; last?: boolean; index: number }) {
+  const p = usePalette();
+  const entering = useEntering(index);
+  const tint = danger ? p.danger : p.accent;
+  return <Animated.View entering={entering}>
+    <MotionPressable pressScale={0.98} accessibilityRole="button" accessibilityLabel={value ? `${title}, ${value}` : title} onPress={onPress}
+      style={{ minHeight: 62, flexDirection: 'row', alignItems: 'center', gap: 14, borderBottomWidth: last ? 0 : 1, borderBottomColor: p.border }}>
+      <View style={{ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: danger ? (p.bg === '#F5F9FF' ? '#FDECEA' : 'rgba(255,138,138,0.12)') : p.bg === '#F5F9FF' ? p.paleBlue : p.soft1 }}><Ionicons name={icon} size={18} color={tint}/></View>
+      <Text numberOfLines={1} style={{ flex: 1, color: danger ? p.danger : p.text, fontFamily: fonts.semibold, fontSize: 14.5 }}>{title}</Text>
+      {!!value && <Text numberOfLines={1} style={{ maxWidth: '42%', color: p.muted, fontFamily: fonts.medium, fontSize: 12 }}>{value}</Text>}
+      {!danger && <Ionicons name="chevron-forward" size={16} color={p.muted}/>}
+    </MotionPressable>
+  </Animated.View>;
+}
 
 export default function ProfileScreen() {
-  const ads = useSyncExternalStore(interstitialManager.subscribe, interstitialManager.getSnapshot, interstitialManager.getSnapshot);
-  const { width } = useWindowDimensions();
-  const { user } = useUser();
+  const p = usePalette();
   const { signOut } = useAuth();
-  const { profile, revision, refresh, appearance, setAppearance, measurementSystem, setMeasurementSystem } = useApp();
-  const [name, setName] = useState('');
-  const [birth, setBirth] = useState('');
-  const [height, setHeight] = useState('');
-  const [target, setTarget] = useState('');
-  const [experience, setExperience] = useState('Beginner');
-  const [goal, setGoal] = useState('Improve general fitness');
-  const [growth, setGrowth] = useState<string[]>(['Build discipline']);
-  const [language, setLanguage] = useState<Language>('en');
-  const [summary, setSummary] = useState<{ weight: number | null; workouts: number; habits: number; streak: number }>({ weight: null, workouts: 0, habits: 0, streak: 0 });
-  const [editing, setEditing] = useState(false);
+  const subscription = useSubscription();
+  const { profile, revision, changed, appearance, language } = useApp();
+  const [summary, setSummary] = useState<Summary>({ weight: null, workouts: 0, habits: 0, streak: 0, kcal: null, notifications: false });
+  const [sheet, setSheet] = useState<Sheet | null>(null);
+  const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
-    if (!profile) return;
-    setName(profile.name); setBirth(profile.birth_date); setHeight(String(profile.height_cm));
-    setTarget(String(profile.target_weight ?? '')); setExperience(profile.experience);
-    setGoal(profile.fitness_goal); setGrowth(profile.growth_goals.split(',').filter(Boolean)); setLanguage(profile.language);
-  }, [profile]);
-  useEffect(() => {
-    Promise.all([repo.weights(), repo.trainingWorkouts(), repo.habits(), repo.completions()]).then(([weights, workouts, habits, completions]) => setSummary({ weight: weightSummary(weights).latest?.kg ?? null, workouts: workouts.length, habits: habits.filter(habit => !habit.archived).length, streak: Math.max(0, ...habits.filter(habit => !habit.archived && habit.frequency !== 'quota').map(habit => habitStreak(habit, completions, dayKey()).current)) })).catch(message);
+    let active = true;
+    // Auto targets follow the latest weigh-in/goal; custom targets are left alone.
+    void syncAutoTargets().catch(() => false)
+      .then(() => Promise.all([repo.weights(), repo.trainingWorkouts(), repo.habits(), repo.completions(), nutritionTarget(dayKey()), repo.preferences()]))
+      .then(([weights, workouts, habits, completions, target, preferences]) => {
+        if (!active) return;
+        const live = habits.filter(habit => !habit.archived);
+        setSummary({
+          weight: weightSummary(weights).latest?.kg ?? null,
+          workouts: workouts.length,
+          habits: live.length,
+          streak: Math.max(0, ...live.filter(habit => habit.frequency !== 'quota').map(habit => habitStreak(habit, completions, dayKey()).current)),
+          kcal: target?.kcal ?? null,
+          notifications: notificationsOn(new Map(preferences.map(item => [item.key, item.value]))),
+        });
+      })
+      .catch(message);
+    return () => { active = false; };
   }, [revision]);
 
-  async function save() {
+  const goal = parseGoal(profile?.fitness_goal);
+  const goalLine = [goalLabels[goal], (goal === 'lose' || goal === 'gain' || goal === 'habits') && profile?.target_weight ? `target ${profile.target_weight.toFixed(1)} kg` : null].filter(Boolean).join(' · ');
+  const firstName = profile?.name?.trim().split(/\s+/)[0] ?? '';
+  const initial = profile?.name?.trim().slice(0, 1).toLocaleUpperCase() || 'C';
+  // Banner copy comes from the live offering: a trial is mentioned only when the store returns one.
+  const proPlans = buildPlans(subscriptionPackages(subscription.offering), Platform.OS === 'ios' ? 'ios' : 'android');
+  const proAnnual = proPlans.find(plan => plan.kind === 'annual'), proMonthly = proPlans.find(plan => plan.kind === 'monthly');
+  const proTrial = proAnnual?.trial ?? null;
+  const proTeaser = proTrial && proAnnual ? planSubtitle(proAnnual)
+    : proAnnual ? `${proAnnual.billed}/year${proMonthly ? ` · ${proMonthly.billed}/month` : ''}`
+    : proMonthly ? `${proMonthly.billed}/month` : 'Ad-free, every feature';
+
+  function confirmSignOut() {
+    Alert.alert(localize('Sign out?', language), localize('Your data stays saved on this device for this account. Sign in again to pick up where you left off.', language), [
+      { text: localize('Cancel', language), style: 'cancel' },
+      { text: localize('Sign out', language), style: 'destructive', onPress: () => { void doSignOut(); } },
+    ]);
+  }
+  async function doSignOut() {
+    if (signingOut) return;
+    setSigningOut(true);
     try {
-      if (!profile || growth.length === 0) throw Error('Check name, birth date, height and target weight.');
-      const values = validateProfileValues({ name, birth_date: birth, height_cm: Number(height), start_weight: profile.start_weight, target_weight: target ? Number(target) : null });
-      await repo.saveProfile({ ...profile, ...values, experience, fitness_goal: goal, growth_goals: growth.join(','), language });
-      await refresh(); setEditing(false); notify('Saved', 'Profile updated.');
-    } catch (error) { message(error); }
+      // Cancel this account's scheduled notifications before the session ends so
+      // they never fire for the next person who signs in on this device.
+      await clearAccountReminders();
+      await signOut(); // The root navigator then routes back to the auth flow.
+    } catch (error) { setSigningOut(false); message(error); }
   }
 
-  function clear() {
-    confirm('Delete this account’s local data?', async () => {
-      try { await ensureNoPendingBeforeLocalDelete(); await clearAccountReminders(); await repo.clear(); await refresh(); router.replace('/onboarding'); }
-      catch (error) { message(error); }
-    }, 'This permanently removes this account’s fitness profile and history from this device. It does not delete cloud records, your Clerk account, or cancel a RevenueCat subscription. Guest and other signed-in accounts’ local files remain.', 'Delete local data');
-  }
+  const rows: { icon: VoltIcon; title: string; value?: string; onPress: () => void; danger?: boolean }[] = [
+    { icon: 'pencil-outline', title: 'Edit profile', value: firstName, onPress: () => setSheet('edit') },
+    { icon: 'radio-button-on-outline', title: 'Goals & tracking', value: goalLabels[goal], onPress: () => setSheet('goals') },
+    { icon: 'restaurant-outline', title: 'Nutrition targets', value: summary.kcal ? `${num(summary.kcal)} kcal` : 'Not set', onPress: () => setSheet('nutrition') },
+    { icon: 'notifications-outline', title: 'Notifications', value: summary.notifications ? 'On' : 'Off', onPress: () => setSheet('notifications') },
+    { icon: 'globe-outline', title: 'Language', value: languageNames[language], onPress: () => setSheet('language') },
+    { icon: 'color-palette-outline', title: 'Appearance', value: appearance === 'abyss' ? 'Abyss' : appearance === 'deep' ? 'Deep' : 'Shore', onPress: () => setSheet('appearance') },
+    ...(admobTestingEnabled ? [{ icon: 'bug-outline' as const, title: 'AdMob Testing', value: 'Internal', onPress: () => router.push('/admob-testing') }] : []),
+    { icon: 'log-out-outline', title: signingOut ? 'Signing out…' : 'Sign out', onPress: confirmSignOut },
+    { icon: 'trash-outline', title: 'Delete account', onPress: () => router.push('/delete-account'), danger: true },
+  ];
 
   return <Page title="">
-    <View style={{ alignItems: 'center', gap: 9, paddingTop: 60, paddingBottom: 12 }}>
-      <View style={{ width: 84, height: 84, borderRadius: 42, backgroundColor: colors.lilac, borderColor: colors.sun, borderWidth: 4, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.text, fontFamily: fonts.displayHeavy, fontSize: 42 }}>{profile?.name?.slice(0, 1).toUpperCase() ?? 'M'}</Text></View>
-      <Text style={{ color: colors.text, fontFamily: fonts.displayHeavy, fontSize: 42, lineHeight: 46, textAlign: 'center', letterSpacing: -1.2 }}>{profile?.name}</Text>
-      <View style={{ backgroundColor: colors.accentInk, paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 5 }}><Ionicons name="flame" size={12} color={colors.lime}/><Text style={{ color: colors.lime, fontFamily: fonts.bold, fontSize: 11 }}>{summary.streak} day streak</Text></View>
-      <Text style={[styles.muted, { textAlign: 'center' }]}>{profile?.fitness_goal} · {profile?.experience}</Text>
+    <ScreenTop label="Profile"/>
+    <View style={{ alignItems: 'center', gap: 8, paddingTop: 4, paddingBottom: 6 }}>
+      <MotionPressable pressScale={0.95} accessibilityRole="button" accessibilityLabel="Edit profile" onPress={() => setSheet('edit')} style={{ width: 92, height: 92, borderRadius: 46, alignItems: 'center', justifyContent: 'center', backgroundColor: p.bg === '#F5F9FF' ? p.soft1 : p.card2 }}>
+        <Text style={{ color: p.accent, fontFamily: fonts.displayHeavy, fontSize: 36 }}>{initial}</Text>
+        <View style={{ position: 'absolute', right: 2, bottom: 6, width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: p.g1, borderWidth: 2, borderColor: p.bg }}><Ionicons name="pencil" size={12} color={p.plInk}/></View>
+      </MotionPressable>
+      <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: p.text, fontFamily: fonts.displayHeavy, fontSize: 32, lineHeight: 38, letterSpacing: -0.8, textAlign: 'center' }}>{profile?.name ?? ''}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: p.heroCard }}>
+        <Ionicons name="flame-outline" size={12} color={p.lime}/>
+        <Text style={{ color: p.lime, fontFamily: fonts.bold, fontSize: 11 }}>{`${summary.streak} day streak`}</Text>
+      </View>
+      <Text style={{ color: p.muted, fontFamily: fonts.medium, fontSize: 13, textAlign: 'center' }}>{goalLine}</Text>
+      {!!profile?.experience && <Text style={{ color: p.text, fontFamily: fonts.bold, fontSize: 10.5, letterSpacing: 0.9, textTransform: 'uppercase' }}>{`${profile.experience} lifter`}</Text>}
     </View>
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{[
-      ['Weight', summary.weight ?? '—'], ['Height (cm)', profile?.height_cm ?? '—'], ['Workouts', summary.workouts], ['Habits', summary.habits],
-    ].map(([label, value]) => <View key={label} style={{ width: width < 360 ? '48%' : '23%', minHeight: 95, backgroundColor: colors.card, borderRadius: 24, padding: 10, gap: 5, alignItems: 'center', justifyContent: 'center' }}><Text numberOfLines={1} style={{ color: colors.muted, fontFamily: fonts.bold, fontSize: 9, textTransform: 'uppercase' }}>{label}</Text><Text numberOfLines={1} adjustsFontSizeToFit style={{ color: colors.ink, fontFamily: fonts.displayHeavy, fontSize: 27 }}>{value}</Text></View>)}</View>
-    <SectionHeader title="Appearance"/>
-    <VoltAppearanceSelector value={appearance} onChange={async next => { try { await setAppearance(next); } catch (error) { message(error); } }}/>
-    <SectionHeader title="Food measurements"/>
-    <View style={{ flexDirection: 'row', borderRadius: 20, borderWidth: 1, borderColor: colors.border, overflow: 'hidden', backgroundColor: colors.card }}>
-      {(['metric', 'us'] as const).map((system, index) => <React.Fragment key={system}>{index > 0 && <View style={{ width: 1, height: 25, alignSelf: 'center', backgroundColor: colors.borderStrong }}/>}<Pressable accessibilityRole="button" accessibilityLabel={system === 'metric' ? 'Metric measurements' : 'US customary measurements'} accessibilityState={{ selected: measurementSystem === system }} onPress={() => { void setMeasurementSystem(system).catch(message); }} style={{ flex: 1, minHeight: 48, alignItems: 'center', justifyContent: 'center', backgroundColor: measurementSystem === system ? colors.sun : colors.card }}><Text style={{ color: measurementSystem === system ? colors.accentInk : colors.text, fontFamily: fonts.bold }}>{system === 'metric' ? 'Metric' : 'US customary'}</Text></Pressable></React.Fragment>)}
+
+    <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+      <StatCard label="Weight" value={summary.weight !== null ? summary.weight.toFixed(1) : '—'}/>
+      <StatCard label="Height" value={profile ? String(Math.round(profile.height_cm)) : '—'}/>
+      <StatCard label="Workouts" value={String(summary.workouts)}/>
+      <StatCard label="Habits" value={String(summary.habits)}/>
     </View>
-    <SectionHeader title="Settings"/>
-    <Card><Text style={styles.label}>Signed-in account</Text><Text style={styles.text}>{user?.fullName || user?.firstName || 'Account'}</Text><Text style={styles.muted}>{user?.primaryEmailAddress?.emailAddress ?? ''}</Text><Button title="Manage account" kind="ghost" onPress={() => router.push('/account')}/><Button title="Sign out" kind="ghost" onPress={async () => { try { await signOut(); await clearAccountReminders(); } catch (error) { message(error); } }}/></Card>
-    {[
-      { label: 'Edit profile', detail: profile?.name ?? '', icon: 'person-outline' as const, action: () => setEditing(value => !value) },
-      { label: 'Personal growth goals', detail: growth.join(' · '), icon: 'flag-outline' as const, action: () => setEditing(true) },
-      { label: 'Language', detail: language === 'fr' ? 'Français' : language === 'ar' ? 'العربية' : 'English', icon: 'language-outline' as const, action: () => setEditing(true) },
-      { label: 'Reminder settings', detail: '', icon: 'notifications-outline' as const, action: () => router.push('/reminders') },
-      { label: 'Nutrition', detail: 'Targets, tracking and saved foods', icon: 'restaurant-outline' as const, action: () => router.push('/(tabs)/nutrition') },
-      { label: __DEV__ ? 'Premium — Test Subscriptions' : 'Premium', detail: __DEV__ ? 'RevenueCat Test Store' : 'Plans and subscription status', icon: 'diamond-outline' as const, action: () => router.push('/premium-test') },
-      ...(admobTestingEnabled ? [{ label: 'AdMob Testing', detail: 'Internal diagnostics and test ads', icon: 'bug-outline' as const, action: () => router.push('/admob-testing') }] : []),
-      { label: 'Data & Privacy', detail: 'Cloud sync and local data', icon: 'shield-checkmark-outline' as const, action: () => router.push('/cloud-sync') },
-      ...(ads.privacyOptionsRequired ? [{ label: 'Ad privacy options', detail: 'Manage Google advertising consent', icon: 'options-outline' as const, action: () => { void interstitialManager.showPrivacyOptions(); } }] : []),
-    ].map(item => <Pressable key={item.label} accessibilityRole="button" onPress={item.action} style={{ minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 13, borderBottomWidth: 1, borderBottomColor: colors.border }}><View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.lilac, alignItems: 'center', justifyContent: 'center' }}><Ionicons name={item.icon} size={21} color={colors.ink}/></View><View style={{ flex: 1 }}><Text style={{ color: colors.text, fontWeight: '700' }}>{item.label}</Text>{!!item.detail && <Text numberOfLines={1} style={styles.muted}>{item.detail}</Text>}</View><Ionicons name="chevron-forward" size={18} color={colors.muted}/></Pressable>)}
-    {editing && <Card>
-      <Text style={styles.muted}>Fitness profile · stored on this device</Text>
-      <Field label="Display name" value={name} onChangeText={setName}/>
-      <BirthDateField value={birth} onChangeText={setBirth}/>
-      <Field label="Height (cm)" value={height} onChangeText={setHeight} keyboardType="decimal-pad"/>
-      <Field label="Target weight (kg, optional)" value={target} onChangeText={setTarget} keyboardType="decimal-pad"/>
-      <Choices label="Experience" options={['Beginner', 'Intermediate', 'Advanced']} value={experience} onChange={setExperience}/>
-      <Choices label="Fitness goal" options={['Lose weight', 'Gain muscle', 'Improve general fitness', 'Maintain current fitness']} value={goal} onChange={setGoal}/>
-      <MultiChoices label="Personal growth goals" options={['Build discipline', 'Improve consistency', 'Build healthier habits', 'Improve productivity']} value={growth} onChange={setGrowth}/>
-      <Choices label="Language" options={['en', 'fr', 'ar'] as const} value={language} onChange={setLanguage}/>
-      <Button title="Save profile" onPress={save}/>
-    </Card>}
-    <Button title="Delete this account’s local data" kind="danger" onPress={clear}/>
+
+    {subscription.ready && <MotionPressable pressScale={0.98} accessibilityRole="button" accessibilityLabel={subscription.isPremium ? 'Cubyfit Pro is active' : 'Try Cubyfit Pro'} onPress={() => router.push('/paywall')}
+      style={{ marginTop: 12, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 22, backgroundColor: p.heroCard }}>
+      <View style={{ width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: p.paleBlue }}><CubyMark size={30} tile={false}/></View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={{ color: '#FFFFFF', fontFamily: fonts.displayHeavy, fontSize: 15 }}>{subscription.isPremium ? 'Cubyfit Pro' : 'Try Cubyfit Pro'}</Text>
+        <Text numberOfLines={1} style={{ color: '#C9E3FF', fontSize: 11.5 }}>{subscription.isPremium ? 'Active · manage your subscription' : proTeaser}</Text>
+      </View>
+      <View style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: p.lime }}><Text style={{ color: '#0B1446', fontFamily: fonts.bold, fontSize: 12 }}>{subscription.isPremium ? 'Manage' : proTrial ? 'Start free' : 'See plans'}</Text></View>
+    </MotionPressable>}
+
+    <View style={{ marginTop: 10 }}>
+      {rows.map((row, index) => <SettingsRow key={row.title} index={index} icon={row.icon} title={row.title} value={row.value} danger={row.danger} last={index === rows.length - 1} onPress={row.onPress}/>)}
+    </View>
+    <Text style={{ color: p.muted, fontFamily: fonts.bold, fontSize: 10, letterSpacing: 0.9, textAlign: 'center', marginTop: 14 }}>DATA IS SAVED ON THIS DEVICE FIRST</Text>
+
+    <BottomSheet visible={sheet !== null} title={sheet ? sheetTitles[sheet] : ''} onClose={() => setSheet(null)}>{close => <>
+      {sheet === 'edit' && <EditProfileSheet close={close} onSaved={changed}/>}
+      {sheet === 'goals' && <GoalsSheet close={close} onSaved={changed}/>}
+      {sheet === 'nutrition' && <NutritionTargetsSheet close={close} onSaved={changed}/>}
+      {sheet === 'notifications' && <NotificationsSheet onChanged={changed}/>}
+      {sheet === 'language' && <LanguageSheet close={close}/>}
+      {sheet === 'appearance' && <AppearanceSheet/>}
+    </>}</BottomSheet>
   </Page>;
 }

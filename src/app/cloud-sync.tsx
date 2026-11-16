@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { Alert } from 'react-native';
 import { router } from 'expo-router';
-import { Button, Card, Page, styles } from '../ui/components';
+import { Button, Card, Page, confirm, message, styles } from '../ui/components';
+import { repo } from '../data/db';
+import { clearAccountReminders } from '../services/reminders';
 import { Text } from '../ui/LocalizedText';
 import { useApp } from '../state/app';
 import { useSync } from '../state/sync';
-import { adoptGuestData, localRecordCount } from '../data/syncLocal';
+import { adoptGuestData, ensureNoPendingBeforeLocalDelete, localRecordCount } from '../data/syncLocal';
 
 export default function CloudSync() {
   const sync = useSync();
@@ -17,6 +19,12 @@ export default function CloudSync() {
       { text: 'Cancel', style: 'cancel' },
       { text: 'Copy my guest data', onPress: () => { void adoptGuestData().then(async () => { await refresh(); Alert.alert('Import complete', 'Your guest records were copied. Choose cloud backup separately if you want them uploaded.'); }).catch(error => Alert.alert('Import not completed', error instanceof Error ? error.message : 'Please try again.')); } },
     ]);
+  }
+  function clearLocal() {
+    confirm('Delete this account’s local data?', async () => {
+      try { await ensureNoPendingBeforeLocalDelete(); await clearAccountReminders(); await repo.clear(); await refresh(); router.replace('/onboarding'); }
+      catch (error) { message(error); }
+    }, 'This permanently removes this account’s fitness profile and history from this device. It does not delete cloud records, your sign-in account, or cancel a subscription. Guest and other signed-in accounts’ local files remain.', 'Delete local data');
   }
   const status = sync.choice !== 'enabled' ? 'Stored on this device' : sync.phase === 'synced' ? 'Synced' : sync.phase === 'syncing' ? 'Syncing' : sync.phase === 'offline' ? 'Offline — changes remain on this device' : sync.phase === 'waiting' ? 'Waiting for authenticated cloud connection' : sync.phase === 'conflict' ? 'Conflict requires attention' : sync.phase === 'error' ? 'Sync error' : 'Pending changes';
   return <Page title="Data & Privacy">
@@ -33,7 +41,8 @@ export default function CloudSync() {
       {!!sync.error && <Text style={styles.muted}>{sync.error}</Text>}
       {sync.conflicts > 0 && <Text style={styles.muted}>Conflicting local changes are preserved. Cloud changes have not overwritten them. Keep both copies until a manual resolution flow is available.</Text>}
     </Card>
-    <Card><Text style={styles.label}>Manage Local Data</Text><Text style={styles.muted}>This account has a separate SQLite file. The original guest file and other signed-in accounts remain separate. Local deletion is available on Profile and is blocked while unsynced changes or conflicts remain. Deleting local records does not delete the cloud copy.</Text></Card>
+    <Card><Text style={styles.label}>Manage Local Data</Text><Text style={styles.muted}>This account has a separate SQLite file. The original guest file and other signed-in accounts remain separate. Local deletion is blocked while unsynced changes or conflicts remain. Deleting local records does not delete the cloud copy.</Text>
+      {!!profile && <Button title="Delete this account’s local data" kind="danger" onPress={clearLocal}/>}</Card>
     {!profile && sync.choice !== 'enabled' && <Button title="Import preserved guest history" kind="ghost" onPress={importGuest}/>}
     <Card><Text style={styles.label}>Delete Account</Text><Text style={styles.muted}>Permanently remove this account and its personal data. Subscription cancellation is handled separately by your app store.</Text><Button title="Delete Account" kind="danger" onPress={() => router.push('/delete-account')}/></Card>
     <Button title={profile ? 'Open Fitapp' : 'Continue to fitness onboarding'} kind="ghost" onPress={() => router.replace(profile ? '/(tabs)' : '/onboarding')}/>

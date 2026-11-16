@@ -34,7 +34,7 @@ describe('native social OAuth build configuration', () => {
     const account = readFileSync(join(root, 'src/app/account.tsx'), 'utf8');
     const diagnostics = readFileSync(join(root, 'src/app/admob-testing.tsx'), 'utf8');
     const rootLayout = readFileSync(join(root, 'src/app/_layout.tsx'), 'utf8');
-    expect(profile).toContain('...(admobTestingEnabled ? [{ label: \'AdMob Testing\'');
+    expect(profile).toContain("...(admobTestingEnabled ? [{ icon: 'bug-outline' as const, title: 'AdMob Testing'");
     expect(account).toContain('{admobTestingEnabled && <Button title="AdMob Testing"');
     expect(account).toContain("router.push('/admob-testing')");
     expect(diagnostics).toContain('if (!admobTestingEnabled) return null;');

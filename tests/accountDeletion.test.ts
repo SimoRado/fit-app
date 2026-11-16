@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createSign, generateKeyPairSync } from 'node:crypto';
 import { convexTest } from 'convex-test';
 import schema from '../convex/schema';
 import { api, internal } from '../convex/_generated/api';
@@ -100,5 +101,68 @@ describe('external deletion services with mocked APIs', () => {
     vi.stubEnv('CLERK_SECRET_KEY', 'test-secret');
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 404 })));
     await expect(deleteClerkUser('user_A')).resolves.toBeUndefined();
+  });
+});
+
+describe('account deletion configuration', () => {
+  it('rejects an unauthenticated request before token verification', async () => {
+    const t = convexTest(schema, modules);
+    await expect(t.action(api.accountDeletionActions.request, { confirmation: 'DELETE', sessionToken: 'invalid', receipt })).rejects.toThrow('Authentication required');
+    expect(await t.run(async ctx => ctx.db.query('deletionJobs').collect())).toEqual([]);
+  });
+  it('rejects an authenticated request with missing server settings without starting cleanup', async () => {
+    for (const key of ['CLERK_FRONTEND_API_URL', 'CLERK_JWT_KEY', 'CLERK_SECRET_KEY', 'REVENUECAT_SECRET_KEY', 'REVENUECAT_PROJECT_ID']) vi.stubEnv(key, '');
+    vi.stubEnv('CLERK_FRONTEND_API_URL', 'https://clerk.example');
+    const t = convexTest(schema, modules);
+    const owner = t.withIdentity({ subject: 'user_A', issuer: 'https://clerk.example' });
+    await expect(owner.action(api.accountDeletionActions.request, { confirmation: 'DELETE', sessionToken: 'invalid', receipt })).rejects.toThrow(/Account deletion is not configured \(missing: CLERK_JWT_KEY, CLERK_SECRET_KEY, REVENUECAT_SECRET_KEY, REVENUECAT_PROJECT_ID\)/);
+    expect(await t.run(async ctx => ctx.db.query('deletionJobs').collect())).toEqual([]);
+  });
+  it('treats an invalid fresh session token as failed reverification', async () => {
+    vi.stubEnv('CLERK_FRONTEND_API_URL', 'https://clerk.example');
+    vi.stubEnv('CLERK_JWT_KEY', 'invalid-test-public-key');
+    vi.stubEnv('CLERK_SECRET_KEY', 'test-secret');
+    vi.stubEnv('REVENUECAT_SECRET_KEY', 'test-secret');
+    vi.stubEnv('REVENUECAT_PROJECT_ID', 'test-project');
+    const t = convexTest(schema, modules);
+    const owner = t.withIdentity({ subject: 'user_A', issuer: 'https://clerk.example' });
+    await expect(owner.action(api.accountDeletionActions.request, { confirmation: 'DELETE', sessionToken: 'invalid', receipt })).rejects.toThrow('Recent authentication required');
+    expect(await t.run(async ctx => ctx.db.query('deletionJobs').collect())).toEqual([]);
+  });
+  it('rejects expired, stale-factor, and wrong-account signed tokens without a deletion job', async () => {
+    const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    vi.stubEnv('CLERK_FRONTEND_API_URL', 'https://clerk.example');
+    vi.stubEnv('CLERK_JWT_KEY', publicKey.export({ type: 'spki', format: 'pem' }).toString());
+    vi.stubEnv('CLERK_SECRET_KEY', 'test-secret');
+    vi.stubEnv('REVENUECAT_SECRET_KEY', 'test-secret');
+    vi.stubEnv('REVENUECAT_PROJECT_ID', 'test-project');
+    const encode = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url');
+    const signed = (sub: string, fva: number[], expiresIn: number) => {
+      const now = Math.floor(Date.now() / 1000);
+      const body = `${encode({ alg: 'RS256', typ: 'JWT' })}.${encode({ iss: 'https://clerk.example', sub, iat: now - 120, nbf: now - 120, exp: now + expiresIn, fva })}`;
+      return `${body}.${createSign('RSA-SHA256').update(body).end().sign(privateKey).toString('base64url')}`;
+    };
+    const t = convexTest(schema, modules);
+    const owner = t.withIdentity({ subject: 'user_A', issuer: 'https://clerk.example' });
+    for (const token of [signed('user_A', [0, -1], -60), signed('user_A', [11, -1], 60), signed('user_B', [0, -1], 60)]) {
+      await expect(owner.action(api.accountDeletionActions.request, { confirmation: 'DELETE', sessionToken: token, receipt })).rejects.toThrow('Recent authentication required');
+    }
+    expect(await t.run(async ctx => ctx.db.query('deletionJobs').collect())).toEqual([]);
+  });
+  it('lists every missing server setting before any job can start', async () => {
+    const { missingDeletionConfig } = await import('../convex/accountDeletionActions');
+    expect(missingDeletionConfig({ CLERK_FRONTEND_API_URL: 'https://x.clerk.accounts.dev' })).toEqual(['CLERK_JWT_KEY', 'CLERK_SECRET_KEY', 'REVENUECAT_SECRET_KEY', 'REVENUECAT_PROJECT_ID']);
+    expect(missingDeletionConfig({ CLERK_FRONTEND_API_URL: 'a', CLERK_JWT_KEY: 'b', CLERK_SECRET_KEY: 'c', REVENUECAT_SECRET_KEY: 'd', REVENUECAT_PROJECT_ID: ' ' })).toEqual(['REVENUECAT_PROJECT_ID']);
+  });
+});
+
+describe('client deletion errors', () => {
+  it('explains server rejections and drops the stale receipt only when no job can exist', async () => {
+    const { deletionFailure } = await import('../src/core/accountDeletionErrors');
+    const config = deletionFailure(Error('[CONVEX A(accountDeletionActions:request)] [Request ID: x] Server Error\nUncaught Error: Deletion verification is not configured'));
+    expect(config).toMatchObject({ jobMayExist: false, reverify: false });
+    expect(config.message).toContain('Nothing was deleted');
+    expect(deletionFailure(Error('Server Error\nUncaught Error: Recent authentication required'))).toMatchObject({ jobMayExist: false, reverify: true });
+    expect(deletionFailure(Error('Network request failed'))).toMatchObject({ jobMayExist: true });
   });
 });

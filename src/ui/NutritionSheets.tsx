@@ -9,8 +9,9 @@ import { colors, fonts, radii } from './theme';
 import { MotionPressable } from './MotionPressable';
 import { dayKey, validDay } from '../core/date';
 import { displayQuantity, fromGrams, primaryUnits, parseQuantity, servingLabel, toGrams, unitOptions, type FoodUnit } from '../core/foodUnits';
-import { meals, parseNumber, parseTargets, portionNutrients, type CalorieDisplay, type Meal, type Nutrients, type TargetInput } from '../core/nutrition';
-import { deleteCustomFood, deleteFoodEntry, foodEntryUnit, recentFoods, reusableFoods, saveFoodEntry, saveNutritionTarget, setCalorieDisplay, type CustomFood, type FoodEntry, type NutritionTarget, type RecentFood, type ReusableFood, type SavedFoodUnit } from '../data/nutrition';
+import { meals, parseNumber, portionNutrients, type CalorieDisplay, type Meal, type Nutrients } from '../core/nutrition';
+import { deleteCustomFood, deleteFoodEntry, foodEntryUnit, recentFoods, reusableFoods, saveFoodEntry, setCalorieDisplay, type CustomFood, type FoodEntry, type RecentFood, type ReusableFood, type SavedFoodUnit } from '../data/nutrition';
+import { NutritionTargetEditor } from './NutritionTargetEditor';
 import { catalogFoodById, foodCategories, searchFoodCatalog, type CatalogFood } from '../data/foodCatalog';
 import { useApp } from '../state/app';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
@@ -310,72 +311,20 @@ export function FoodSheet({ entry, meal: initialMeal, day: initialDay, close, on
   </View>;
 }
 
-const EXAMPLE_TARGETS = { kcal: '2000', protein: '120', carbs: '220', fat: '65' };
-const fieldText = (value: number | undefined) => value === undefined ? '' : String(Math.round(value * 10) / 10);
-
-/** The four target fields (2 × 2), shared by first-time setup and settings. */
-function TargetFields({ value, onChange }: { value: TargetInput; onChange: (next: TargetInput) => void }) {
-  const set = (key: keyof TargetInput) => (text: string) => onChange({ ...value, [key]: text });
-  return <View style={{ gap: 10 }}>
-    <View style={{ flexDirection: 'row', gap: 10 }}><View style={{ flex: 1 }}><Field label="Calories (kcal)" value={value.kcal} onChangeText={set('kcal')} keyboardType="numeric" placeholder="e.g. 2000"/></View><View style={{ flex: 1 }}><Field label="Protein (g)" value={value.protein} onChangeText={set('protein')} keyboardType="numeric" placeholder="optional"/></View></View>
-    <View style={{ flexDirection: 'row', gap: 10 }}><View style={{ flex: 1 }}><Field label="Carbs (g)" value={value.carbs} onChangeText={set('carbs')} keyboardType="numeric" placeholder="optional"/></View><View style={{ flex: 1 }}><Field label="Fat (g)" value={value.fat} onChangeText={set('fat')} keyboardType="numeric" placeholder="optional"/></View></View>
-  </View>;
-}
-
-function macroKcal(input: TargetInput) {
-  const n = (text: string) => { const value = Number(text.trim().replace(',', '.')); return Number.isFinite(value) && value > 0 ? value : 0; };
-  return Math.round(n(input.protein) * 4 + n(input.carbs) * 4 + n(input.fat) * 9);
-}
-
-/** First visit: shown in place of the dashboard until targets exist. */
-export function TargetSetup({ day, onSaved }: { day: string; onSaved: () => void }) {
-  const [value, setValue] = useState<TargetInput>({ kcal: '', protein: '', carbs: '', fat: '' });
-  const [example, setExample] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const macros = macroKcal(value);
-  async function save() {
-    if (busy) return;
-    try {
-      const targets = parseTargets(value);
-      setBusy(true); setError('');
-      await saveNutritionTarget(day, targets);
-      onSaved();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not save targets.'); }
-    finally { setBusy(false); }
-  }
+/** First visit: shown in place of the dashboard until targets exist. Uses the shared target editor. */
+export function TargetSetup({ onSaved }: { onSaved: () => void }) {
   return <View style={{ gap: 14, padding: 18, borderRadius: 26, backgroundColor: colors.c8, borderWidth: 1, borderColor: colors.c8Line }}>
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
       <View style={{ width: 44, height: 44, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.sun }}><Ionicons name="flame" size={22} color={colors.accentInk}/></View>
       <View style={{ flex: 1 }}><Text style={{ color: colors.text, fontFamily: fonts.displayHeavy, fontSize: 20, lineHeight: 24 }}>Set your daily targets</Text><Text style={{ color: colors.muted, fontSize: 12.5 }}>Used for your calorie ring and macro bars.</Text></View>
     </View>
-    <TargetFields value={value} onChange={next => { setValue(next); setExample(false); }}/>
-    <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 17 }}>{macros > 0 ? `Your macros add up to about ${macros.toLocaleString()} kcal. They do not need to match your calorie target.` : 'Only calories are required. Leave a macro blank to skip it.'}</Text>
-    <Pressable accessibilityRole="button" onPress={() => { setValue(EXAMPLE_TARGETS); setExample(true); }} style={{ alignSelf: 'flex-start', minHeight: 40, justifyContent: 'center', paddingHorizontal: 14, borderRadius: radii.pill, borderWidth: 1, borderColor: colors.borderStrong }}>
-      <Text style={{ color: colors.text, fontFamily: fonts.bold, fontSize: 12.5 }}>Not sure? Fill in example values</Text>
-    </Pressable>
-    {example && <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 17 }}>These are general examples, not personalised advice. Adjust them to suit you before saving.</Text>}
-    {error ? <Text accessibilityRole="alert" style={{ color: colors.danger }}>{error}</Text> : null}
-    <Button title={busy ? 'Saving…' : 'Save targets'} disabled={busy} onPress={save}/>
+    <NutritionTargetEditor onChanged={onSaved}/>
   </View>;
 }
 
-export function TargetsSheet({ day, target, display, foods, close, onSaved, onDisplayChange }: { day: string; target: NutritionTarget | null; display: CalorieDisplay; foods: CustomFood[]; close: Close; onSaved: () => void; onDisplayChange: (mode: CalorieDisplay) => void }) {
-  const [value, setValue] = useState<TargetInput>({ kcal: fieldText(target?.kcal), protein: fieldText(target?.protein), carbs: fieldText(target?.carbs), fat: fieldText(target?.fat) });
+/** Nutrition → settings: the same target editor as Profile, then display mode and saved foods. */
+export function TargetsSheet({ display, foods, close, onSaved, onDisplayChange }: { display: CalorieDisplay; foods: CustomFood[]; close: Close; onSaved: () => void; onDisplayChange: (mode: CalorieDisplay) => void }) {
   const [mode, setMode] = useState<CalorieDisplay>(display);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const macros = macroKcal(value);
-  async function save() {
-    if (busy) return;
-    try {
-      const targets = parseTargets(value);
-      setBusy(true); setError('');
-      await saveNutritionTarget(day, targets);
-      onSaved(); close();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not save targets.'); }
-    finally { setBusy(false); }
-  }
   async function changeMode(next: CalorieDisplay) {
     const previous = mode;
     setMode(next); onDisplayChange(next);
@@ -383,13 +332,7 @@ export function TargetsSheet({ day, target, display, foods, close, onSaved, onDi
   }
   function removeFood(food: CustomFood) { confirm(`Delete ${food.name}?`, async () => { try { await deleteCustomFood(food.id); onSaved(); } catch (cause) { message(cause); } }, 'Diary entries already logged with this food remain in your history.', 'Delete saved food'); }
   return <View style={{ gap: 16 }}>
-    <View style={{ gap: 10 }}>
-      <Text style={sectionLabel}>DAILY TARGETS</Text>
-      <TargetFields value={value} onChange={setValue}/>
-      <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 17 }}>{macros > 0 ? `Macros ≈ ${macros.toLocaleString()} kcal (protein 4, carbs 4, fat 9 kcal/g). ` : ''}Changes apply from today; earlier days keep their targets.</Text>
-      {error ? <Text accessibilityRole="alert" style={{ color: colors.danger }}>{error}</Text> : null}
-      <Button title={busy ? 'Saving…' : 'Save targets'} disabled={busy} onPress={save}/>
-    </View>
+    <NutritionTargetEditor intro={false} onChanged={onSaved} onSaved={() => close()}/>
     <View style={{ gap: 10 }}>
       <Text style={sectionLabel}>CALORIE RING SHOWS</Text>
       <Segmented options={['remaining', 'consumed'] as const} value={mode} onChange={next => void changeMode(next)} label={item => item === 'remaining' ? 'Calories left' : 'Calories eaten'}/>

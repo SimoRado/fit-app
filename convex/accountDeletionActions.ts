@@ -8,14 +8,24 @@ import { action, internalAction } from './_generated/server';
 export function recentFactor(value: unknown) {
   return Array.isArray(value) && value.some(age => typeof age === 'number' && age >= 0 && age < 10);
 }
+export const deletionConfigKeys = ['CLERK_FRONTEND_API_URL', 'CLERK_JWT_KEY', 'CLERK_SECRET_KEY', 'REVENUECAT_SECRET_KEY', 'REVENUECAT_PROJECT_ID'] as const;
+export function missingDeletionConfig(env: Record<string, string | undefined>) {
+  return deletionConfigKeys.filter(key => !env[key]?.trim());
+}
 export const request = action({ args: { confirmation: v.string(), sessionToken: v.string(), receipt: v.string() }, handler: async (ctx, args): Promise<{ receipt: string; stage: string }> => {
   if (args.confirmation !== 'DELETE' || args.sessionToken.length > 8000 || !/^[0-9a-f-]{72}$/.test(args.receipt)) throw Error('Deletion confirmation required');
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) throw Error('Authentication required');
-  const jwtKey = process.env.CLERK_JWT_KEY;
-  const issuer = process.env.CLERK_FRONTEND_API_URL;
-  if (!jwtKey || !issuer) throw Error('Deletion verification is not configured');
-  const token = await verifyToken(args.sessionToken, { jwtKey });
+  // Refuse before creating a job unless every later stage can run: a job wipes cloud
+  // data first, so a missing RevenueCat/Clerk secret would leave the account locked
+  // but not deleted.
+  const missing = missingDeletionConfig(process.env);
+  if (missing.length) throw Error(`Account deletion is not configured (missing: ${missing.join(', ')})`);
+  const jwtKey = process.env.CLERK_JWT_KEY!;
+  const issuer = process.env.CLERK_FRONTEND_API_URL!;
+  // A revoked, expired, or malformed session must remain a verification failure.
+  // Do not leak token parser details to the client or create a deletion job.
+  const token = await verifyToken(args.sessionToken, { jwtKey }).catch(() => { throw Error('Recent authentication required'); });
   if (token.sub !== identity.subject || token.iss !== identity.issuer || token.iss !== issuer || !recentFactor((token as { fva?: unknown }).fva)) throw Error('Recent authentication required');
   return ctx.runMutation(internal.accountDeletion.begin, { owner: identity.tokenIdentifier, clerkUserId: identity.subject, receipt: args.receipt });
 } });

@@ -2,7 +2,8 @@ import * as Notifications from 'expo-notifications';
 import { AndroidImportance, IosAuthorizationStatus } from 'expo-notifications';
 import { Platform } from 'react-native';
 import { dayKey } from '../core/date';
-import { Language, NotificationSchedule } from '../core/types';
+import { HabitCompletion, Language, NotificationSchedule } from '../core/types';
+import { scheduled } from '../core/logic';
 import { desiredReminders } from '../core/reminderDefinitions';
 import { localize } from '../core/i18n';
 import { db, getLocalAccount, repo } from '../data/db';
@@ -19,9 +20,21 @@ Notifications.setNotificationHandler({
         show = !row;
       } catch { /* A locked or unavailable database must not block other notifications. */ }
     }
+    if (notification.request.content.data?.kind === 'streak' && getLocalAccount()) {
+      try { show = !(await todaysHabitsComplete()); }
+      catch { /* Show the nudge when the database cannot be read. */ }
+    }
     return { shouldShowBanner: show, shouldShowList: show, shouldPlaySound: show, shouldSetBadge: false };
   },
 });
+
+/** True when every habit scheduled today (excluding weekly quotas) is completed. */
+async function todaysHabitsComplete() {
+  const today = dayKey();
+  const [habits, completions] = await Promise.all([repo.habits(), (await db()).getAllAsync<HabitCompletion>('SELECT * FROM habit_completions WHERE day=?', today)]);
+  const due = habits.filter(habit => habit.frequency !== 'quota' && scheduled(habit, today));
+  return due.length > 0 && due.every(habit => completions.some(row => row.habit_id === habit.id));
+}
 
 export async function requestReminderPermission(language: Language = 'en') {
   if (Platform.OS === 'android') await Notifications.setNotificationChannelAsync('reminders', { name: localize('Reminders', language), importance: AndroidImportance.DEFAULT });
@@ -69,7 +82,7 @@ async function reconcileRemindersNow(account: string | null) {
 
   await reconcileScheduledReminders(desired, existing, scheduledIds, {
     schedule: async reminder => { assertAccount(); const identifier = await Notifications.scheduleNotificationAsync({
-      content: { title: reminder.title, body: reminder.body, data: reminder.habitId ? { habitId: reminder.habitId } : {} },
+      content: { title: reminder.title, body: reminder.body, data: reminder.habitId ? { habitId: reminder.habitId } : reminder.kind ? { kind: reminder.kind } : {} },
       trigger: reminder.weekday
         ? { type: Notifications.SchedulableTriggerInputTypes.WEEKLY, weekday: reminder.weekday, hour: reminder.hour, minute: reminder.minute, channelId: 'reminders' }
         : { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour: reminder.hour, minute: reminder.minute, channelId: 'reminders' },

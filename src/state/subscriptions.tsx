@@ -3,7 +3,7 @@ import { useAuth } from '@clerk/expo';
 import { Platform } from 'react-native';
 import Purchases, { type CustomerInfo, type PurchasesOffering, type PurchasesPackage } from 'react-native-purchases';
 import { reportFailure } from '../core/monitoring';
-import { activeEntitlements, isPurchaseCancelled, subscriptionPackages, visibleCustomerInfo } from '../services/subscriptionLogic';
+import { activeEntitlements, hasPremium, isPurchaseCancelled, subscriptionPackages, visibleCustomerInfo } from '../services/subscriptionLogic';
 import { runtimeSignals } from '../core/runtime';
 
 const apiKey = __DEV__ ? process.env.EXPO_PUBLIC_REVENUECAT_TEST_KEY
@@ -26,8 +26,10 @@ type State = {
   ready: boolean; loading: boolean; busy: boolean; error: string | null;
   offering: PurchasesOffering | null; info: CustomerInfo | null;
   activeIds: string[]; isPremium: boolean; entitlementId?: string;
-  refresh: () => Promise<void>; purchase: (item: PurchasesPackage) => Promise<'success' | 'cancelled'>;
-  restore: () => Promise<void>;
+  refresh: () => Promise<void>;
+  /** `premium` is read from the CustomerInfo returned after the purchase, never from the button press. */
+  purchase: (item: PurchasesPackage) => Promise<{ outcome: 'success' | 'cancelled'; premium: boolean }>;
+  restore: () => Promise<{ premium: boolean }>;
 };
 const Context = createContext<State | null>(null);
 function errorText(error: unknown) { return error instanceof Error ? error.message : 'RevenueCat could not complete this request.'; }
@@ -112,8 +114,8 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     } catch (cause) { setError(errorText(cause)); throw cause; }
     finally { setLoading(false); }
   }
-  async function purchase(item: PurchasesPackage): Promise<'success' | 'cancelled'> {
-    if (busyRef.current) return 'cancelled';
+  async function purchase(item: PurchasesPackage): Promise<{ outcome: 'success' | 'cancelled'; premium: boolean }> {
+    if (busyRef.current) return { outcome: 'cancelled', premium: hasPremium(info, entitlementId) };
     await assertIdentity();
     if (!Object.values(subscriptionPackages(offering)).some(candidate => candidate?.identifier === item.identifier)) throw Error('This plan is no longer available. Refresh plans.');
     busyRef.current = true; setBusy(true); setError(null);
@@ -123,21 +125,21 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       setInfo(result.customerInfo);
       const updated = await Purchases.getCustomerInfo();
       await assertIdentity(); setInfo(updated);
-      return 'success';
-    } catch (cause) { if (isPurchaseCancelled(cause)) return 'cancelled'; setError(errorText(cause)); throw cause; }
+      return { outcome: 'success', premium: hasPremium(updated, entitlementId) };
+    } catch (cause) { if (isPurchaseCancelled(cause)) return { outcome: 'cancelled', premium: hasPremium(info, entitlementId) }; setError(errorText(cause)); throw cause; }
     finally { busyRef.current = false; setBusy(false); }
   }
-  async function restore() {
-    if (busyRef.current) return;
+  async function restore(): Promise<{ premium: boolean }> {
+    if (busyRef.current) return { premium: hasPremium(info, entitlementId) };
     await assertIdentity(); busyRef.current = true; setBusy(true); setError(null);
-    try { const restored = await Purchases.restorePurchases(); await assertIdentity(); setInfo(restored); }
+    try { const restored = await Purchases.restorePurchases(); await assertIdentity(); setInfo(restored); return { premium: hasPremium(restored, entitlementId) }; }
     catch (cause) { setError(errorText(cause)); throw cause; }
     finally { busyRef.current = false; setBusy(false); }
   }
   const safeInfo = visibleCustomerInfo(info, userId, identifiedUser);
   const safeReady = ready && !!safeInfo;
   const activeIds = activeEntitlements(safeInfo, entitlementId);
-  const value: State = { ready: safeReady, loading, busy, error, offering: safeReady ? offering : null, info: safeInfo, activeIds, isPremium: safeReady && !!entitlementId && activeIds.length > 0, entitlementId, refresh, purchase, restore };
+  const value: State = { ready: safeReady, loading, busy, error, offering: safeReady ? offering : null, info: safeInfo, activeIds, isPremium: safeReady && hasPremium(safeInfo, entitlementId), entitlementId, refresh, purchase, restore };
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }
 export function useSubscription() { const value = useContext(Context); if (!value) throw Error('SubscriptionProvider is missing'); return value; }
