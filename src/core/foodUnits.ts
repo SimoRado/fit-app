@@ -54,6 +54,12 @@ export function fromGrams(grams: number, unit: FoodUnit, measure: ServingMeasure
   if (!Number.isFinite(grams) || grams <= 0 || !factor) throw Error('This measurement is unavailable for this food.');
   return grams / factor;
 }
+/** Convert volume without claiming a food-specific mass or density. */
+export function convertVolumeQuantity(amount: number, from: FoodUnit, to: FoodUnit) {
+  const first = volumeMl[from], second = volumeMl[to];
+  if (!Number.isFinite(amount) || amount <= 0 || !first || !second) throw Error('These units cannot be converted without a measured serving.');
+  return amount * first / second;
+}
 export function parseQuantity(value: string) {
   const normalized = value.trim().replace(',', '.');
   if (!/^\d+(?:\.\d{1,6})?$/.test(normalized)) throw Error('Enter a valid quantity.');

@@ -8,9 +8,9 @@ import { Button, Field, confirm, message } from './components';
 import { colors, fonts, radii } from './theme';
 import { MotionPressable } from './MotionPressable';
 import { dayKey, validDay } from '../core/date';
-import { displayQuantity, fromGrams, primaryUnits, parseQuantity, servingLabel, toGrams, unitOptions, type FoodUnit } from '../core/foodUnits';
+import { convertVolumeQuantity, displayQuantity, fromGrams, primaryUnits, parseQuantity, servingLabel, toGrams, unitOptions, type FoodUnit } from '../core/foodUnits';
 import { meals, parseNumber, portionNutrients, type CalorieDisplay, type Meal, type Nutrients } from '../core/nutrition';
-import { deleteCustomFood, deleteFoodEntry, foodEntryUnit, recentFoods, reusableFoods, saveFoodEntry, setCalorieDisplay, type CustomFood, type FoodEntry, type RecentFood, type ReusableFood, type SavedFoodUnit } from '../data/nutrition';
+import { deleteCustomFood, deleteFoodEntry, foodEntryUnit, recentFoods, reusableFoods, saveCustomFood, saveFoodEntry, setCalorieDisplay, type CustomFood, type CustomFoodMeasure, type FoodEntry, type RecentFood, type ReusableFood, type SavedFoodUnit } from '../data/nutrition';
 import { NutritionTargetEditor } from './NutritionTargetEditor';
 import { catalogFoodById, foodCategories, searchFoodCatalog, type CatalogFood } from '../data/foodCatalog';
 import { useApp } from '../state/app';
@@ -39,12 +39,9 @@ function catalogResult(food: CatalogFood): ReusableFood {
 function CatalogCredit() {
   return <Text style={{ color: colors.muted, fontSize: 11 }}>Food data: <Link href="https://www.opennutrition.app" style={{ textDecorationLine: 'underline' }}>OpenNutrition</Link> (ODbL). Includes data © <Link href="https://world.openfoodfacts.org" style={{ textDecorationLine: 'underline' }}>Open Food Facts contributors</Link>.</Text>;
 }
-function Chips<T extends string>({ values, value, onChange, label }: { values: readonly T[]; value: T; onChange: (next: T) => void; label?: (item: T) => string }) {
-  return <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>{values.map(item => <MotionPressable key={item} selected={item === value} pressScale={0.97} accessibilityRole="button" accessibilityState={{ selected: item === value }} onPress={() => onChange(item)} style={{ minHeight: 40, paddingHorizontal: 15, justifyContent: 'center', borderRadius: radii.pill, backgroundColor: item === value ? colors.sun : colors.card }}><Text style={{ color: item === value ? colors.accentInk : colors.text, fontFamily: fonts.bold, fontSize: 12 }}>{label ? label(item) : item}</Text></MotionPressable>)}</View>;
-}
 /** Volt connected segmented control with a sliding thumb. `lime` marks the
  * selected value with the accent (units); `surface` raises it (Search/Manual). */
-export function Segmented<T extends string>({ options, value, onChange, label, tone = 'lime', accessibility }: { options: readonly T[]; value: T; onChange: (next: T) => void; label: (item: T) => string; tone?: 'lime' | 'surface'; accessibility?: (item: T) => string }) {
+export function Segmented<T extends string>({ options, value, onChange, label, tone = 'lime', accessibility, compact = false }: { options: readonly T[]; value: T; onChange: (next: T) => void; label: (item: T) => string; tone?: 'lime' | 'surface'; accessibility?: (item: T) => string; compact?: boolean }) {
   const reduced = useReducedMotion();
   const [width, setWidth] = useState(0);
   const found = options.indexOf(value);
@@ -59,8 +56,8 @@ export function Segmented<T extends string>({ options, value, onChange, label, t
     {width > 0 && found >= 0 && <Animated.View pointerEvents="none" style={[{ position: 'absolute', top: 4, bottom: 4, left: 4, width: segment, borderRadius: radii.pill, backgroundColor: lime ? colors.sun : colors.c8, ...(lime || !light ? {} : { shadowColor: '#0B1446', shadowOpacity: 0.08, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1 }) }, thumb]}/>}
     {options.map(item => {
       const on = item === value;
-      return <Pressable key={item} accessibilityRole="tab" accessibilityLabel={accessibility ? accessibility(item) : label(item)} accessibilityState={{ selected: on }} onPress={() => onChange(item)} style={{ flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 }}>
-        <Text numberOfLines={1} style={{ color: on ? (lime ? colors.accentInk : colors.text) : colors.muted, fontFamily: fonts.bold, fontSize: 13 }}>{label(item)}</Text>
+      return <Pressable key={item} accessibilityRole="tab" accessibilityLabel={accessibility ? accessibility(item) : label(item)} accessibilityState={{ selected: on }} onPress={() => onChange(item)} style={{ flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', paddingHorizontal: compact ? 2 : 8, minWidth: 0 }}>
+        <Text numberOfLines={1} style={{ color: on ? (lime ? colors.accentInk : colors.text) : colors.muted, fontFamily: fonts.bold, fontSize: compact ? 12.5 : 13 }}>{label(item)}</Text>
       </Pressable>;
     })}
   </View>;
@@ -118,7 +115,12 @@ export function FoodSheet({ entry, meal: initialMeal, day: initialDay, close, on
   const [protein, setProtein] = useState(entry && !priorReference ? String(entry.protein) : '');
   const [carbs, setCarbs] = useState(entry && !priorReference ? String(entry.carbs) : '');
   const [fat, setFat] = useState(entry && !priorReference ? String(entry.fat) : '');
-  const [saveCustom, setSaveCustom] = useState(true);
+  const [manualUnit, setManualUnit] = useState<FoodUnit>(entry ? 'g' : measurementSystem === 'us' ? 'oz' : 'g');
+  const [manualEquivalent, setManualEquivalent] = useState('');
+  const [manualServingName, setManualServingName] = useState('serving');
+  const [customSaved, setCustomSaved] = useState(false);
+  const manualPhysical = useRef<number | null>(entry?.grams ?? null);
+  const manualKnownMeasure = useRef<{ name: string | null; quantity: number | null; grams: number | null } | null>(null);
   const [busy, setBusy] = useState(false);
   const saving = useRef(false);
   // The exact portion in grams. The text field shows a rounded view of it; only
@@ -146,6 +148,20 @@ export function FoodSheet({ entry, meal: initialMeal, day: initialDay, close, on
       }).catch(() => { /* Legacy gram entry remains editable even without catalog metadata. */ });
     return () => { active = false; };
   }, [entry?.id, entry?.catalog_food_id, entry?.grams, priorReference, measurementSystem]);
+  useEffect(() => {
+    if (!entry?.id || priorReference) return;
+    let active = true;
+    void foodEntryUnit(entry.id).then(saved => {
+      if (!active || !saved) return;
+      setManualUnit(saved.unit);
+      setQuantityText(displayQuantity(saved.quantity, saved.unit));
+      if (saved.unit === 'serving' && saved.servingName) setManualServingName(saved.servingName);
+      if (entry.grams && !['g', 'oz', 'kg', 'lb'].includes(saved.unit)) setManualEquivalent(displayQuantity(entry.grams, 'g'));
+      manualPhysical.current = entry.grams;
+      if (entry.grams && !['g', 'oz', 'kg', 'lb'].includes(saved.unit)) manualKnownMeasure.current = { name: saved.unit === 'serving' ? saved.servingName ?? 'serving' : saved.unit, quantity: saved.quantity, grams: entry.grams };
+    }).catch(() => { /* Legacy manual entries stay editable in grams. */ });
+    return () => { active = false; };
+  }, [entry?.id, entry?.grams, priorReference]);
   useEffect(() => { let active = true; foodCategories().then(rows => { if (active) { setCategories(rows); setCatalogReady(true); } }).catch(() => { if (active) setCatalogReady(true); }); return () => { active = false; }; }, []);
   useEffect(() => { if (entry) return; let active = true; recentFoods().then(rows => { if (active) setRecents(rows); }).catch(() => undefined); return () => { active = false; }; }, [entry]);
   useEffect(() => {
@@ -184,7 +200,7 @@ export function FoodSheet({ entry, meal: initialMeal, day: initialDay, close, on
     setQuantityText(displayQuantity(fromGrams(grams, nextUnit, nextMeasure), nextUnit));
     scroll.current?.scrollTo({ y: 0, animated: false });
   }
-  function selectFood(food: ReusableFood) { applySelection(food, food.servingGrams ?? food.grams ?? 100); }
+  function selectFood(food: ReusableFood) { applySelection(food, food.servingGrams ?? food.grams ?? 100, food.referenceUnit); }
   async function selectRecent(recent: RecentFood) {
     let food = recent.food;
     if (food.catalogId) {
@@ -214,6 +230,64 @@ export function FoodSheet({ entry, meal: initialMeal, day: initialDay, close, on
     setMode(next); setSelected(null); setQuantityText(next === 'manual' ? '' : '100');
     physicalAmount.current = next === 'manual' ? null : 100; setPreviewGrams(physicalAmount.current); setUnit('g'); setError('');
   }
+  const manualMainUnits: FoodUnit[] = measurementSystem === 'us' ? ['oz', 'g', 'serving'] : ['g', 'oz', 'serving'];
+  const manualExtraUnits: FoodUnit[] = ['kg', 'lb', 'mL', 'L', 'US cup', 'US tbsp', 'US tsp', 'US fl oz'];
+  function manualReference() {
+    const quantity = parseQuantity(quantityText);
+    const mass = ['g', 'oz', 'kg', 'lb'].includes(manualUnit);
+    const equivalent = manualPhysical.current ?? (mass ? toGrams(quantity, manualUnit, null) : parseNumber(manualEquivalent, 'Gram equivalent', 10000));
+    if (!equivalent || equivalent <= 0) throw Error('Enter the gram equivalent of this reference amount to save reusable food.');
+    let exactQuantity = quantity;
+    if (manualPhysical.current && (mass || manualUnit !== 'serving' || manualKnownMeasure.current?.name === (manualServingName.trim() || 'serving'))) {
+      try { exactQuantity = fromGrams(equivalent, manualUnit, mass ? null : manualKnownMeasure.current); } catch { /* The user entered a new serving reference. */ }
+    }
+    const servingName = mass ? null : manualUnit === 'serving' ? manualServingName.trim() || 'serving' : manualUnit;
+    const measure: CustomFoodMeasure = { unit: manualUnit, quantity: exactQuantity, servingName, servingQuantity: mass ? null : exactQuantity, servingGrams: equivalent };
+    return { grams: equivalent, measure };
+  }
+  function manualNutrients(): Nutrients {
+    return { kcal: parseNumber(kcal, 'Calories', 10000)!, protein: parseNumber(protein, 'Protein', 2000)!, carbs: parseNumber(carbs, 'Carbohydrates', 2000)!, fat: parseNumber(fat, 'Fat', 2000)! };
+  }
+  function changeManualUnit(next: FoodUnit) {
+    if (next === manualUnit) return;
+    try {
+      const old = manualReference();
+      if (old.measure.servingName) manualKnownMeasure.current = { name: old.measure.servingName, quantity: old.measure.servingQuantity, grams: old.measure.servingGrams };
+      if (next === 'serving' && manualKnownMeasure.current?.name !== (manualServingName.trim() || 'serving')) throw Error('Serving size is unknown.');
+      const converted = fromGrams(old.grams, next, manualKnownMeasure.current);
+      setQuantityText(displayQuantity(converted, next));
+      if (!['g', 'oz', 'kg', 'lb'].includes(next)) setManualEquivalent(displayQuantity(old.grams, 'g'));
+      manualPhysical.current = old.grams;
+    } catch {
+      try { setQuantityText(displayQuantity(convertVolumeQuantity(parseQuantity(quantityText), manualUnit, next), next)); }
+      catch { setQuantityText(''); }
+      setManualEquivalent(''); manualPhysical.current = null;
+    }
+    setManualUnit(next); setCustomSaved(false);
+  }
+  function changeManualQuantity(value: string) {
+    try {
+      const next = parseQuantity(value);
+      if (['g', 'oz', 'kg', 'lb'].includes(manualUnit)) manualPhysical.current = toGrams(next, manualUnit, null);
+      else {
+        const previous = parseQuantity(quantityText);
+        const oldEquivalent = manualPhysical.current ?? parseNumber(manualEquivalent, 'Gram equivalent', 10000);
+        if (oldEquivalent) { const grams = oldEquivalent * next / previous; manualPhysical.current = grams; setManualEquivalent(displayQuantity(grams, 'g')); }
+        else manualPhysical.current = null;
+      }
+    } catch { manualPhysical.current = null; }
+    setQuantityText(value); setCustomSaved(false);
+  }
+  async function saveDefinition() {
+    if (saving.current || customSaved) return;
+    try {
+      const reference = manualReference();
+      saving.current = true; setBusy(true); setError('');
+      await saveCustomFood({ name, nutrients: manualNutrients(), ...reference });
+      setCustomSaved(true);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not save this food.'); }
+    finally { saving.current = false; setBusy(false); }
+  }
   async function save() {
     if (saving.current) return;
     try {
@@ -237,12 +311,18 @@ export function FoodSheet({ entry, meal: initialMeal, day: initialDay, close, on
         } else nutrients = selected.nutrients;
       } else {
         foodName = name.trim();
-        nutrients = { kcal: parseNumber(kcal, 'Calories', 10000)!, protein: parseNumber(protein, 'Protein', 2000)!, carbs: parseNumber(carbs, 'Carbohydrates', 2000)!, fat: parseNumber(fat, 'Fat', 2000)! };
-        amount = quantityText.trim() ? parseNumber(quantityText, 'Portion', 10000) : null;
-        if (amount === 0) throw Error('Portion must be above zero.');
+        nutrients = manualNutrients();
+        if (quantityText.trim()) {
+          parseQuantity(quantityText);
+          if (['g', 'oz', 'kg', 'lb'].includes(manualUnit) || manualEquivalent.trim()) {
+            const reference = manualReference();
+            amount = reference.grams;
+            enteredUnit = { unit: manualUnit, quantity: reference.measure.quantity, ...(manualUnit === 'serving' ? { servingName: manualServingName.trim() || 'serving' } : {}) };
+          } else enteredUnit = { unit: manualUnit, quantity: parseQuantity(quantityText), ...(manualUnit === 'serving' ? { servingName: manualServingName.trim() || 'serving' } : {}) };
+        }
       }
       saving.current = true; setBusy(true); setError('');
-      await saveFoodEntry({ name: foodName, meal, day, grams: amount, ...nutrients }, { id: entry?.id, foodId, catalogId: selected?.catalogId ?? null, per100, saveCustom: mode === 'manual' && saveCustom && !entry && amount !== null, enteredUnit });
+      await saveFoodEntry({ name: foodName, meal, day, grams: amount, ...nutrients }, { id: entry?.id, foodId, catalogId: selected?.catalogId ?? null, per100, enteredUnit });
       onSaved(day); close();
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not save food.'); }
     finally { saving.current = false; setBusy(false); }
@@ -295,13 +375,18 @@ export function FoodSheet({ entry, meal: initialMeal, day: initialDay, close, on
         {catalogReady && (results.length ? <View>{results.map(food => <Pressable key={food.key} accessibilityRole="button" onPress={() => selectFood(food)} style={{ minHeight: 57, borderBottomWidth: 1, borderBottomColor: colors.border, justifyContent: 'center' }}><Text style={{ color: colors.ink, fontFamily: fonts.bold }}>{food.name}</Text><Text style={{ color: colors.muted, fontSize: 12 }}>{food.missing?.includes('Calories') ? 'Calories unknown' : `${Math.round(food.nutrients.kcal)} kcal`} · {food.catalogId ? `OpenNutrition · ${food.category ?? 'food'}` : food.basis === '100g' ? 'saved · per 100 g' : 'saved serving'}</Text></Pressable>)}</View> : <Text style={{ color: colors.muted }}>No foods found. Use Manual to enter your own values.</Text>)}
         <CatalogCredit/>
       </> : <>
-        <Field label="Food name" value={name} onChangeText={setName} placeholder="e.g. Homemade soup"/>
-        <View style={{ flexDirection: 'row', gap: 10 }}><View style={{ flex: 1 }}><Field label="Calories (kcal)" value={kcal} onChangeText={setKcal} keyboardType="decimal-pad"/></View><View style={{ flex: 1 }}><Field label="Protein (g)" value={protein} onChangeText={setProtein} keyboardType="decimal-pad"/></View></View>
-        <View style={{ flexDirection: 'row', gap: 10 }}><View style={{ flex: 1 }}><Field label="Carbs (g)" value={carbs} onChangeText={setCarbs} keyboardType="decimal-pad"/></View><View style={{ flex: 1 }}><Field label="Fat (g)" value={fat} onChangeText={setFat} keyboardType="decimal-pad"/></View></View>
-        <Field label="Portion (g, optional)" value={quantityText} onChangeText={setQuantityText} keyboardType="decimal-pad"/>
-        {!entry && <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: saveCustom }} onPress={() => setSaveCustom(value => !value)} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={{ color: colors.ink }}>{saveCustom ? '☑' : '☐'} Save as a custom food when grams are entered</Text></Pressable>}
+        <Field label="Food name" value={name} onChangeText={value => { setName(value); setCustomSaved(false); }} placeholder="e.g. Homemade soup"/>
+        <Text style={{ color: colors.muted, fontSize: 12 }}>Nutrition values for the reference quantity below.</Text>
+        <View style={{ flexDirection: 'row', gap: 10 }}><View style={{ flex: 1 }}><Field label="Calories (kcal)" value={kcal} onChangeText={value => { setKcal(value); setCustomSaved(false); }} keyboardType="decimal-pad"/></View><View style={{ flex: 1 }}><Field label="Protein (g)" value={protein} onChangeText={value => { setProtein(value); setCustomSaved(false); }} keyboardType="decimal-pad"/></View></View>
+        <View style={{ flexDirection: 'row', gap: 10 }}><View style={{ flex: 1 }}><Field label="Carbs (g)" value={carbs} onChangeText={value => { setCarbs(value); setCustomSaved(false); }} keyboardType="decimal-pad"/></View><View style={{ flex: 1 }}><Field label="Fat (g)" value={fat} onChangeText={value => { setFat(value); setCustomSaved(false); }} keyboardType="decimal-pad"/></View></View>
+        <Field label={`Reference quantity (${manualUnit === 'serving' ? manualServingName || 'serving' : shortUnit[manualUnit] ?? manualUnit})`} value={quantityText} onChangeText={changeManualQuantity} keyboardType="decimal-pad"/>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><View style={{ flex: 1, maxWidth: 280 }}><Segmented options={manualMainUnits} value={manualUnit} onChange={changeManualUnit} label={item => item === 'serving' ? 'serving' : item}/></View><MotionPressable pressScale={0.96} accessibilityRole="button" accessibilityLabel="More units" accessibilityState={{ expanded: moreUnits }} onPress={() => setMoreUnits(value => !value)} style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: radii.pill, borderWidth: 1, borderColor: manualExtraUnits.includes(manualUnit) ? colors.sun : colors.borderStrong, backgroundColor: manualExtraUnits.includes(manualUnit) ? colors.soft2 : colors.c8 }}><Text style={{ color: colors.text, fontFamily: fonts.bold }}>{manualExtraUnits.includes(manualUnit) ? shortUnit[manualUnit] ?? manualUnit : 'More'} {moreUnits ? '⌃' : '⌄'}</Text></MotionPressable></View>
+        <Reveal open={moreUnits}><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingVertical: 3 }}>{manualExtraUnits.map(item => <UnitChip key={item} label={shortUnit[item] ?? item} accessibility={`Use ${item}`} selected={manualUnit === item} onPress={() => changeManualUnit(item)}/>)}</View></Reveal>
+        {manualUnit === 'serving' && <Field label="Serving name" value={manualServingName} onChangeText={value => { setManualServingName(value); setCustomSaved(false); }} placeholder="e.g. slice, bowl, piece"/>}
+        {!['g', 'oz', 'kg', 'lb'].includes(manualUnit) && <Field label={`Gram equivalent of this ${manualUnit === 'serving' ? 'serving' : 'reference quantity'}`} value={manualEquivalent} onChangeText={value => { setManualEquivalent(value); manualPhysical.current = Number(value) > 0 ? Number(value) : null; setCustomSaved(false); }} keyboardType="decimal-pad" placeholder="Required only to save or convert"/>}
+        {!entry && <MotionPressable pressScale={0.97} accessibilityRole="button" accessibilityLabel="Save food for later" disabled={busy || customSaved} onPress={() => void saveDefinition()} style={{ minHeight: 46, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: customSaved ? colors.sun : colors.accent, backgroundColor: customSaved ? colors.softLime : colors.card }}><Text style={{ color: colors.text, fontFamily: fonts.bold }}>{customSaved ? '✓ Saved to your foods' : busy ? 'Saving food…' : 'Save food for later'}</Text></MotionPressable>}
       </>}
-      {canSave && <View style={{ gap: 8 }}><Text style={sectionLabel}>MEAL</Text><Chips values={meals} value={meal} onChange={setMeal} label={title}/></View>}
+      {canSave && <View style={{ gap: 8 }}><Text style={sectionLabel}>MEAL</Text><Segmented options={meals} value={meal} onChange={setMeal} label={title} compact/></View>}
       {entry && <Button title="Delete entry" kind="danger" onPress={remove}/>}
     </ScrollView>
     {(canSave || !!error) && <View style={{ paddingHorizontal: 20, paddingTop: 10, paddingBottom: insets.bottom + 14, gap: 8, borderTopWidth: 1, borderTopColor: colors.c8Line, backgroundColor: colors.bg === '#F5F9FF' ? colors.c8 : colors.card }}>

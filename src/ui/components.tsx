@@ -129,25 +129,25 @@ export function Field({ label, value, onChangeText, keyboardType = 'default', pl
   </View>;
 }
 
-export function Choices<T extends string>({ label, options, value, onChange, compact = false, pill = false }: { label: string; options: readonly T[]; value: T; onChange: (x: T) => void; compact?: boolean; pill?: boolean }) {
+export function Choices<T extends string>({ label, options, value, onChange, compact = false, pill = false, equalRow = false }: { label: string; options: readonly T[]; value: T; onChange: (x: T) => void; compact?: boolean; pill?: boolean; equalRow?: boolean }) {
   const { language } = useApp();
   if (compact && options.length === 3 && options.every(option => ['7', '30', '90'].includes(option))) return <View style={{ flexDirection: 'row', backgroundColor: colors.card2, borderRadius: radii.pill, padding: 4, gap: 4 }}>
     {options.map(option => <MotionPressable key={option} selected={option === value} pressScale={0.97} accessibilityRole="radio" accessibilityLabel={localize('Last ' + option + ' days', language)} accessibilityState={{ selected: option === value }} onPress={() => onChange(option)} style={{ flex: 1, minHeight: 42, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: option === value ? colors.card : 'transparent' }}><Text style={{ color: option === value ? colors.ink : colors.muted, fontFamily: fonts.bold, fontSize: 12 }}>{option + (language === 'fr' ? ' J' : language === 'ar' ? ' ي' : 'D')}</Text></MotionPressable>)}
   </View>;
   return <View style={{ gap: 8, direction: language === 'ar' ? 'rtl' : 'ltr' }}><Text style={styles.label}>{label}</Text>
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{options.map(option => {
+    <View style={{ flexDirection: 'row', flexWrap: equalRow ? 'nowrap' : 'wrap', gap: equalRow ? 6 : 8 }}>{options.map(option => {
       const display = ['7', '30', '90'].includes(option) ? (compact ? option + (language === 'fr' ? ' J' : language === 'ar' ? ' ي' : ' D') : 'Last ' + option + ' days') : option;
       const selected = option === value;
-      return <MotionPressable selected={selected} pressScale={0.97} accessibilityRole="radio" accessibilityLabel={localize(['7', '30', '90'].includes(option) ? 'Last ' + option + ' days' : option, language)} accessibilityState={{ selected }} key={option} onPress={() => onChange(option)} style={{ minHeight: 44, justifyContent: 'center' }}><View style={{ minHeight: pill ? 36 : 44, paddingHorizontal: 16, paddingVertical: pill ? 6 : 10, backgroundColor: selected ? colors.accent : colors.card, borderWidth: 1.5, borderColor: selected ? colors.accent : colors.borderStrong, borderRadius: radii.pill, justifyContent: 'center' }}><Text style={{ color: selected ? colors.accentText : colors.text, fontWeight: selected ? '700' : '600' }}>{display}</Text></View></MotionPressable>;
+      return <MotionPressable selected={selected} pressScale={0.97} accessibilityRole="radio" accessibilityLabel={localize(['7', '30', '90'].includes(option) ? 'Last ' + option + ' days' : option, language)} accessibilityState={{ selected }} key={option} onPress={() => onChange(option)} style={{ minHeight: equalRow ? 54 : 44, justifyContent: 'center', flex: equalRow ? 1 : undefined, minWidth: 0 }}><View style={{ minHeight: equalRow ? 54 : pill ? 36 : 44, paddingHorizontal: equalRow ? 4 : 16, paddingVertical: pill ? 6 : 10, backgroundColor: selected ? colors.accent : colors.card, borderWidth: 1.5, borderColor: selected ? colors.accent : colors.borderStrong, borderRadius: radii.pill, justifyContent: 'center', alignItems: equalRow ? 'center' : undefined }}><Text style={{ color: selected ? colors.accentText : colors.text, fontWeight: selected ? '700' : '600', fontSize: equalRow ? 12.5 : undefined, textAlign: equalRow ? 'center' : undefined }}>{display}</Text></View></MotionPressable>;
     })}</View>
   </View>;
 }
-export function MultiChoices<T extends string>({ label, options, value, onChange }: { label: string; options: readonly T[]; value: readonly T[]; onChange: (x: T[]) => void }) {
+export function MultiChoices<T extends string>({ label, options, value, onChange, columns = false }: { label: string; options: readonly T[]; value: readonly T[]; onChange: (x: T[]) => void; columns?: boolean }) {
   const { language } = useApp();
   return <View style={{ gap: 8, direction: language === 'ar' ? 'rtl' : 'ltr' }}><Text style={styles.label}>{label}</Text>
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{options.map(option => {
       const selected = value.includes(option);
-      return <MotionPressable selected={selected} pressScale={0.97} accessibilityRole="checkbox" accessibilityState={{ checked: selected }} key={option} onPress={() => onChange(selected ? value.filter(item => item !== option) : [...value, option])} style={{ minHeight: 44, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: selected ? colors.accent : colors.card, borderRadius: radii.pill, justifyContent: 'center' }}><Text style={{ color: selected ? colors.accentText : colors.text, fontWeight: selected ? '700' : '600' }}>{option}</Text></MotionPressable>;
+      return <MotionPressable selected={selected} pressScale={0.97} accessibilityRole="checkbox" accessibilityState={{ checked: selected }} key={option} onPress={() => onChange(selected ? value.filter(item => item !== option) : [...value, option])} style={{ minHeight: columns ? 62 : 44, paddingHorizontal: columns ? 8 : 16, paddingVertical: 10, backgroundColor: selected ? colors.accent : colors.card, borderWidth: 1.5, borderColor: selected ? colors.accent : colors.borderStrong, borderRadius: radii.pill, justifyContent: 'center', alignItems: columns ? 'center' : undefined, width: columns ? '48%' : undefined, flexGrow: columns ? 1 : undefined }}><Text style={{ color: selected ? colors.accentText : colors.text, fontWeight: selected ? '700' : '600', fontSize: columns ? 12.5 : undefined, textAlign: columns ? 'center' : undefined }}>{option}</Text></MotionPressable>;
     })}</View>
   </View>;
 }

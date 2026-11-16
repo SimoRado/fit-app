@@ -6,6 +6,8 @@ import { Text } from '../../ui/LocalizedText';
 import { styles } from '../../ui/components';
 import { SocialAuth } from '../../ui/SocialAuth';
 import { authDiagnostic } from '../../core/runtime';
+import { passwordPolicyMessage } from '../../core/passwordPolicy';
+import { PasswordRequirements } from '../../ui/PasswordRequirements';
 
 export default function SignUp() {
   const { signUp } = useSignUp();
@@ -13,7 +15,8 @@ export default function SignUp() {
   async function submit() {
     if (busy) return;
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { setError('Enter a valid email address.'); return; }
-    if (!password) { setError('Enter a password.'); return; }
+    const passwordIssue = passwordPolicyMessage(password);
+    if (passwordIssue) { setError(passwordIssue); return; }
     setBusy(true); setError('');
     authDiagnostic('signup initiated', { method: 'email_password' }, 'EMAIL');
     try {
@@ -30,7 +33,7 @@ export default function SignUp() {
     <SocialAuth/><Text style={[styles.muted, { textAlign: 'center' }]}>OR USE EMAIL</Text>
     <AuthField label="Email address" value={email} onChangeText={setEmail} email/>
     <AuthField label="Password" value={password} onChangeText={setPassword} secure/>
-    <Text style={styles.muted}>Choose a password that meets your account’s security requirements.</Text>
+    <PasswordRequirements password={password}/>
     <AuthError message={error}/><AuthAction title={busy ? 'Creating…' : 'Continue'} onPress={submit} disabled={busy}/>
     <AuthLink href="/(auth)/sign-in" title="Already have an account? Sign in"/>
   </AuthPage>;

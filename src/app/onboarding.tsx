@@ -62,7 +62,7 @@ export default function Onboarding() {
       <Field label="Target weight (kg, optional)" value={target} onChangeText={setTarget} keyboardType="decimal-pad"/>
     </Card>}
     {step === 2 && <Card>
-      <Choices label="Experience" options={['Beginner', 'Intermediate', 'Advanced']} value={experience} onChange={setExperience}/>
+      <Choices label="Experience" options={['Beginner', 'Intermediate', 'Advanced']} value={experience} onChange={setExperience} equalRow/>
       <Text style={styles.label}>Fitness goal</Text>
       <View style={{ gap: 8 }}>{([['Lose weight', 'scale-outline', 'A gentle, sustainable deficit'], ['Gain muscle', 'barbell-outline', 'Build strength with a small surplus'], ['Improve general fitness', 'pulse-outline', 'Train regularly, recover well'], ['Maintain current fitness', 'shield-checkmark-outline', 'Stay steady and balanced']] as const).map(([option, icon, detail]) => {
         const on = goal === option;
@@ -72,7 +72,7 @@ export default function Onboarding() {
           {on && <Ionicons name="checkmark" size={20} color={colors.text}/>}
         </MotionPressable>;
       })}</View>
-      <MultiChoices label="Personal growth goals" options={['Build discipline', 'Improve consistency', 'Build healthier habits', 'Improve productivity']} value={growth} onChange={setGrowth}/>
+      <MultiChoices label="Personal growth goals" options={['Build discipline', 'Improve consistency', 'Build healthier habits', 'Improve productivity']} value={growth} onChange={setGrowth} columns/>
     </Card>}
     {step === 3 && <Card>
       <Text style={styles.label}>Full name</Text><Text style={styles.text}>{name}</Text><Text style={styles.label}>Date of birth</Text><Text style={styles.text}>{birth}</Text>

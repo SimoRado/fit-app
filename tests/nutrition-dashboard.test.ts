@@ -1,7 +1,10 @@
 import { DatabaseSync } from 'node:sqlite';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { migrations } from '../src/data/schema';
-import { calorieHeadline, parseCalorieDisplay, parseTargets, pickRecentFoods, progressRatio, sumNutrients } from '../src/core/nutrition';
+import { calorieHeadline, parseCalorieDisplay, parseTargets, pickRecentFoods, portionNutrients, progressRatio, sumNutrients } from '../src/core/nutrition';
 import { primaryUnits, unitOptions } from '../src/core/foodUnits';
 
 // Minimal expo-sqlite surface over node:sqlite so the real data-layer SQL runs.
@@ -32,6 +35,47 @@ beforeEach(() => {
 });
 
 describe('recent foods', () => {
+  it('reopens a saved measured food from the same account database', async () => {
+    raw.close();
+    const folder = mkdtempSync(join(tmpdir(), 'cuby-saved-food-'));
+    const file = join(folder, 'account.db');
+    try {
+      raw = new DatabaseSync(file);
+      for (const migration of migrations) raw.exec(migration);
+      seedProfile();
+      await data.saveCustomFood({ name: 'Oats portion', nutrients: { kcal: 150, protein: 5, carbs: 27, fat: 3 }, grams: 40,
+        measure: { unit: 'serving', quantity: 1, servingName: 'portion', servingQuantity: 1, servingGrams: 40 } });
+      raw.close();
+      raw = new DatabaseSync(file);
+      expect((await data.reusableFoods('Oats portion'))[0]).toMatchObject({ name: 'Oats portion', servingName: 'portion', referenceUnit: { unit: 'serving', quantity: 1 } });
+    } finally { raw.close(); rmSync(folder, { recursive: true, force: true }); }
+  });
+  it('saves a reusable soup without a diary entry and preserves its measured reference', async () => {
+    seedProfile();
+    raw.exec("UPDATE sync_control SET choice='enabled' WHERE id=1");
+    const foodId = await data.saveCustomFood({ name: 'Test soup', nutrients: { kcal: 120, protein: 6, carbs: 15, fat: 4 }, grams: 260,
+      measure: { unit: 'mL', quantity: 250, servingName: 'mL', servingQuantity: 250, servingGrams: 260 } });
+    expect(await data.foodEntries('2026-11-01', '2026-11-30')).toHaveLength(0);
+    const saved = (await data.reusableFoods('Test soup'))[0];
+    expect(saved).toMatchObject({ foodId, servingName: 'mL', servingQuantity: 250, servingGrams: 260, referenceUnit: { unit: 'mL', quantity: 250 } });
+    expect(saved.nutrients.kcal).toBeCloseTo(120 * 100 / 260);
+    expect(raw.prepare("SELECT COUNT(*) AS n FROM sync_outbox WHERE kind IN ('custom_foods','preferences')").get()).toEqual({ n: 2 });
+    for (const [grams, day, meal] of [[260, '2026-11-05', 'breakfast'], [520, '2026-11-06', 'lunch']] as const) {
+      await data.saveFoodEntry({ name: saved.name, day, meal, grams, ...portionNutrients(saved.nutrients, grams) },
+        { foodId, per100: saved.nutrients, enteredUnit: { unit: 'mL', quantity: grams === 260 ? 250 : 500 } });
+    }
+    const first = (await data.foodEntries('2026-11-05', '2026-11-05'))[0];
+    const second = (await data.foodEntries('2026-11-06', '2026-11-06'))[0];
+    expect(first).toMatchObject({ food_id: foodId, meal: 'breakfast', kcal: 120, protein: 6, carbs: 15, fat: 4 });
+    expect(second).toMatchObject({ food_id: foodId, meal: 'lunch', kcal: 240, protein: 12, carbs: 30, fat: 8 });
+    expect(await data.foodEntryUnit(second.id)).toMatchObject({ unit: 'mL', quantity: 500 });
+    await data.saveFoodEntry({ name: first.name, day: first.day, meal: 'snacks', grams: first.grams, kcal: first.kcal, protein: first.protein, carbs: first.carbs, fat: first.fat },
+      { id: first.id, foodId, per100: saved.nutrients, enteredUnit: { unit: 'mL', quantity: 250 } });
+    expect((await data.foodEntries('2026-11-05', '2026-11-05'))[0]).toMatchObject({ meal: 'snacks', kcal: 120, grams: 260 });
+    await expect(data.saveCustomFood({ name: 'Invalid', nutrients: { kcal: 120, protein: 6, carbs: 15, fat: 4 }, grams: 0,
+      measure: { unit: 'mL', quantity: 250, servingName: 'mL', servingQuantity: 250, servingGrams: 0 } })).rejects.toThrow();
+    expect((await data.reusableFoods('Invalid'))).toHaveLength(0);
+  });
   it('orders by most recent log, dedupes by food identity and caps at 10', () => {
     const entries = [
       row('a', 'Banana', '2026-11-06T08:00:00Z', { catalog_food_id: 'c1' }),
@@ -68,6 +112,13 @@ describe('recent foods', () => {
 });
 
 describe('date-specific logging', () => {
+  it('retains a manually entered volume even when its gram equivalent is unknown', async () => {
+    seedProfile();
+    const id = await data.saveFoodEntry({ name: 'Unmeasured soup', meal: 'dinner', day: '2026-11-04', grams: null, kcal: 120, protein: 6, carbs: 15, fat: 4 },
+      { enteredUnit: { unit: 'mL', quantity: 250 } });
+    expect((await data.foodEntries('2026-11-04', '2026-11-04'))[0]).toMatchObject({ grams: null, kcal: 120, meal: 'dinner' });
+    expect(await data.foodEntryUnit(id)).toMatchObject({ unit: 'mL', quantity: 250 });
+  });
   it('stores a backdated entry under the selected day, not today', async () => {
     seedProfile();
     await data.saveFoodEntry({ name: 'Toast', meal: 'breakfast', day: '2026-11-04', grams: 50, kcal: 130, protein: 4, carbs: 24, fat: 2 });

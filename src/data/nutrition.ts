@@ -1,12 +1,12 @@
 import { db } from './db';
 import { uid, validDay } from '../core/date';
 import { FoodInput, Meal, Nutrients, parseCalorieDisplay, pickRecentFoods, recentFoodIdentity, validateFood, type CalorieDisplay } from '../core/nutrition';
-import type { FoodUnit } from '../core/foodUnits';
+import { toGrams, type FoodUnit } from '../core/foodUnits';
 
 export type NutritionTarget = Nutrients & { id: string; owner_id: string; effective_day: string; created_at: string };
 export type CustomFood = { id: string; owner_id: string; name: string; kcal_100: number; protein_100: number; carbs_100: number; fat_100: number; created_at: string };
 export type FoodEntry = Nutrients & { id: string; owner_id: string; food_id: string | null; catalog_food_id: string | null; day: string; meal: Meal; name: string; grams: number | null; kcal_100: number | null; protein_100: number | null; carbs_100: number | null; fat_100: number | null; created_at: string };
-export type ReusableFood = { key: string; name: string; basis: '100g' | 'serving'; nutrients: Nutrients; foodId: string | null; catalogId?: string | null; category?: string | null; servingName?: string | null; servingQuantity?: number | null; servingGrams?: number | null; missing?: string[]; fiber?: number | null; sugar?: number | null; sodium?: number | null; sourceLabel?: string | null; sourceUrl?: string | null; grams: number | null };
+export type ReusableFood = { key: string; name: string; basis: '100g' | 'serving'; nutrients: Nutrients; foodId: string | null; catalogId?: string | null; category?: string | null; servingName?: string | null; servingQuantity?: number | null; servingGrams?: number | null; referenceUnit?: SavedFoodUnit | null; missing?: string[]; fiber?: number | null; sugar?: number | null; sodium?: number | null; sourceLabel?: string | null; sourceUrl?: string | null; grams: number | null };
 
 async function owner() {
   const profile = await (await db()).getFirstAsync<{ id: string }>('SELECT id FROM profile LIMIT 1');
@@ -86,7 +86,36 @@ export async function foodEntries(start: string, end: string): Promise<FoodEntry
   const id = await owner();
   return (await db()).getAllAsync<FoodEntry>('SELECT * FROM food_entries WHERE owner_id=? AND day BETWEEN ? AND ? ORDER BY day DESC, created_at DESC', id, start, end);
 }
-export type SavedFoodUnit = { unit: FoodUnit; quantity: number };
+export type SavedFoodUnit = { unit: FoodUnit; quantity: number; servingName?: string };
+export type CustomFoodMeasure = Omit<SavedFoodUnit, 'servingName'> & { servingName: string | null; servingQuantity: number | null; servingGrams: number | null };
+function per100FromPortion(nutrients: Nutrients, grams: number) {
+  if (!Number.isFinite(grams) || grams <= 0 || grams > 10000) throw Error('Enter a valid gram equivalent for this food.');
+  const reference = { kcal: nutrients.kcal * 100 / grams, protein: nutrients.protein * 100 / grams, carbs: nutrients.carbs * 100 / grams, fat: nutrients.fat * 100 / grams };
+  if (reference.kcal > 10000 || reference.protein > 2000 || reference.carbs > 2000 || reference.fat > 2000) throw Error('This portion is too small to save as a per-100 g food.');
+  return reference;
+}
+/** Save a reusable definition without creating a dated diary entry. */
+export async function saveCustomFood(input: { name: string; nutrients: Nutrients; grams: number; measure: CustomFoodMeasure }) {
+  const id = await owner();
+  const name = input.name.trim();
+  if (!name || name.length > 200) throw Error('Enter a food name (up to 200 characters).');
+  for (const [label, value, max] of [['Calories', input.nutrients.kcal, 10000], ['Protein', input.nutrients.protein, 2000], ['Carbohydrates', input.nutrients.carbs, 2000], ['Fat', input.nutrients.fat, 2000]] as const) {
+    if (!Number.isFinite(value) || value < 0 || value > max) throw Error(`Enter valid ${label.toLowerCase()}.`);
+  }
+  if (!Number.isFinite(input.measure.quantity) || input.measure.quantity <= 0) throw Error('Enter a valid reference quantity.');
+  if (input.measure.servingName !== null && input.measure.servingName.length > 80) throw Error('Serving name is too long.');
+  if (input.measure.servingGrams === null || Math.abs(input.measure.servingGrams - input.grams) > 0.000001 ||
+      Math.abs(toGrams(input.measure.quantity, input.measure.unit, { name: input.measure.servingName, quantity: input.measure.servingQuantity, grams: input.measure.servingGrams }) - input.grams) > 0.000001) {
+    throw Error('Reference unit and gram equivalent do not match.');
+  }
+  const reference = per100FromPortion(input.nutrients, input.grams);
+  const foodId = uid();
+  await (await db()).withExclusiveTransactionAsync(async tx => {
+    await tx.runAsync('INSERT INTO custom_foods VALUES (?,?,?,?,?,?,?,?)', foodId, id, name, reference.kcal, reference.protein, reference.carbs, reference.fat, new Date().toISOString());
+    await tx.runAsync('INSERT INTO preferences(key,value) VALUES (?,?)', `custom-food-unit:${foodId}`, JSON.stringify(input.measure));
+  });
+  return foodId;
+}
 export async function foodEntryUnit(entryId: string): Promise<SavedFoodUnit | null> {
   const id = await owner();
   const d = await db();
@@ -116,7 +145,7 @@ export async function saveFoodEntry(input: FoodInput, options: { id?: string; fo
       await tx.runAsync('INSERT INTO custom_foods VALUES (?,?,?,?,?,?,?,?)', foodId, id, valid.name, reference.kcal, reference.protein, reference.carbs, reference.fat, now);
     }
     await tx.runAsync('INSERT INTO food_entries(id,owner_id,food_id,day,meal,name,grams,kcal,protein,carbs,fat,kcal_100,protein_100,carbs_100,fat_100,created_at,catalog_food_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET food_id=excluded.food_id,day=excluded.day,meal=excluded.meal,name=excluded.name,grams=excluded.grams,kcal=excluded.kcal,protein=excluded.protein,carbs=excluded.carbs,fat=excluded.fat,kcal_100=excluded.kcal_100,protein_100=excluded.protein_100,carbs_100=excluded.carbs_100,catalog_food_id=excluded.catalog_food_id', entryId, id, foodId, valid.day, valid.meal, valid.name, valid.grams ?? null, valid.kcal, valid.protein, valid.carbs, valid.fat, reference?.kcal ?? null, reference?.protein ?? null, reference?.carbs ?? null, reference?.fat ?? null, now, options.catalogId ?? null);
-    if (options.enteredUnit && Number.isFinite(options.enteredUnit.quantity) && options.enteredUnit.quantity > 0 && valid.grams) {
+    if (options.enteredUnit && Number.isFinite(options.enteredUnit.quantity) && options.enteredUnit.quantity > 0) {
       await tx.runAsync('INSERT OR REPLACE INTO preferences(key,value) VALUES (?,?)', `food-unit:${entryId}`, JSON.stringify(options.enteredUnit));
     } else await tx.runAsync('DELETE FROM preferences WHERE key=?', `food-unit:${entryId}`);
   });
@@ -135,7 +164,10 @@ export async function customFoods(): Promise<CustomFood[]> {
 }
 export async function deleteCustomFood(foodId: string) {
   const id = await owner();
-  await (await db()).runAsync('DELETE FROM custom_foods WHERE id=? AND owner_id=?', foodId, id);
+  await (await db()).withExclusiveTransactionAsync(async tx => {
+    await tx.runAsync('DELETE FROM custom_foods WHERE id=? AND owner_id=?', foodId, id);
+    await tx.runAsync('DELETE FROM preferences WHERE key=?', `custom-food-unit:${foodId}`);
+  });
 }
 export async function reusableFoods(query: string): Promise<ReusableFood[]> {
   const id = await owner();
@@ -145,7 +177,19 @@ export async function reusableFoods(query: string): Promise<ReusableFood[]> {
     d.getAllAsync<CustomFood>("SELECT * FROM custom_foods WHERE owner_id=? AND name LIKE ? ESCAPE '\\' ORDER BY name LIMIT 30", id, q),
     d.getAllAsync<FoodEntry>("SELECT * FROM food_entries WHERE owner_id=? AND name LIKE ? ESCAPE '\\' ORDER BY created_at DESC LIMIT 60", id, q),
   ]);
-  const results: ReusableFood[] = foods.map(food => ({ key: food.id, name: food.name, basis: '100g', nutrients: { kcal: food.kcal_100, protein: food.protein_100, carbs: food.carbs_100, fat: food.fat_100 }, foodId: food.id, grams: 100 }));
+  const measures = foods.length ? await d.getAllAsync<{ key: string; value: string }>(`SELECT key,value FROM preferences WHERE key IN (${foods.map(() => '?').join(',')})`, ...foods.map(food => `custom-food-unit:${food.id}`)) : [];
+  const measureById = new Map<string, CustomFoodMeasure>();
+  for (const row of measures) {
+    try {
+      const parsed = JSON.parse(row.value) as CustomFoodMeasure;
+      if (typeof parsed.unit === 'string' && Number.isFinite(parsed.quantity) && parsed.quantity > 0 && (parsed.servingName === null || typeof parsed.servingName === 'string') && (parsed.servingQuantity === null || Number.isFinite(parsed.servingQuantity)) && (parsed.servingGrams === null || Number.isFinite(parsed.servingGrams))) measureById.set(row.key.slice('custom-food-unit:'.length), parsed);
+    } catch { /* Legacy saved foods remain usable in grams. */ }
+  }
+  const results: ReusableFood[] = foods.map(food => {
+    const measure = measureById.get(food.id);
+    return { key: food.id, name: food.name, basis: '100g', nutrients: { kcal: food.kcal_100, protein: food.protein_100, carbs: food.carbs_100, fat: food.fat_100 }, foodId: food.id,
+      grams: measure?.servingGrams ?? 100, servingName: measure?.servingName ?? null, servingQuantity: measure?.servingQuantity ?? null, servingGrams: measure?.servingGrams ?? null, referenceUnit: measure ? { unit: measure.unit, quantity: measure.quantity } : null };
+  });
   const seen = new Set(results.map(food => food.name.toLowerCase()));
   for (const entry of entries) {
     const key = entry.name.toLowerCase();

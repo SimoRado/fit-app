@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { useSignIn } from '@clerk/expo';
 import { router } from 'expo-router';
 import { AuthAction, AuthError, AuthField, AuthLink, AuthPage, clerkMessage } from '../../ui/auth';
+import { passwordPolicyMessage } from '../../core/passwordPolicy';
+import { PasswordRequirements } from '../../ui/PasswordRequirements';
 
 export default function ResetPassword() {
   const { signIn } = useSignIn();
@@ -13,7 +15,8 @@ export default function ResetPassword() {
     catch (cause) { setError(clerkMessage(cause)); } finally { setBusy(false); }
   }
   async function submit() {
-    if (!password) { setError('Enter a new password.'); return; }
+    const passwordIssue = passwordPolicyMessage(password);
+    if (passwordIssue) { setError(passwordIssue); return; }
     setBusy(true); setError('');
     try {
       const result = await signIn.resetPasswordEmailCode.submitPassword({ password });
@@ -24,7 +27,7 @@ export default function ResetPassword() {
   }
   async function resend() { try { const result = await signIn.resetPasswordEmailCode.sendCode(); if (result.error) setError(clerkMessage(result.error)); else setError(''); } catch (cause) { setError(clerkMessage(cause)); } }
   return <AuthPage title={verified ? 'New password' : 'Check your email'} detail={verified ? 'Choose a new password for your account.' : 'Enter the code we sent to your email.'}>
-    {verified ? <><AuthField label="New password" value={password} onChangeText={setPassword} secure/><AuthError message={error}/><AuthAction title="Set new password" onPress={submit} disabled={busy}/></> : <><AuthField label="Reset code" value={code} onChangeText={setCode} code/><AuthError message={error}/><AuthAction title="Verify code" onPress={verify} disabled={busy}/><AuthAction title="Resend code" onPress={resend} disabled={busy}/></>}
+    {verified ? <><AuthField label="New password" value={password} onChangeText={setPassword} secure/><PasswordRequirements password={password}/><AuthError message={error}/><AuthAction title="Set new password" onPress={submit} disabled={busy}/></> : <><AuthField label="Reset code" value={code} onChangeText={setCode} code/><AuthError message={error}/><AuthAction title="Verify code" onPress={verify} disabled={busy}/><AuthAction title="Resend code" onPress={resend} disabled={busy}/></>}
     <AuthLink href="/(auth)/sign-in" title="Return to sign in"/>
   </AuthPage>;
 }

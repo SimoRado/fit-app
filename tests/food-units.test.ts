@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, it } from 'vitest';
-import { displayQuantity, formatQuantity, fromGrams, parseMeasurementSystem, parseQuantity, toGrams, unitOptions } from '../src/core/foodUnits';
+import { convertVolumeQuantity, displayQuantity, formatQuantity, fromGrams, parseMeasurementSystem, parseQuantity, toGrams, unitOptions } from '../src/core/foodUnits';
 import { portionNutrients } from '../src/core/nutrition';
 import { migrations } from '../src/data/schema';
 
@@ -23,6 +23,8 @@ describe('food quantity and per-food units', () => {
     expect(toGrams(1, 'L', { name: 'mL', quantity: 100, grams: 103 })).toBeCloseTo(1030, 9);
   });
   it('does not infer density or household portions from a food name', () => {
+    expect(convertVolumeQuantity(250, 'mL', 'L')).toBe(0.25);
+    expect(() => convertVolumeQuantity(250, 'mL', 'g')).toThrow();
     expect(unitOptions({ name: 'cup', quantity: 1, grams: null }, 'metric')).not.toContain('mL');
     expect(() => toGrams(1, 'US cup', null)).toThrow();
     expect(() => toGrams(1, 'US tsp', { name: 'piece', quantity: 1, grams: 30 })).toThrow();

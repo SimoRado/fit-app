@@ -117,6 +117,11 @@ describe('nutrition Convex ownership', () => {
     await expect(b.mutation(api.sync.apply, foodArgs)).rejects.toThrow('Parent record is not synchronized');
     expect(await a.mutation(api.sync.apply, foodArgs)).toEqual({ status: 'applied', revision: 1 });
     expect(await a.mutation(api.sync.apply, foodArgs)).toEqual({ status: 'applied', revision: 1 });
+    const measure = { unit: 'mL', quantity: 250, servingName: 'mL', servingQuantity: 250, servingGrams: 260 };
+    const preference = { key: `custom-food-unit:${food.id}`, value: JSON.stringify(measure) };
+    const measureArgs = { kind: 'preferences' as const, clientId: preference.key, payload: JSON.stringify(preference), expectedRevision: 0, operationId: op(104) };
+    expect(await a.mutation(api.sync.apply, measureArgs)).toEqual({ status: 'applied', revision: 1 });
+    expect((await b.query(api.sync.page, { paginationOpts: { numItems: 10, cursor: null } })).page).toHaveLength(0);
     const entryArgs = { kind: 'food_entries' as const, clientId: entry.id, payload: JSON.stringify(entry), expectedRevision: 0, operationId: op(102) };
     expect(await a.mutation(api.sync.apply, entryArgs)).toEqual({ status: 'applied', revision: 1 });
     const { catalog_food_id: _unused, ...legacyEntry } = { ...entry, id: 'legacy-entry' };
