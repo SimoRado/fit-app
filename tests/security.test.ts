@@ -67,6 +67,21 @@ describe('public Convex function security', () => {
     await expect(a.mutation(api.profile.save, { ...profile, clientId: 'other' })).rejects.toThrow('Profile already exists');
     expect(await a.query(api.records.list, { table: 'profiles' })).toHaveLength(1);
   });
+
+  it('bounds the unused legacy record list while preserving smaller reads', async () => {
+    const t = setup();
+    const a = t.withIdentity({ subject: 'user_A', issuer: 'https://clerk.example' });
+    await a.mutation(api.weights.save, weight);
+    expect(await a.query(api.records.list, { table: 'weights' })).toHaveLength(1);
+    await t.run(async ctx => {
+      const saved = await ctx.db.query('weights').first();
+      if (!saved) throw Error('Missing test weight');
+      for (let i = 0; i < 500; i++) await ctx.db.insert('weights', {
+        ...weight, clientId: `extra-${i}`, owner: saved.owner, updatedAt: Date.now(),
+      });
+    });
+    await expect(a.query(api.records.list, { table: 'weights' })).rejects.toThrow('Legacy record list is too large');
+  });
 });
 
 describe('account switch presentation', () => {

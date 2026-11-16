@@ -6,7 +6,11 @@ const table = v.union(...(['profiles', 'habits', 'habitCompletions', 'missions',
 
 export const list = query({ args: { table }, handler: async (ctx, { table }) => {
   const user = await requireOwner(ctx);
-  return ctx.db.query(table).withIndex('by_owner', q => q.eq('owner', user)).collect();
+  // This legacy endpoint is not used by the mobile sync engine. Bound its
+  // response so a signed-in client cannot force an unbounded table scan.
+  const rows = await ctx.db.query(table).withIndex('by_owner', q => q.eq('owner', user)).take(501);
+  if (rows.length > 500) throw new Error('Legacy record list is too large');
+  return rows;
 } });
 
 export const get = query({ args: { table, clientId: v.string() }, handler: async (ctx, { table, clientId }) => {
