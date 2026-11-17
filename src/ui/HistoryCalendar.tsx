@@ -39,10 +39,10 @@ export const MonthGrid = memo(function MonthGrid({ month, rows, today, selected,
 }) {
   const p = usePalette();
   const c = historyColors(p);
-  const gap = Math.max(4, Math.round(size * 0.13));
+  const gap = 6;
   const weeks = monthWeeks(month);
   const weekdayNames = Array.from({ length: 7 }, (_, index) => new Intl.DateTimeFormat(locale, { weekday: 'narrow' }).format(new Date(2026, 10, 16 + index, 12)));
-  return <View style={{ gap }}>
+  return <View style={{ gap, alignItems: 'center' }}>
     <View style={{ flexDirection: 'row', gap }}>
       {weekdayNames.map((name, index) => <Text key={index} style={{ width: size, textAlign: 'center', color: p.muted, fontFamily: fonts.bold, fontSize: 11 }}>{name}</Text>)}
     </View>
@@ -55,11 +55,11 @@ export const MonthGrid = memo(function MonthGrid({ month, rows, today, selected,
         const on = day === selected;
         const isToday = day === today;
         return <Pressable key={day} disabled={state === 'future'} onPress={() => onSelect(day)} accessibilityRole="button" accessibilityState={{ selected: on, disabled: state === 'future' }} accessibilityLabel={cellLabel(day, state, row, locale) + (isToday ? ', today' : '')}
-          style={{ width: size, height: size, borderRadius: Math.round(size * 0.3), padding: 2, borderWidth: 2, borderColor: on ? c.selected : 'transparent' }}>
-          <View style={{ flex: 1, borderRadius: Math.round(size * 0.24), alignItems: 'center', justifyContent: 'center',
+          style={{ width: size, height: size, borderRadius: Math.round(size * 0.28), padding: 2, borderWidth: 1.5, borderColor: on ? c.selected : 'transparent' }}>
+          <View style={{ flex: 1, borderRadius: Math.round(size * 0.22), alignItems: 'center', justifyContent: 'center',
             backgroundColor: shaded ? c.fill[state] : 'transparent',
-            borderWidth: shaded ? 0 : 1, borderStyle: state === 'unavailable' ? 'dashed' : 'solid', borderColor: state === 'future' ? 'transparent' : c.outline }}>
-            <Text style={{ color: shaded ? c.ink[state] : p.muted, opacity: state === 'future' ? 0.45 : 1, fontFamily: isToday ? fonts.displayHeavy : fonts.bold, fontSize: Math.round(size * 0.32), textDecorationLine: isToday ? 'underline' : 'none' }}>{fromDay(day).getDate()}</Text>
+            borderWidth: state === 'none' ? 1 : 0, borderColor: c.outline }}>
+            <Text style={{ color: shaded ? c.ink[state] : p.muted, opacity: state === 'future' ? 0.45 : 1, fontFamily: isToday ? fonts.displayHeavy : fonts.bold, fontSize: Math.round(size * 0.32) }}>{fromDay(day).getDate()}</Text>
             {state === 'none' && <View style={{ position: 'absolute', bottom: Math.round(size * 0.06), width: 4, height: 4, borderRadius: 2, backgroundColor: c.outline }}/>}
           </View>
         </Pressable>;
@@ -75,7 +75,7 @@ export const MiniMonth = memo(function MiniMonth({ month, rows, today, width, lo
   const p = usePalette();
   const c = historyColors(p);
   const gap = 2;
-  const cell = Math.floor((width - gap * 6) / 7);
+  const cell = Math.min(8, Math.floor((width - gap * 6) / 7));
   const name = new Intl.DateTimeFormat(locale, { month: 'short' }).format(fromDay(`${month}-15`));
   const weeks = monthWeeks(month);
   let done = 0, tracked = 0;
@@ -83,25 +83,34 @@ export const MiniMonth = memo(function MiniMonth({ month, rows, today, width, lo
   const average = tracked ? Math.round(done / tracked) : null;
   return <Pressable onPress={() => onPress(month)} accessibilityRole="button"
     accessibilityLabel={`${new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric' }).format(fromDay(`${month}-15`))}${average === null ? ', no record' : `, average ${average}%`}. Open month`}
-    style={{ width, gap: 5 }}>
+    style={{ width, minHeight: 88, gap: 5, padding: current ? 5 : 0, borderWidth: current ? 1 : 0, borderColor: c.selected, borderRadius: 15 }}>
     <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' }}>
       <Text style={{ color: current ? p.text : p.muted, fontFamily: current ? fonts.displayHeavy : fonts.bold, fontSize: 12.5 }}>{name}</Text>
-      {average !== null && <Text style={{ color: p.muted, fontFamily: fonts.semibold, fontSize: 10 }}>{average}%</Text>}
     </View>
     <View style={{ gap }}>
-      {weeks.map((week, index) => <View key={index} style={{ flexDirection: 'row', gap }}>
+      {tracked > 0 && weeks.map((week, index) => <View key={index} style={{ flexDirection: 'row', gap }}>
         {week.map((day, column) => {
           if (!day) return <View key={column} style={{ width: cell, height: cell }}/>;
           const state = cellState(day, today, rows.get(day));
           const shaded = typeof state === 'number';
           return <View key={day} style={{ width: cell, height: cell, borderRadius: Math.max(2, Math.round(cell * 0.28)),
-            backgroundColor: shaded ? c.fill[state] : 'transparent', borderWidth: shaded || state === 'future' ? 0 : 1, borderColor: c.outline,
-            opacity: state === 'future' ? 0.4 : 1, ...(state === 'future' ? { backgroundColor: c.outline } : {}) }}/>;
+            backgroundColor: shaded ? c.fill[state] : 'transparent' }}/>;
         })}
       </View>)}
     </View>
   </Pressable>;
 });
+
+/** Compact heatmap key shown beneath the calendar. */
+export function HistoryScale() {
+  const p = usePalette();
+  const c = historyColors(p);
+  return <View accessibilityLabel="Completion heatmap, less to more, from 0 to 100 percent" style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
+    <Text style={{ color: p.muted, fontFamily: fonts.semibold, fontSize: 10, marginRight: 6 }}>Less</Text>
+    {c.fill.map((fill, index) => <View key={index} style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: fill }}/>) }
+    <Text style={{ color: p.muted, fontFamily: fonts.semibold, fontSize: 10, marginLeft: 2 }}>More</Text>
+  </View>;
+}
 
 export function HistoryLegend({ compact = false }: { compact?: boolean }) {
   const p = usePalette();

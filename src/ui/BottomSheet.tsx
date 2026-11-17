@@ -14,7 +14,7 @@ type CloseSheet = (after?: () => void) => void;
  * `layout="fixed"`: handle, title and close stay pinned; the child owns the
  * remaining height and provides its own scroll area and footer.
  */
-export function BottomSheet({ visible, title, onClose, children, layout = 'scroll' }: { visible: boolean; title: string; onClose: () => void; children: (close: CloseSheet) => React.ReactNode; layout?: 'scroll' | 'fixed' }) {
+export function BottomSheet({ visible, title, onClose, children, layout = 'scroll', fixedHeight = '90%' }: { visible: boolean; title: string; onClose: () => void; children: (close: CloseSheet) => React.ReactNode; layout?: 'scroll' | 'fixed'; fixedHeight?: '60%' | '82%' | '90%' }) {
   const { language } = useApp();
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
@@ -42,7 +42,7 @@ export function BottomSheet({ visible, title, onClose, children, layout = 'scrol
     <KeyboardAvoidingView style={{ flex: 1, justifyContent: 'flex-end' }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <Animated.View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: colors.accentInk, opacity: progress.interpolate({ inputRange: [0, 1], outputRange: [0, .42] }) }}/>
       <Pressable accessibilityRole="button" accessibilityLabel={localize('Cancel', language)} onPress={() => close()} style={{ flex: 1, minHeight: insets.top + 24 }}/>
-      <Animated.View style={{ ...(fixed ? { height: '90%' as const } : { maxHeight: '85%' as const }), width: '100%', maxWidth: 620, alignSelf: 'center', backgroundColor: colors.bg === '#F5F9FF' ? colors.c8 : colors.card, borderTopLeftRadius: 30, borderTopRightRadius: 30, overflow: 'hidden', transform: [{ translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [height, 0] }) }] }}>
+      <Animated.View style={{ ...(fixed ? { height: fixedHeight } : { maxHeight: '85%' as const }), width: '100%', maxWidth: 620, alignSelf: 'center', backgroundColor: colors.bg === '#F5F9FF' ? colors.c8 : colors.card, borderTopLeftRadius: 30, borderTopRightRadius: 30, overflow: 'hidden', transform: [{ translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [height, 0] }) }] }}>
         {fixed ? <View style={{ flex: 1, direction: language === 'ar' ? 'rtl' : 'ltr' }}>
           <View style={{ paddingHorizontal: 20, paddingTop: 10, paddingBottom: 6, gap: 12 }}>{header}</View>
           <View style={{ flex: 1 }}>{children(close)}</View>

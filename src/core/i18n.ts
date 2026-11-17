@@ -103,6 +103,27 @@ Object.assign(phrases, {
   'Add food': { fr: 'Ajouter un aliment', ar: 'أضف طعاماً' }, 'Set a target': { fr: 'Définir un objectif', ar: 'حدد هدفاً' },
   'Nutrition settings': { fr: 'Paramètres nutrition', ar: 'إعدادات التغذية' },
 });
+// Motivation cards
+Object.assign(phrases, {
+  'DISCOVER': { fr: 'DÉCOUVRIR', ar: 'اكتشف' }, 'SAVED': { fr: 'ENREGISTRÉES', ar: 'المحفوظة' },
+  'SWIPE THE CARD OR USE THE ARROWS': { fr: 'GLISSEZ LA CARTE OU UTILISEZ LES FLÈCHES', ar: 'اسحب البطاقة أو استخدم الأسهم' },
+  'Previous card': { fr: 'Carte précédente', ar: 'البطاقة السابقة' }, 'Next card': { fr: 'Carte suivante', ar: 'البطاقة التالية' },
+  'Share card': { fr: 'Partager la carte', ar: 'مشاركة البطاقة' }, 'Save card': { fr: 'Enregistrer la carte', ar: 'حفظ البطاقة' }, 'Remove from saved': { fr: 'Retirer des enregistrées', ar: 'إزالة من المحفوظة' },
+  'Nothing saved yet': { fr: 'Rien d’enregistré', ar: 'لا شيء محفوظ بعد' },
+  'Tap the heart on any card to keep it here. Saved cards stay with you, even after the day ends.': { fr: 'Touchez le cœur d’une carte pour la garder ici. Elle reste disponible, même après la fin de la journée.', ar: 'اضغط على القلب في أي بطاقة لحفظها هنا. تبقى البطاقات المحفوظة معك حتى بعد انتهاء اليوم.' },
+  'Browse cards': { fr: 'Parcourir les cartes', ar: 'تصفح البطاقات' },
+  'Back to saved cards': { fr: 'Retour aux cartes enregistrées', ar: 'العودة إلى المحفوظة' }, 'Close card': { fr: 'Fermer la carte', ar: 'إغلاق البطاقة' },
+  'Removed from Saved. Tap the heart to keep it.': { fr: 'Retirée des enregistrées. Touchez le cœur pour la garder.', ar: 'أزيلت من المحفوظة. اضغط على القلب للاحتفاظ بها.' },
+  'That’s today’s deck': { fr: 'C’est tout pour aujourd’hui', ar: 'هذه بطاقات اليوم' },
+  'New cards arrive tomorrow.': { fr: 'De nouvelles cartes arrivent demain.', ar: 'بطاقات جديدة تصل غدًا.' },
+  'Cubyfit Pro unlocks 10 cards a day.': { fr: 'Cubyfit Pro débloque 10 cartes par jour.', ar: 'يتيح Cubyfit Pro عشر بطاقات يوميًا.' },
+  'Unlock 10 cards a day': { fr: 'Débloquer 10 cartes par jour', ar: 'افتح 10 بطاقات يوميًا' },
+  'No card from this category today.': { fr: 'Aucune carte de cette catégorie aujourd’hui.', ar: 'لا توجد بطاقة من هذه الفئة اليوم.' },
+  'Your daily cards are chosen from every category. Try All, or come back tomorrow.': { fr: 'Vos cartes du jour viennent de toutes les catégories. Essayez Tout, ou revenez demain.', ar: 'تُختار بطاقاتك اليومية من كل الفئات. جرّب الكل أو عد غدًا.' },
+  'Show all': { fr: 'Tout afficher', ar: 'عرض الكل' },
+  'Today’s motivation cards. Swipe or use the arrow buttons.': { fr: 'Cartes de motivation du jour. Glissez ou utilisez les flèches.', ar: 'بطاقات التحفيز لليوم. اسحب أو استخدم الأسهم.' },
+  'Sharing as text — image sharing needs the next Cubyfit Dev build.': { fr: 'Partage en texte — le partage d’image nécessite la prochaine version Cubyfit Dev.', ar: 'المشاركة كنص — مشاركة الصورة تتطلب إصدار Cubyfit Dev التالي.' },
+});
 let activeLanguage: Language = 'en';
 export const setActiveLanguage = (language: Language) => { activeLanguage = language; };
 export const getActiveLanguage = () => activeLanguage;

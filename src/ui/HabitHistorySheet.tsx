@@ -10,7 +10,7 @@ import { Button, message } from './components';
 import { fonts } from './theme';
 import { CircleButton, isLight, usePalette } from './voltKit';
 import { HabitGlyph, groupColors } from './HabitVisuals';
-import { HistoryLegend, MiniMonth, MonthGrid, NeutralKey, historyColors } from './HistoryCalendar';
+import { HistoryScale, MiniMonth, MonthGrid, historyColors } from './HistoryCalendar';
 import { SHARE_HEIGHT, SHARE_WIDTH, YearShareCard } from './YearShareCard';
 import { useReducedMotion } from './motion';
 import { dayKey, fromDay } from '../core/date';
@@ -32,10 +32,12 @@ const SHEET_PADDING = 20;
  * are shown only for days in the current calendar month (a product rule, for Free and Pro alike).
  */
 export function HabitHistorySheet({ visible, onClose, onUpgrade, locale }: { visible: boolean; onClose: () => void; onUpgrade: () => void; locale: string }) {
-  return <BottomSheet layout="fixed" visible={visible} title="History" onClose={onClose}>{close => <HistoryBody locale={locale} onUpgrade={() => close(onUpgrade)}/>}</BottomSheet>;
+  const [sheetTab, setSheetTab] = useState<Tab>('month');
+  useEffect(() => { if (!visible) setSheetTab('month'); }, [visible]);
+  return <BottomSheet layout="fixed" fixedHeight={sheetTab === 'month' ? '60%' : '82%'} visible={visible} title="History" onClose={onClose}>{close => <HistoryBody locale={locale} onTabChange={setSheetTab} onUpgrade={() => close(onUpgrade)}/>}</BottomSheet>;
 }
 
-function HistoryBody({ locale, onUpgrade }: { locale: string; onUpgrade: () => void }) {
+function HistoryBody({ locale, onTabChange, onUpgrade }: { locale: string; onTabChange: (tab: Tab) => void; onUpgrade: () => void }) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const { revision } = useApp();
@@ -57,7 +59,7 @@ function HistoryBody({ locale, onUpgrade }: { locale: string; onUpgrade: () => v
   const [yearRows, setYearRows] = useState<Map<string, HistoryDay> | null>(null);
 
   // Entitlement can expire while the sheet is open: fall back to what Free may see. Data is untouched.
-  useEffect(() => { if (!access.canBrowseMonth(month)) setMonth(current); if (!access.canOpenYear) { setTab('month'); setSharing(false); } }, [access, month, current]);
+  useEffect(() => { if (!access.canBrowseMonth(month)) setMonth(current); if (!access.canOpenYear && tab === 'year' && locked !== 'year') { setTab('month'); onTabChange('month'); setSharing(false); } }, [access, month, current, tab, locked, onTabChange]);
   useEffect(() => { if (isPro) setLocked(null); }, [isPro]);
   useEffect(() => { repo.habitHistoryFirstDay().then(setFirst).catch(() => setFirst(null)); }, [revision]);
   useEffect(() => {
@@ -86,17 +88,17 @@ function HistoryBody({ locale, onUpgrade }: { locale: string; onUpgrade: () => v
     setLocked(null); setMonth(next); setSelected(next === current ? today : null);
   }
   function chooseTab(next: Tab) {
-    if (next === 'year' && !access.canOpenYear) { setLocked('year'); setTab('year'); return; }
-    setLocked(null); setSharing(false); setTab(next);
+    if (next === 'year' && !access.canOpenYear) { setLocked('year'); setTab('year'); onTabChange('year'); return; }
+    setLocked(null); setSharing(false); setTab(next); onTabChange(next);
   }
   function openMonth(next: string) {
     if (!access.canBrowseMonth(next)) return;
-    setMonth(next); setSelected(next === current ? today : null); setTab('month');
+    setMonth(next); setSelected(next === current ? today : null); setTab('month'); onTabChange('month');
   }
 
   return <View style={{ flex: 1 }}>
     <View style={{ paddingHorizontal: SHEET_PADDING, paddingBottom: 10 }}><TabSwitch tab={tab} width={content} yearLocked={!access.canOpenYear} onChange={chooseTab}/></View>
-    <ScrollView contentContainerStyle={{ paddingHorizontal: SHEET_PADDING, paddingBottom: Math.max(28, insets.bottom + 16), gap: 16 }}>
+    <ScrollView contentContainerStyle={{ paddingHorizontal: SHEET_PADDING, paddingBottom: Math.max(24, insets.bottom + 12), gap: 12 }}>
       {/* Shown where the tap happened, above the calendar, so it is never below the fold. */}
       {locked === 'months' && <UpgradePrompt reason={locked} checking={!subscription.ready && !subscription.error} onUpgrade={onUpgrade} onDismiss={() => setLocked(null)}/>}
       {tab === 'month' ? <MonthView month={month} rows={monthRows} today={today} selected={selected} locale={locale} width={content}
@@ -121,10 +123,10 @@ function TabSwitch({ tab, width, yearLocked, onChange }: { tab: Tab; width: numb
   useEffect(() => { offset.value = reduced ? (tab === 'year' ? half : 0) : withTiming(tab === 'year' ? half : 0, { duration: 220 }); }, [tab, half, offset, reduced]);
   const thumb = useAnimatedStyle(() => ({ transform: [{ translateX: offset.value }] }));
   return <View accessibilityRole="tablist" style={{ flexDirection: 'row', padding: 4, borderRadius: 999, backgroundColor: light ? p.soft1 : p.card2 }}>
-    <Animated.View style={[{ position: 'absolute', top: 4, left: 4, bottom: 4, width: half, borderRadius: 999, backgroundColor: light ? '#1D2E8F' : p.lime }, thumb]}/>
+    <Animated.View style={[{ position: 'absolute', top: 4, left: 4, bottom: 4, width: half, borderRadius: 999, backgroundColor: light ? p.c8 : p.lime, shadowColor: p.navShadow, shadowOpacity: light ? 0.11 : 0, shadowRadius: 5, shadowOffset: { width: 0, height: 2 }, elevation: light ? 2 : 0 }, thumb]}/>
     {(['month', 'year'] as const).map(item => {
       const on = tab === item;
-      const ink = on ? (light ? '#FFFFFF' : '#0B1446') : p.text;
+      const ink = on ? (light ? p.text : '#0B1446') : p.muted;
       return <Pressable key={item} accessibilityRole="tab" accessibilityState={{ selected: on }} accessibilityLabel={item === 'month' ? 'Month' : yearLocked ? 'Year, Cubyfit Pro' : 'Year'} onPress={() => onChange(item)}
         style={{ flex: 1, minHeight: 40, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
         <Text style={{ color: ink, fontFamily: fonts.bold, fontSize: 14 }}>{item === 'month' ? 'Month' : 'Year'}</Text>
@@ -138,7 +140,7 @@ function NavRow({ title, onPrevious, onNext, canPrevious, previousLocked, canNex
   const p = usePalette();
   return <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
     <CircleButton icon={previousLocked ? 'lock-closed' : 'chevron-back'} label={previousLocked ? `${previousLabel}, Cubyfit Pro` : previousLabel} disabled={!canPrevious} onPress={onPrevious}/>
-    <Animated.Text key={title} entering={FadeIn.duration(180)} accessibilityRole="header" style={{ flex: 1, textAlign: 'center', color: p.text, fontFamily: fonts.displayHeavy, fontSize: 21, letterSpacing: -0.4 }}>{title}</Animated.Text>
+    <Animated.Text key={title} entering={FadeIn.duration(180)} accessibilityRole="header" style={{ flex: 1, textAlign: 'center', color: p.text, fontFamily: fonts.displayHeavy, fontSize: 16, letterSpacing: -0.3 }}>{title}</Animated.Text>
     <CircleButton icon="chevron-forward" label={nextLabel} disabled={!canNext} onPress={onNext}/>
   </View>;
 }
@@ -150,18 +152,15 @@ function MonthView({ month, rows, today, selected, locale, width, canPrevious, p
   const p = usePalette();
   const reduced = useReducedMotion();
   const gap = 6;
-  const size = Math.floor((width - gap * 6) / 7);
+  const size = Math.min(36, Math.floor((width - gap * 6) / 7));
   const title = new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric' }).format(fromDay(`${month}-15`));
-  const tracked = rows ? [...rows.values()].filter(row => row.eligible) : [];
-  const average = tracked.length ? Math.round(tracked.reduce((sum, row) => sum + row.percent, 0) / tracked.length) : null;
   const row = selected ? rows?.get(selected) : undefined;
   return <>
     <NavRow title={title} onPrevious={onPrevious} onNext={onNext} canPrevious={canPrevious} previousLocked={previousLocked} canNext={canNext} previousLabel="Previous month" nextLabel="Next month"/>
-    <Text style={{ marginTop: -8, textAlign: 'center', color: p.muted, fontFamily: fonts.semibold, fontSize: 12.5 }}>{average === null ? 'No completed days recorded yet' : `${average}% average · ${tracked.length} day${tracked.length === 1 ? '' : 's'} with habits`}</Text>
     {rows ? <Animated.View key={month} entering={reduced ? undefined : FadeIn.duration(200)}>
       <MonthGrid month={month} rows={rows} today={today} selected={selected} size={size} locale={locale} onSelect={onSelect}/>
     </Animated.View> : <View style={{ height: size * 6, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color={p.accent}/></View>}
-    <View style={{ gap: 8 }}><HistoryLegend/><NeutralKey/></View>
+    <HistoryScale/>
     {selected && rows && <DayPanel key={selected} day={selected} row={row} today={today} locale={locale} detail={detailAllowed(selected)}/>}
   </>;
 }
@@ -225,15 +224,12 @@ function YearView({ year, rows, today, locale, width, canPrevious, canNext, onYe
   const gap = 14;
   const miniWidth = Math.floor((width - gap * (columns - 1)) / columns);
   const current = monthKey(today);
-  const tracked = rows ? [...rows.values()].filter(row => row.eligible) : [];
-  const strong = tracked.filter(row => row.percent >= 68).length;
   return <>
     <NavRow title={String(year)} onPrevious={() => onYear(-1)} onNext={() => onYear(1)} canPrevious={canPrevious} canNext={canNext} previousLabel="Previous year" nextLabel="Next year"/>
-    <Text style={{ marginTop: -8, textAlign: 'center', color: p.muted, fontFamily: fonts.semibold, fontSize: 12.5 }}>{tracked.length ? `${tracked.length} days with habits · ${strong} at 68% or more` : 'No days recorded this year'}</Text>
     {rows ? <Animated.View key={year} entering={reduced ? undefined : FadeIn.duration(220)} style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: gap, rowGap: 18 }}>
       {yearMonths(year).map(month => <MiniMonth key={month} month={month} rows={rows} today={today} width={miniWidth} locale={locale} current={month === current} onPress={month <= current ? onMonth : () => undefined}/>)}
     </Animated.View> : <View style={{ height: 320, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color={p.accent}/></View>}
-    <HistoryLegend/>
+    <HistoryScale/>
     <Pressable accessibilityRole="button" accessibilityLabel={`Share my year ${year}`} onPress={onShare}
       style={{ minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 999, backgroundColor: p.g1 }}>
       <Ionicons name="share-outline" size={18} color={p.plInk}/><Text style={{ color: p.plInk, fontFamily: fonts.bold, fontSize: 15 }}>Share my year</Text>
