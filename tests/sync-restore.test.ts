@@ -14,6 +14,7 @@ vi.mock('../src/data/db', () => ({
 import { applyCloud } from '../src/data/syncLocal';
 
 type TestDb = {
+  getAllAsync: (sql: string, ...args: (string | number | null)[]) => Promise<unknown[]>;
   getFirstAsync: (sql: string, ...args: (string | number | null)[]) => Promise<unknown>;
   runAsync: (sql: string, ...args: (string | number | null)[]) => Promise<unknown>;
   execAsync: (sql: string) => Promise<void>;
@@ -22,6 +23,7 @@ type TestDb = {
 
 function adapter(raw: DatabaseSync) {
   const connection: TestDb = {
+    getAllAsync: async (sql: string, ...args: (string | number | null)[]) => raw.prepare(sql).all(...args),
     getFirstAsync: async (sql: string, ...args: (string | number | null)[]) => raw.prepare(sql).get(...args) ?? null,
     runAsync: async (sql: string, ...args: (string | number | null)[]) => raw.prepare(sql).run(...args),
     execAsync: async (sql: string) => { raw.exec(sql); },

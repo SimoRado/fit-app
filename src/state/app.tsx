@@ -37,8 +37,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [measurementSystem]);
   useEffect(() => { setActiveLanguage(language); }, [language]);
   useEffect(() => { refresh().catch(() => console.warn('Profile refresh failed')); }, [refresh]);
-  useEffect(() => { if (ready && profile) reconcileReminders().catch(() => console.warn('Reminder update failed')); }, [ready, profile]);
-  useEffect(() => { if (!ready || !profile) return; const listener = AppState.addEventListener('change', state => { if (state === 'active') reconcileReminders().catch(() => console.warn('Reminder update failed')); }); return () => listener.remove(); }, [ready, profile]);
+  // Habits History: finalize days that ended while the app was closed or in the background.
+  const reconcileHistory = useCallback(() => { repo.reconcileHabitHistory().then(written => { if (written) setRevision(x => x + 1); }).catch(() => console.warn('History update failed')); }, []);
+  useEffect(() => { if (ready && profile) { reconcileReminders().catch(() => console.warn('Reminder update failed')); reconcileHistory(); } }, [ready, profile, reconcileHistory]);
+  useEffect(() => { if (!ready || !profile) return; const listener = AppState.addEventListener('change', state => { if (state === 'active') { reconcileReminders().catch(() => console.warn('Reminder update failed')); reconcileHistory(); } }); return () => listener.remove(); }, [ready, profile, reconcileHistory]);
   return <Context.Provider value={{ ready, profile, language, setLanguage, appearance, setAppearance, measurementSystem, setMeasurementSystem, revision, refresh, changed: () => setRevision(x => x + 1) }}>{children}</Context.Provider>;
 }
 export const useApp = () => useContext(Context);

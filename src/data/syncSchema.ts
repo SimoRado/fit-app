@@ -20,11 +20,27 @@ export const syncTables = [
   { name: 'custom_foods', key: "NEW.id", oldKey: "OLD.id" },
   { name: 'food_entries', key: "NEW.id", oldKey: "OLD.id" },
   { name: 'habit_progress', key: "NEW.habit_id||':'||NEW.day", oldKey: "OLD.habit_id||':'||OLD.day" },
+  { name: 'habit_days', key: "NEW.id", oldKey: "OLD.id" },
 ] as const;
 
+type SyncTable = typeof syncTables[number];
 const queue = (table: string, key: string, action: string) => `INSERT INTO sync_outbox(kind,record_id,action,operation_id) VALUES ('${table}',${key},'${action}',lower(hex(randomblob(16)))) ON CONFLICT(kind,record_id) DO UPDATE SET action=excluded.action,operation_id=excluded.operation_id,conflict=0;`;
-export const nutritionSyncTables = syncTables.slice(-5, -1);
-export const habitProgressSyncTables = syncTables.slice(-1);
+// Named, not positional: every migration must keep creating exactly the triggers it created when it shipped.
+const pick = (...names: SyncTable['name'][]) => names.map(name => syncTables.find(table => table.name === name)!);
+const nutritionNames = ['nutrition_preferences', 'nutrition_targets', 'custom_foods', 'food_entries'] as const;
+export const nutritionSyncTables = pick(...nutritionNames);
+export const habitProgressSyncTables = pick('habit_progress');
+export const habitHistorySyncTables = pick('habit_days');
+const laterTables = new Set<string>([...nutritionNames, 'habit_progress', 'habit_days']);
+const originalSyncTables = syncTables.filter(table => !laterTables.has(table.name));
+/**
+ * Kinds the deployed Convex backend accepts. `habit_days` is queued locally (so nothing is lost)
+ * but held back from upload until the matching `convex/` change is deployed; pushing an unknown
+ * kind would fail argument validation and stall the rest of the sync cycle.
+ * Flip to true in the same change that deploys `convex/syncContract.ts` with `habit_days`.
+ */
+export const HABIT_HISTORY_CLOUD_BACKUP = true;
+export const heldSyncKinds: ReadonlySet<string> = new Set(HABIT_HISTORY_CLOUD_BACKUP ? [] : ['habit_days']);
 export const syncTriggers = (tables: readonly (typeof syncTables[number])[]) => tables.flatMap(t => ['INSERT','UPDATE','DELETE'].map(event => {
   const isDelete = event === 'DELETE';
   const condition = isDelete ? ('whenOld' in t ? t.whenOld : '1') : ('whenNew' in t ? t.whenNew : '1');
@@ -35,5 +51,5 @@ CREATE TABLE IF NOT EXISTS sync_control (id INTEGER PRIMARY KEY CHECK(id=1), cho
 INSERT OR IGNORE INTO sync_control VALUES (1,'ask');
 CREATE TABLE IF NOT EXISTS sync_outbox (kind TEXT NOT NULL, record_id TEXT NOT NULL, action TEXT NOT NULL CHECK(action IN ('upsert','delete')), operation_id TEXT NOT NULL, conflict INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(kind,record_id));
 CREATE TABLE IF NOT EXISTS sync_versions (kind TEXT NOT NULL, record_id TEXT NOT NULL, revision INTEGER NOT NULL, PRIMARY KEY(kind,record_id));
-${syncTriggers(syncTables.slice(0, -5))}
+${syncTriggers(originalSyncTables)}
 `;

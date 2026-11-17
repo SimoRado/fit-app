@@ -11,6 +11,7 @@ import { deleteRoutine, insertRoutineSessionExercises, loadRoutineDraft, saveRou
 import type { RoutineDraft } from '../core/routineDraft';
 import { reportFailure } from '../core/monitoring';
 import { perfMark, perfNow } from '../core/perf';
+import { historyFirstDay, historyRange, reconcileHistory, withHistory } from './habitHistory';
 
 let promise: Promise<SQLite.SQLiteDatabase> | undefined;
 let activeAccount: string | null = null;
@@ -204,7 +205,9 @@ async function writeHabitAmount(tx: SQLite.SQLiteDatabase, habitId: string, day:
   return amount;
 }
 
-export async function put(table: string, record: Record<string, unknown>) { const cols = Object.keys(record); await (await db()).runAsync(`INSERT INTO ${table} (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')}) ON CONFLICT(id) DO UPDATE SET ${cols.filter(c=>c!=='id').map(c=>`${c}=excluded.${c}`).join(',')}`, ...(Object.values(record) as (string | number | null)[])); }
+const upsertSql = (table: string, cols: string[]) => `INSERT INTO ${table} (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')}) ON CONFLICT(id) DO UPDATE SET ${cols.filter(c=>c!=='id').map(c=>`${c}=excluded.${c}`).join(',')}`;
+export async function put(table: string, record: Record<string, unknown>) { await (await db()).runAsync(upsertSql(table, Object.keys(record)), ...(Object.values(record) as (string | number | null)[])); }
+async function upsertRow(tx: SQLite.SQLiteDatabase, table: string, record: Record<string, unknown>) { await tx.runAsync(upsertSql(table, Object.keys(record)), ...(Object.values(record) as (string | number | null)[])); }
 export async function remove(table: string, id: string) { await (await db()).runAsync(`DELETE FROM ${table} WHERE id=?`, id); }
 
 export type WorkoutBundle = { workout: Workout; exercises: { link: WorkoutExercise; sets: WorkoutSet[] }[] };
@@ -228,22 +231,45 @@ export const repo = {
   habitProgress: () => all<HabitProgress>('habit_progress'),
   saveHabit: async (h: Habit) => {
     const d = await db();
-    const existing = await d.getFirstAsync<{ sort_order: number }>('SELECT sort_order FROM habits WHERE id=? AND owner_id=?', h.id, h.owner_id);
-    const next = existing ? existing.sort_order : (await d.getFirstAsync<{ n: number }>('SELECT COALESCE(MAX(sort_order),-1)+1 AS n FROM habits WHERE owner_id=?', h.owner_id))?.n ?? 0;
-    await put('habits', { ...h, habit_type: h.habit_type ?? 'boolean', target_value: h.target_value ?? 1, unit: h.unit ?? '', increment: h.increment ?? 1, reminder_enabled: h.reminder_enabled ?? Number(!!h.reminder_time), reminder_times: h.reminder_times ?? JSON.stringify(h.reminder_time ? [h.reminder_time] : []), sort_order: h.sort_order ?? next });
-    if ((h.habit_type ?? 'boolean') === 'quantity' && (h.target_value ?? 1) > 0) {
-      // New goal applies from today on; earlier days keep the target they were tracked against.
-      await d.withExclusiveTransactionAsync(async tx => {
-        const today = dayKey();
-        await tx.runAsync('UPDATE habit_progress SET target_snapshot=?, unit_snapshot=? WHERE habit_id=? AND day>=? AND (target_snapshot<>? OR unit_snapshot<>?)', h.target_value ?? 1, h.unit ?? '', h.id, today, h.target_value ?? 1, h.unit ?? '');
-        const rows = await tx.getAllAsync<HabitProgress>('SELECT * FROM habit_progress WHERE habit_id=? AND day>=?', h.id, today);
-        for (const row of rows) {
-          if (row.amount >= row.target_snapshot) await tx.runAsync('INSERT OR IGNORE INTO habit_completions VALUES (?,?,?,?)', uid(), h.id, row.day, new Date().toISOString());
-          else await tx.runAsync('DELETE FROM habit_completions WHERE habit_id=? AND day=?', h.id, row.day);
+    // One transaction: earlier days are frozen with the definition they were tracked under
+    // before the edit lands, then today's open snapshot picks up the new definition.
+    await d.withExclusiveTransactionAsync(async tx => {
+      const today = dayKey();
+      await withHistory(tx, today, async () => {
+        const existing = await tx.getFirstAsync<{ sort_order: number }>('SELECT sort_order FROM habits WHERE id=? AND owner_id=?', h.id, h.owner_id);
+        const next = existing ? existing.sort_order : (await tx.getFirstAsync<{ n: number }>('SELECT COALESCE(MAX(sort_order),-1)+1 AS n FROM habits WHERE owner_id=?', h.owner_id))?.n ?? 0;
+        await upsertRow(tx, 'habits', { ...h, habit_type: h.habit_type ?? 'boolean', target_value: h.target_value ?? 1, unit: h.unit ?? '', increment: h.increment ?? 1, reminder_enabled: h.reminder_enabled ?? Number(!!h.reminder_time), reminder_times: h.reminder_times ?? JSON.stringify(h.reminder_time ? [h.reminder_time] : []), sort_order: h.sort_order ?? next });
+        if ((h.habit_type ?? 'boolean') === 'quantity' && (h.target_value ?? 1) > 0) {
+          // New goal applies from today on; earlier days keep the target they were tracked against.
+          await tx.runAsync('UPDATE habit_progress SET target_snapshot=?, unit_snapshot=? WHERE habit_id=? AND day>=? AND (target_snapshot<>? OR unit_snapshot<>?)', h.target_value ?? 1, h.unit ?? '', h.id, today, h.target_value ?? 1, h.unit ?? '');
+          const rows = await tx.getAllAsync<HabitProgress>('SELECT * FROM habit_progress WHERE habit_id=? AND day>=?', h.id, today);
+          for (const row of rows) {
+            if (row.amount >= row.target_snapshot) await tx.runAsync('INSERT OR IGNORE INTO habit_completions VALUES (?,?,?,?)', uid(), h.id, row.day, new Date().toISOString());
+            else await tx.runAsync('DELETE FROM habit_completions WHERE habit_id=? AND day=?', h.id, row.day);
+          }
         }
       });
-    }
+    });
   },
+  /**
+   * Deletes a habit and its tracking rows. Frozen History snapshots keep the habit's name and
+   * results for the days it was tracked; only today's open snapshot drops it.
+   * Child rows are removed explicitly: transaction connections do not enforce cascades.
+   */
+  deleteHabit: async (id: string) => {
+    const d = await db();
+    await d.withExclusiveTransactionAsync(async tx => {
+      await withHistory(tx, dayKey(), async () => {
+        await tx.runAsync('DELETE FROM habit_progress WHERE habit_id=?', id);
+        await tx.runAsync('DELETE FROM habit_completions WHERE habit_id=?', id);
+        await tx.runAsync('DELETE FROM habits WHERE id=?', id);
+      });
+    });
+  },
+  /** Freezes finished days and refreshes today. Called on launch and resume; mutations do it themselves. */
+  reconcileHabitHistory: async () => { const d = await db(); let written = 0; await d.withExclusiveTransactionAsync(async tx => { written = await reconcileHistory(tx, dayKey()); }); return written; },
+  habitHistory: async (from: string, to: string, withItems = false) => historyRange(await db(), from, to, withItems),
+  habitHistoryFirstDay: async () => historyFirstDay(await db()),
   moveHabit: async (id: string, direction: -1 | 1) => {
     const d = await db();
     await d.withExclusiveTransactionAsync(async tx => {
@@ -258,7 +284,7 @@ export const repo = {
   setHabitAmount: async (habitId: string, day: string, amount: number) => {
     if (!Number.isFinite(amount) || amount < 0 || amount > 100000000) throw Error('Enter a valid nonnegative amount.');
     const d = await db();
-    await d.withExclusiveTransactionAsync(async tx => { await writeHabitAmount(tx, habitId, day, () => amount); });
+    await d.withExclusiveTransactionAsync(async tx => { await withHistory(tx, dayKey(), () => writeHabitAmount(tx, habitId, day, () => amount), { habitId, day }); });
   },
   /**
    * Atomic accumulative step: reads the stored amount and adds `delta` inside one
@@ -269,11 +295,11 @@ export const repo = {
     if (!Number.isFinite(delta) || delta === 0 || Math.abs(delta) > 1000000) throw Error('Enter a valid amount.');
     const d = await db();
     let result = 0;
-    await d.withExclusiveTransactionAsync(async tx => { result = await writeHabitAmount(tx, habitId, day, current => nextAmount(current, delta)); });
+    await d.withExclusiveTransactionAsync(async tx => { result = await withHistory(tx, dayKey(), () => writeHabitAmount(tx, habitId, day, current => nextAmount(current, delta)), { habitId, day }); });
     return result;
   },
-  toggleHabit: async (id: string, day: string) => { const d = await db(); await d.withExclusiveTransactionAsync(async tx => { const exists = await tx.getFirstAsync('SELECT id FROM habit_completions WHERE habit_id=? AND day=?', id, day); if (exists) await tx.runAsync('DELETE FROM habit_completions WHERE habit_id=? AND day=?', id, day); else await tx.runAsync('INSERT INTO habit_completions VALUES (?,?,?,?)', uid(), id, day, new Date().toISOString()); }); },
-  setHabitCompletion: async (id: string, day: string, completed: boolean) => { const d = await db(); if (completed) await d.runAsync('INSERT OR IGNORE INTO habit_completions VALUES (?,?,?,?)', uid(), id, day, new Date().toISOString()); else await d.runAsync('DELETE FROM habit_completions WHERE habit_id=? AND day=?', id, day); },
+  toggleHabit: async (id: string, day: string) => { const d = await db(); await d.withExclusiveTransactionAsync(async tx => { await withHistory(tx, dayKey(), async () => { const exists = await tx.getFirstAsync('SELECT id FROM habit_completions WHERE habit_id=? AND day=?', id, day); if (exists) await tx.runAsync('DELETE FROM habit_completions WHERE habit_id=? AND day=?', id, day); else await tx.runAsync('INSERT INTO habit_completions VALUES (?,?,?,?)', uid(), id, day, new Date().toISOString()); }, { habitId: id, day }); }); },
+  setHabitCompletion: async (id: string, day: string, completed: boolean) => { const d = await db(); await d.withExclusiveTransactionAsync(async tx => { await withHistory(tx, dayKey(), async () => { if (completed) await tx.runAsync('INSERT OR IGNORE INTO habit_completions VALUES (?,?,?,?)', uid(), id, day, new Date().toISOString()); else await tx.runAsync('DELETE FROM habit_completions WHERE habit_id=? AND day=?', id, day); }, { habitId: id, day }); }); },
   missions: () => all<Mission>('missions', 'ORDER BY created_at DESC'),
   manual: () => all<MissionCompletion>('mission_completions'),
   saveMission: (m: Mission) => put('missions', m),

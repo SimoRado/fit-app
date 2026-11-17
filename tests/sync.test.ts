@@ -122,6 +122,7 @@ describe('authenticated cloud sync', () => {
       INSERT INTO habits (id,owner_id,name,description,category,icon,frequency,days,weekly_target,start_date,archived,reminder_time,created_at,reminder_enabled,reminder_times) VALUES ('habit-1','profile-1','Walk','','Fitness','x','daily','',3,'2026-11-15',0,NULL,'2026-11-15T12:00:00.000Z',1,'["09:30"]');
       INSERT INTO habit_completions VALUES ('completion-1','habit-1','2026-11-15','2026-11-15T12:00:00.000Z');
       INSERT INTO habit_progress VALUES ('habit-1:2026-11-15','habit-1','2026-11-15',1,1,'','2026-11-15T12:00:00.000Z');
+      INSERT INTO habit_days VALUES ('profile-1:2026-11-15','profile-1','2026-11-15','final','tracked',2,1,50,'[{"h":"habit-1","n":"Walk","i":"x","c":"Fitness","t":"b","d":1},{"h":"habit-2","n":"Water","i":"water","c":"Nutrition","t":"q","d":0,"g":3,"a":2,"u":"L"}]','2026-11-15T23:00:00.000Z');
       INSERT INTO missions VALUES ('mission-1','profile-1','Walk','manual',1,'daily',1,'2026-11-15T12:00:00.000Z');
       INSERT INTO mission_completions VALUES ('mission-completion-1','mission-1','2026-11-15');
       INSERT INTO routines VALUES ('routine-1','profile-1','Test','2026-11-15T12:00:00.000Z');

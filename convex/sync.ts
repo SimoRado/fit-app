@@ -2,7 +2,7 @@ import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
 import { mutation, query, type MutationCtx } from './_generated/server';
 import { day, requireOwner, timestamp } from './security';
-import { kinds, syncRecordFields, type Kind } from './syncContract';
+import { historySnapshotWins, kinds, syncRecordFields, type Kind } from './syncContract';
 
 const kind = v.union(...kinds.map(v.literal));
 const parent: Partial<Record<Kind, { kind: Kind; field: string }>> = {
@@ -13,6 +13,7 @@ const parent: Partial<Record<Kind, { kind: Kind; field: string }>> = {
   routine_exercises: { kind: 'routines', field: 'routine_id' }, workout_exercises: { kind: 'workouts', field: 'workout_id' },
   workout_sets: { kind: 'workout_exercises', field: 'workout_exercise_id' },
   nutrition_preferences: { kind: 'profile', field: 'owner_id' }, nutrition_targets: { kind: 'profile', field: 'owner_id' }, custom_foods: { kind: 'profile', field: 'owner_id' }, food_entries: { kind: 'profile', field: 'owner_id' },
+  habit_days: { kind: 'profile', field: 'owner_id' },
 };
 const seedExercises = new Set(['bench','squat','deadlift','shoulder','curl','pullup','lat','legpress','plank','running']);
 const numeric: Partial<Record<Kind, readonly string[]>> = {
@@ -21,10 +22,11 @@ const numeric: Partial<Record<Kind, readonly string[]>> = {
   workout_exercises: ['position'], workout_sets: ['set_number','reps','weight_kg','duration_sec','completed'],
   weights: ['kg'], measurements: ['value'],
   nutrition_preferences: ['enabled'], nutrition_targets: ['kcal','protein','carbs','fat'], custom_foods: ['kcal_100','protein_100','carbs_100','fat_100'], food_entries: ['grams','kcal','protein','carbs','fat','kcal_100','protein_100','carbs_100','fat_100'],
+  habit_days: ['eligible','completed','percent'],
 };
 const nullable = new Set(['target_weight','reminder_time','duration_min','reps','weight_kg','duration_sec','food_id','catalog_food_id','grams','kcal_100','protein_100','carbs_100','fat_100','running_since_ms','paused_since_ms','finished_at_ms']);
-const integral = new Set(['custom','weekly_target','archived','reminder_enabled','sort_order','target','active','position','duration_min','completed','set_number','reps','duration_sec','enabled','elapsed_seconds','running_since_ms','paused_since_ms','paused_seconds','finished_at_ms']);
-const nonnegative = new Set(['position','sort_order','amount','duration_min','reps','weight_kg','duration_sec','value','grams','kcal','protein','carbs','fat','kcal_100','protein_100','carbs_100','fat_100','elapsed_seconds','running_since_ms','paused_since_ms','paused_seconds','finished_at_ms']);
+const integral = new Set(['eligible','custom','weekly_target','archived','reminder_enabled','sort_order','target','active','position','duration_min','completed','set_number','reps','duration_sec','enabled','elapsed_seconds','running_since_ms','paused_since_ms','paused_seconds','finished_at_ms']);
+const nonnegative = new Set(['eligible','percent','position','sort_order','amount','duration_min','reps','weight_kg','duration_sec','value','grams','kcal','protein','carbs','fat','kcal_100','protein_100','carbs_100','fat_100','elapsed_seconds','running_since_ms','paused_since_ms','paused_seconds','finished_at_ms']);
 const booleanNumber = new Set(['custom','archived','reminder_enabled','active','completed','enabled']);
 
 function parseRow(kind: Kind, id: string, payload: string) {
@@ -41,8 +43,8 @@ function parseRow(kind: Kind, id: string, payload: string) {
     if (value === null && nullable.has(field) && !(kind === 'custom_foods' && field.endsWith('_100'))) continue;
     if (numeric[kind]?.includes(field)) {
       const max = field.endsWith('_ms') ? 1e13 : 1e9;
-      if (typeof value !== 'number' || !Number.isFinite(value) || Math.abs(value) > max || (integral.has(field) && !Number.isInteger(value)) || (nonnegative.has(field) && value < 0) || (booleanNumber.has(field) && value !== 0 && value !== 1)) throw Error('Invalid record value');
-    } else if (typeof value !== 'string' || value.length > (field === 'notes' || field === 'description' ? 10000 : 2000) || (['id','owner_id','habit_id','mission_id','routine_id','workout_id','workout_exercise_id','exercise_id','key'].includes(field) && !value)) throw Error('Invalid record value');
+      if (typeof value !== 'number' || !Number.isFinite(value) || Math.abs(value) > max || (integral.has(field) && !Number.isInteger(value)) || (nonnegative.has(field) && value < 0) || (booleanNumber.has(field) && kind !== 'habit_days' && value !== 0 && value !== 1)) throw Error('Invalid record value');
+    } else if (typeof value !== 'string' || value.length > (field === 'notes' || field === 'description' ? 10000 : kind === 'habit_days' && field === 'items' ? 16000 : 2000) || (['id','owner_id','habit_id','mission_id','routine_id','workout_id','workout_exercise_id','exercise_id','key'].includes(field) && !value)) throw Error('Invalid record value');
   }
   for (const field of ['day','birth_date','start_date','effective_day']) if (typeof row[field] === 'string') day(row[field]);
   for (const field of ['created_at','completed_at','started_at','updated_at']) if (typeof row[field] === 'string') timestamp(row[field]);
@@ -56,6 +58,7 @@ function parseRow(kind: Kind, id: string, payload: string) {
     if (!Array.isArray(times) || times.length > 6 || times.some(time => typeof time !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time))) throw Error('Invalid reminder times');
   }
   if (kind === 'habit_progress' && ((row.amount as number) > 100000000 || (row.target_snapshot as number) <= 0 || row.id !== `${row.habit_id}:${row.day}`)) throw Error('Invalid habit progress');
+  if (kind === 'habit_days') validHistoryDay(row);
   if (kind === 'exercises' && !['weight_reps','reps','duration'].includes(String(row.metric))) throw Error('Invalid exercise');
   if (kind === 'profile' && !['en','fr','ar'].includes(String(row.language))) throw Error('Invalid language');
   if (kind === 'nutrition_targets' && (row.kcal as number) <= 0) throw Error('Invalid calorie target');
@@ -78,6 +81,21 @@ function parseRow(kind: Kind, id: string, payload: string) {
   if (expected !== id) throw Error('Record ID mismatch');
   if (kind === 'exercises' && row.custom !== 1) throw Error('Only custom exercises may sync');
   return row;
+}
+
+/** A History day snapshot must be internally consistent: counts derive from its own items. */
+function validHistoryDay(row: Record<string, unknown>) {
+  if (!['open','final'].includes(String(row.status)) || !['tracked','reconstructed'].includes(String(row.source)) || row.id !== `${row.owner_id}:${row.day}`) throw Error('Invalid habit history');
+  let items: unknown;
+  try { items = JSON.parse(String(row.items)); } catch { throw Error('Invalid habit history'); }
+  if (!Array.isArray(items) || items.length > 200) throw Error('Invalid habit history');
+  for (const item of items as Record<string, unknown>[]) {
+    if (!item || typeof item !== 'object' || typeof item.h !== 'string' || !item.h || item.h.length > 200 || typeof item.n !== 'string' || item.n.length > 200 || (item.d !== 0 && item.d !== 1) || (item.t !== 'b' && item.t !== 'q')) throw Error('Invalid habit history');
+    for (const key of ['g','a'] as const) if (item[key] !== undefined && (typeof item[key] !== 'number' || !Number.isFinite(item[key]) || (item[key] as number) < 0 || (item[key] as number) > 100000000)) throw Error('Invalid habit history');
+  }
+  const done = (items as { d: number }[]).reduce((sum, item) => sum + item.d, 0);
+  const eligible = row.eligible as number, completed = row.completed as number, percent = row.percent as number;
+  if (eligible !== items.length || completed !== done || percent > 100 || Math.abs(percent - (eligible ? completed / eligible * 100 : 0)) > 0.001) throw Error('Invalid habit history');
 }
 
 async function ownedRecord(ctx: MutationCtx, owner: string, kind: Kind, clientId: string) {
@@ -119,6 +137,15 @@ export const apply = mutation({ args: { kind, clientId: v.string(), payload: v.u
   if ((args.kind === 'habit_completions' || args.kind === 'mission_completions') && existing && !existing.deleted && args.payload !== null) {
     await ctx.db.insert('syncOperations', { owner, operationId: args.operationId, kind: args.kind, clientId: args.clientId, payload: args.payload, revision: currentRevision });
     return { status: 'applied' as const, revision: currentRevision };
+  }
+  // History snapshots are derived summaries: resolve concurrent writers by the shared rule
+  // (final beats open, then newest) instead of leaving a permanent revision conflict.
+  if (args.kind === 'habit_days' && existing && !existing.deleted && existing.payload && args.payload !== null && existing.payload !== args.payload && currentRevision !== args.expectedRevision) {
+    if (!historySnapshotWins(row ?? {}, JSON.parse(existing.payload) as Record<string, unknown>)) return { status: 'conflict' as const, revision: currentRevision };
+    const revision = currentRevision + 1;
+    await ctx.db.patch(existing._id, { payload: args.payload, deleted: false, revision, updatedAt: Date.now() });
+    await ctx.db.insert('syncOperations', { owner, operationId: args.operationId, kind: args.kind, clientId: args.clientId, payload: args.payload, revision });
+    return { status: 'applied' as const, revision };
   }
   if (!existing && args.payload === null && args.expectedRevision === 0) {
     await ctx.db.insert('syncOperations', { owner, operationId: args.operationId, kind: args.kind, clientId: args.clientId, payload: args.payload, revision: 0 });

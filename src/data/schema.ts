@@ -1,4 +1,4 @@
-import { habitProgressSyncTables, nutritionSyncTables, syncMigration, syncTriggers } from './syncSchema';
+import { habitHistorySyncTables, habitProgressSyncTables, nutritionSyncTables, syncMigration, syncTriggers } from './syncSchema';
 
 export const migrations = [
   `CREATE TABLE IF NOT EXISTS profile (id TEXT PRIMARY KEY, name TEXT NOT NULL, birth_date TEXT NOT NULL, height_cm REAL NOT NULL, start_weight REAL NOT NULL, target_weight REAL, experience TEXT NOT NULL, fitness_goal TEXT NOT NULL, growth_goals TEXT NOT NULL, language TEXT NOT NULL, completed_at TEXT NOT NULL);
@@ -59,6 +59,13 @@ export const migrations = [
   `ALTER TABLE food_entries ADD COLUMN catalog_food_id TEXT;`,
   `CREATE TABLE IF NOT EXISTS sync_failures (kind TEXT NOT NULL, record_id TEXT NOT NULL, operation_id TEXT NOT NULL, category TEXT NOT NULL, detail TEXT NOT NULL, attempts INTEGER NOT NULL, next_retry_at INTEGER NOT NULL, PRIMARY KEY(kind,record_id,operation_id));
    CREATE TABLE IF NOT EXISTS sync_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);`,
+  // Habits History: one compact, frozen snapshot per local day (see core/habitHistory.ts).
+  // Additive only — existing habits, completions and progress are untouched.
+  `CREATE TABLE IF NOT EXISTS habit_days (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL REFERENCES profile(id) ON DELETE CASCADE, day TEXT NOT NULL,
+     status TEXT NOT NULL CHECK(status IN ('open','final')), source TEXT NOT NULL CHECK(source IN ('tracked','reconstructed')),
+     eligible INTEGER NOT NULL CHECK(eligible>=0), completed INTEGER NOT NULL CHECK(completed>=0 AND completed<=eligible),
+     percent REAL NOT NULL CHECK(percent>=0 AND percent<=100), items TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(owner_id,day));
+   ${syncTriggers(habitHistorySyncTables)}`,
 ] as const;
 
 export const exerciseSeeds: readonly [string, string][] = [

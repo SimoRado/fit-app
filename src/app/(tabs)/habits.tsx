@@ -1,8 +1,8 @@
-import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import Animated, { interpolateColor, useAnimatedProps, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { Text } from '../../ui/LocalizedText';
 import { addDays, dayKey, fromDay, uid, weekStart } from '../../core/date';
@@ -26,6 +26,7 @@ import { HabitGlyph, groupColors } from '../../ui/HabitVisuals';
 import { MonthWeekCalendar } from '../../ui/MonthWeekCalendar';
 import { deviceUses12h } from '../../ui/WheelTimePicker';
 import { useReducedMotion } from '../../ui/motion';
+import { HabitHistorySheet } from '../../ui/HabitHistorySheet';
 
 const clock = () => new Date().toTimeString().slice(0, 5);
 const formatStep = (habit: Habit) => `${Number((habit.increment ?? 1).toFixed(2))} ${habit.unit ?? ''}`.trim();
@@ -60,6 +61,10 @@ export default function Habits() {
   const [editor, setEditor] = useState<EditorState>(null);
   const [manage, setManage] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  // Set while the paywall (opened from History) is on top; History reopens when Habits regains focus.
+  const returnToHistory = useRef(false);
+  useFocusEffect(useCallback(() => { if (returnToHistory.current) { returnToHistory.current = false; setHistoryOpen(true); } }, []));
   const [nowTime, setNowTime] = useState(clock);
   const creating = useRef(false);
   const today = dayKey();
@@ -152,7 +157,7 @@ export default function Habits() {
   async function deleteHabit(id: string) {
     const before = habits;
     setHabits(rows => rows.filter(row => row.id !== id));
-    try { await repo.remove('habits', id); changed(); void reconcileReminders(); }
+    try { await repo.deleteHabit(id); changed(); void reconcileReminders(); }
     catch (error) { setHabits(before); message(error); }
   }
   /** One-tap starter: saved locally at once with no reminder; editable afterwards. */
@@ -189,6 +194,7 @@ export default function Habits() {
   const header = <>
     <View style={{ height: 44, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
       <Text numberOfLines={1} style={{ flex: 1, color: p.muted, fontFamily: fonts.bold, fontSize: 11, letterSpacing: 0.8 }}>{selected === today ? `TODAY · ${dayLabel}` : dayLabel}</Text>
+      <CircleButton icon="grid-outline" label="History" onPress={() => setHistoryOpen(true)}/>
       <CircleButton icon="calendar-outline" label="Choose a date" onPress={() => setCalendarOpen(true)}/>
       <CircleButton icon="add" tone="accent" label="New habit" onPress={() => setEditor({ habit: null, mode: 'time' })}/>
     </View>
@@ -206,6 +212,7 @@ export default function Habits() {
     {header}
     <EmptyHabits onPick={starter => { void createStarter(starter); }} onCreate={() => setEditor({ habit: null, mode: 'time' })}/>
     <BottomSheet layout="fixed" visible={!!editor} title={editor?.habit ? 'Edit habit' : 'New habit'} onClose={() => setEditor(null)}>{close => editor && <HabitEditor key={editor.habit?.id ?? 'new'} habit={editor.habit} startDay={startDay} initialMode={editor.mode} close={close} onSaved={applySaved}/>}</BottomSheet>
+    <HabitHistorySheet visible={historyOpen} locale={locale} onClose={() => setHistoryOpen(false)} onUpgrade={() => { returnToHistory.current = true; router.push('/paywall'); }}/>
     <ManageSheet open={manage} habits={ordered} onClose={() => setManage(false)} onEdit={habit => { setManage(false); setEditor({ habit, mode: 'time' }); }}/>
   </Page>;
 
@@ -246,6 +253,7 @@ export default function Habits() {
     </VCard>
 
     <BottomSheet layout="fixed" visible={!!editor} title={editor?.habit ? 'Edit habit' : 'New habit'} onClose={() => setEditor(null)}>{close => editor && <HabitEditor key={editor.habit?.id ?? `new-${editor.mode}`} habit={editor.habit} startDay={startDay} initialMode={editor.mode} close={close} onSaved={applySaved}/>}</BottomSheet>
+    <HabitHistorySheet visible={historyOpen} locale={locale} onClose={() => setHistoryOpen(false)} onUpgrade={() => { returnToHistory.current = true; router.push('/paywall'); }}/>
     <ManageSheet open={manage} habits={ordered} onClose={() => setManage(false)} onEdit={habit => { setManage(false); setEditor({ habit, mode: 'time' }); }}/>
     <BottomSheet visible={!!menu} title={menu?.name ?? 'Habit'} onClose={() => setMenu(null)}>{close => menu && <View style={{ gap: 6 }}>
       {menu.habit_type === 'quantity' ? <>
@@ -267,7 +275,7 @@ export default function Habits() {
         <View style={{ flex: 1 }}><ActionItem icon="arrow-up" label="Move up" onPress={() => { void move(menu.id, -1); }}/></View>
         <View style={{ flex: 1 }}><ActionItem icon="arrow-down" label="Move down" onPress={() => { void move(menu.id, 1); }}/></View>
       </View>
-      <ActionItem icon="trash-outline" tone="del" label="Delete habit" onPress={() => confirm(`Delete “${menu.name}”?`, () => close(() => { void deleteHabit(menu.id); }), 'This removes the habit and its completion history.', 'Delete habit')}/>
+      <ActionItem icon="trash-outline" tone="del" label="Delete habit" onPress={() => confirm(`Delete “${menu.name}”?`, () => close(() => { void deleteHabit(menu.id); }), 'This removes the habit. Days already in History keep their results.', 'Delete habit')}/>
     </View>}</BottomSheet>
   </Page>;
 }

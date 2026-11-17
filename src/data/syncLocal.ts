@@ -1,14 +1,18 @@
 import * as SQLite from 'expo-sqlite';
 import { db, ensureExerciseCatalog, getLocalAccount } from './db';
-import { syncTables } from './syncSchema';
+import { heldSyncKinds, syncTables } from './syncSchema';
+import { reconcileHistory } from './habitHistory';
+import { dayKey } from '../core/date';
 import { orderOutbox, upsertOrder, type CloudRow, type OutboxRow, type SyncKind } from './syncOrder';
 import { cloudUpsertSql } from './syncSql';
 import type { FailureCategory } from '../services/syncFailures';
-import { syncRecordFields } from '../../convex/syncContract';
+import { historySnapshotWins, syncRecordFields } from '../../convex/syncContract';
 
 export type SyncChoice = 'ask' | 'local' | 'enabled';
 export type { SyncKind, OutboxRow, CloudRow } from './syncOrder';
 const descriptors = Object.fromEntries(syncTables.map(t => [t.name, t])) as Record<SyncKind, typeof syncTables[number]>;
+// Kinds queued locally but not uploaded until the backend accepts them (see HABIT_HISTORY_CLOUD_BACKUP).
+const held = (column: string) => heldSyncKinds.size ? ` AND ${column} NOT IN (${[...heldSyncKinds].map(kind => `'${kind}'`).join(',')})` : '';
 const primary: Partial<Record<SyncKind, string>> = { rest_days: 'owner_id,day', favorites: 'owner_id,card_id', preferences: 'key', nutrition_preferences: 'owner_id' };
 
 export async function syncChoice(): Promise<SyncChoice> {
@@ -20,8 +24,8 @@ export async function localSyncStatus() {
   const d = await db();
   const [choice, pending, conflicts, failureCount, failures, lastCheck] = await Promise.all([
     syncChoice(),
-    d.getFirstAsync<{ n: number }>('SELECT count(*) AS n FROM sync_outbox WHERE conflict=0'),
-    d.getFirstAsync<{ n: number }>('SELECT count(*) AS n FROM sync_outbox WHERE conflict=1'),
+    d.getFirstAsync<{ n: number }>(`SELECT count(*) AS n FROM sync_outbox WHERE conflict=0${held('kind')}`),
+    d.getFirstAsync<{ n: number }>(`SELECT count(*) AS n FROM sync_outbox WHERE conflict=1${held('kind')}`),
     d.getFirstAsync<{ n: number }>('SELECT count(*) AS n FROM sync_outbox o JOIN sync_failures f ON f.kind=o.kind AND f.record_id=o.record_id AND f.operation_id=o.operation_id'),
     d.getAllAsync<{ kind: string; action: string; operation_id: string; category: string; detail: string; next_retry_at: number }>(`SELECT o.kind,o.action,o.operation_id,f.category,f.detail,f.next_retry_at FROM sync_outbox o JOIN sync_failures f ON f.kind=o.kind AND f.record_id=o.record_id AND f.operation_id=o.operation_id ORDER BY f.next_retry_at LIMIT 5`),
     d.getFirstAsync<{ value: string }>("SELECT value FROM sync_meta WHERE key='last_cloud_check'"),
@@ -46,7 +50,7 @@ export async function chooseSync(choice: 'local' | 'enabled') {
 export async function pendingOperations() {
   const d = await db();
   await d.runAsync('DELETE FROM sync_failures WHERE NOT EXISTS (SELECT 1 FROM sync_outbox o WHERE o.kind=sync_failures.kind AND o.record_id=sync_failures.record_id AND o.operation_id=sync_failures.operation_id)');
-  const rows = await d.getAllAsync<OutboxRow>('SELECT o.*,f.category AS failure_category,COALESCE(f.attempts,0) AS attempts,COALESCE(f.next_retry_at,0) AS next_retry_at FROM sync_outbox o LEFT JOIN sync_failures f ON f.kind=o.kind AND f.record_id=o.record_id AND f.operation_id=o.operation_id');
+  const rows = await d.getAllAsync<OutboxRow>(`SELECT o.*,f.category AS failure_category,COALESCE(f.attempts,0) AS attempts,COALESCE(f.next_retry_at,0) AS next_retry_at FROM sync_outbox o LEFT JOIN sync_failures f ON f.kind=o.kind AND f.record_id=o.record_id AND f.operation_id=o.operation_id WHERE 1=1${held('o.kind')}`);
   return orderOutbox(rows);
 }
 
@@ -85,6 +89,16 @@ export async function acknowledge(op: OutboxRow, revision: number) {
 }
 
 export async function markConflict(op: OutboxRow) {
+  if (op.kind === 'habit_days') {
+    // The server kept a snapshot that wins the shared rule (final beats open, then newest).
+    // Drop the local upload and reset the version so this cycle's download applies the cloud copy.
+    const d = await db();
+    await d.withExclusiveTransactionAsync(async tx => {
+      await tx.runAsync('DELETE FROM sync_outbox WHERE kind=? AND record_id=? AND operation_id=?', op.kind, op.record_id, op.operation_id);
+      await tx.runAsync('INSERT INTO sync_versions(kind,record_id,revision) VALUES (?,?,0) ON CONFLICT(kind,record_id) DO UPDATE SET revision=0', op.kind, op.record_id);
+    });
+    return;
+  }
   await (await db()).runAsync('UPDATE sync_outbox SET conflict=1 WHERE kind=? AND record_id=? AND operation_id=?', op.kind, op.record_id, op.operation_id);
 }
 
@@ -123,6 +137,9 @@ export async function applyCloud(rows: CloudRow[], account: string) {
   await d.withExclusiveTransactionAsync(async tx => {
     const control = await tx.getFirstAsync<{ choice: string }>('SELECT choice FROM sync_control WHERE id=1');
     if (control?.choice !== 'enabled' || getLocalAccount() !== account) throw Error('Cloud sync is not enabled for this account');
+    // Freeze finished History days with the habit definitions that were in force locally before
+    // cloud changes (for example a habit edited on another device) are applied.
+    await reconcileHistory(tx, dayKey());
     await tx.runAsync("UPDATE sync_control SET choice='applying' WHERE id=1");
     for (const cloud of [...rows].sort(cloudOrder)) {
       if (!(cloud.kind in descriptors) || !Number.isSafeInteger(cloud.revision) || cloud.revision < 0) throw Error('Invalid cloud record');
@@ -130,6 +147,25 @@ export async function applyCloud(rows: CloudRow[], account: string) {
       const version = await tx.getFirstAsync<{ revision: number }>('SELECT revision FROM sync_versions WHERE kind=? AND record_id=?', kind, cloud.clientId);
       if ((version?.revision ?? 0) >= cloud.revision) continue;
       const pending = await tx.getFirstAsync('SELECT 1 FROM sync_outbox WHERE kind=? AND record_id=?', kind, cloud.clientId);
+      if (kind === 'habit_days' && !cloud.deleted && cloud.payload) {
+        // Day snapshots converge by the shared rule rather than surfacing a conflict. A losing
+        // local snapshot is replaced; a winning one stays queued and uploads next cycle.
+        const local = await tx.getFirstAsync<{ status: string; updated_at: string }>('SELECT status,updated_at FROM habit_days WHERE id=?', cloud.clientId);
+        if (local && (pending || !version)) {
+          if (!historySnapshotWins(JSON.parse(cloud.payload) as Record<string, unknown>, local)) {
+            await tx.runAsync('INSERT INTO sync_versions(kind,record_id,revision) VALUES (?,?,?) ON CONFLICT(kind,record_id) DO UPDATE SET revision=excluded.revision', kind, cloud.clientId, cloud.revision);
+            continue;
+          }
+          await tx.runAsync('DELETE FROM sync_outbox WHERE kind=? AND record_id=?', kind, cloud.clientId);
+          const row = JSON.parse(cloud.payload) as Record<string, string | number | null>;
+          const columns = Object.keys(row);
+          if (!columns.length || columns.some(column => !syncRecordFields.habit_days.includes(column))) throw Error('Invalid cloud payload');
+          await tx.runAsync(cloudUpsertSql(kind, columns, 'id'), ...Object.values(row));
+          await tx.runAsync('INSERT INTO sync_versions(kind,record_id,revision) VALUES (?,?,?) ON CONFLICT(kind,record_id) DO UPDATE SET revision=excluded.revision', kind, cloud.clientId, cloud.revision);
+          applied++;
+          continue;
+        }
+      }
       if (pending) { conflicts++; continue; }
       if (cloud.deleted && await tx.getFirstAsync('SELECT 1 FROM sync_outbox LIMIT 1')) { conflicts++; continue; }
       const { sql, args } = keyWhere(kind, cloud.clientId);
@@ -151,6 +187,8 @@ export async function applyCloud(rows: CloudRow[], account: string) {
     }
     if (getLocalAccount() !== account) throw Error('Account changed during restore');
     await tx.runAsync("UPDATE sync_control SET choice='enabled' WHERE id=1");
+    // Restored habits and history are in place: fill days since the last restored snapshot, refresh today.
+    await reconcileHistory(tx, dayKey());
   });
   return { applied, conflicts };
 }
@@ -178,7 +216,8 @@ export async function adoptGuestData() {
   if (!guestProfile) throw Error('No preserved guest profile was found on this device.');
   const snapshots = [] as { name: SyncKind; rows: Record<string, string | number | null>[] }[];
   for (const name of upsertOrder) {
-    const rows = await guest.getAllAsync<Record<string, string | number | null>>(`SELECT * FROM ${name}`);
+    // Guest databases from before History have no habit_days table; those days are reconstructed after import.
+    const rows = await guest.getAllAsync<Record<string, string | number | null>>(`SELECT * FROM ${name}`).catch((cause: unknown) => { if (name === 'habit_days') return []; throw cause; });
     snapshots.push({ name, rows: name === 'exercises' ? rows.filter(row => row.custom === 1) : rows });
   }
   await target.withExclusiveTransactionAsync(async tx => {

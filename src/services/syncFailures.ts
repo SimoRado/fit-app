@@ -16,7 +16,7 @@ export function retryDelayMs(attempts: number) {
 }
 
 const parents: Partial<Record<SyncKind, SyncKind[]>> = {
-  habits: ['profile'], habit_completions: ['habits'], habit_progress: ['habits'],
+  habits: ['profile'], habit_completions: ['habits'], habit_progress: ['habits'], habit_days: ['profile'],
   missions: ['profile'], mission_completions: ['missions'], routines: ['profile'],
   routine_exercises: ['routines', 'exercises'], workouts: ['profile'],
   workout_exercises: ['workouts', 'exercises'], workout_sets: ['workout_exercises'],

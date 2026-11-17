@@ -1,4 +1,4 @@
-export const kinds = ['profile','exercises','habits','habit_completions','habit_progress','missions','mission_completions','routines','routine_exercises','workouts','workout_exercises','workout_sets','weights','measurements','rest_days','favorites','preferences','nutrition_preferences','nutrition_targets','custom_foods','food_entries'] as const;
+export const kinds = ['profile','exercises','habits','habit_completions','habit_progress','missions','mission_completions','routines','routine_exercises','workouts','workout_exercises','workout_sets','weights','measurements','rest_days','favorites','preferences','nutrition_preferences','nutrition_targets','custom_foods','food_entries','habit_days'] as const;
 export type Kind = typeof kinds[number];
 
 // Match the columns produced by SQLite SELECT * for every synchronized table.
@@ -24,4 +24,17 @@ export const syncRecordFields: Record<Kind, readonly string[]> = {
   nutrition_targets: ['id','owner_id','effective_day','kcal','protein','carbs','fat','created_at'],
   custom_foods: ['id','owner_id','name','kcal_100','protein_100','carbs_100','fat_100','created_at'],
   food_entries: ['id','owner_id','food_id','day','meal','name','grams','kcal','protein','carbs','fat','kcal_100','protein_100','carbs_100','fat_100','created_at','catalog_food_id'],
+  habit_days: ['id','owner_id','day','status','source','eligible','completed','percent','items','updated_at'],
 };
+
+type DaySnapshot = { status?: unknown; updated_at?: unknown };
+/**
+ * Habits History day snapshots are summaries, not user edits, so two devices may both write the
+ * same day. Both sides resolve with one deterministic rule instead of a stuck conflict: a
+ * finalized day beats an open one; otherwise the most recently written snapshot wins.
+ */
+export function historySnapshotWins(incoming: DaySnapshot, current: DaySnapshot) {
+  const rank = (row: DaySnapshot) => row.status === 'final' ? 1 : 0;
+  if (rank(incoming) !== rank(current)) return rank(incoming) > rank(current);
+  return String(incoming.updated_at ?? '') >= String(current.updated_at ?? '');
+}

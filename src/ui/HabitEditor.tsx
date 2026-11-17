@@ -128,8 +128,8 @@ export function HabitEditor({ habit, startDay, initialMode = 'time', close, onSa
   function remove() {
     if (!habit) return;
     confirm(`Delete “${habit.name}”?`, async () => {
-      try { await repo.remove('habits', habit.id); onSaved(); close(); void reconcileReminders(); } catch (cause) { message(cause); }
-    }, 'This removes the habit and its completion history.', 'Delete habit');
+      try { await repo.deleteHabit(habit.id); onSaved(); close(); void reconcileReminders(); } catch (cause) { message(cause); }
+    }, 'This removes the habit. Days already in History keep their results.', 'Delete habit');
   }
 
   const label = { color: p.muted, fontFamily: fonts.bold, fontSize: 11, letterSpacing: 0.7 } as const;
