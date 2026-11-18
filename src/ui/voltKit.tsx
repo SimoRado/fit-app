@@ -32,6 +32,8 @@ export function useEntering(index = 0) {
 }
 
 export function cardShadow(palette: Readonly<Palette>): ViewStyle {
+  // Volt (original): bordered card with a faint navy shadow on Shore, flat on the dark appearances.
+  if (palette.style === 'volt') return palette.light ? { boxShadow: '0px 6px 14px rgba(11,20,70,0.05)' } : {};
   return palette.light
     // Lotus `.card8`: borderless with a soft violet drop shadow; Abyss gets a faint violet wash.
     ? { boxShadow: '0px 1px 2px rgba(73,16,139,0.04), 0px 12px 30px -14px rgba(73,16,139,0.16)' }
@@ -42,7 +44,7 @@ export function cardShadow(palette: Readonly<Palette>): ViewStyle {
 export function VCard({ children, style, onPress, accessibilityLabel, tone = 'card', raised = false }: { children: React.ReactNode; style?: StyleProp<ViewStyle>; onPress?: () => void; accessibilityLabel?: string; tone?: 'card' | 'soft1' | 'soft2'; raised?: boolean }) {
   const p = usePalette();
   const background = tone === 'soft1' ? p.soft1 : tone === 'soft2' ? p.soft2 : p.c8;
-  const base: ViewStyle = { backgroundColor: background, borderWidth: 1, borderColor: tone === 'card' && !p.light ? p.c8Line : 'transparent', borderRadius: 26, padding: 16, ...(tone === 'card' ? cardShadow(p) : raised ? { boxShadow: '0px 4px 14px -6px rgba(73,16,139,0.14)' } : {}) };
+  const base: ViewStyle = { backgroundColor: background, borderWidth: 1, borderColor: tone === 'card' && (!p.light || p.style === 'volt') ? p.c8Line : 'transparent', borderRadius: 26, padding: 16, ...(tone === 'card' ? cardShadow(p) : raised ? { boxShadow: '0px 4px 14px -6px rgba(73,16,139,0.14)' } : {}) };
   if (!onPress) return <View style={[base, style]}>{children}</View>;
   return <MotionPressable pressScale={0.97} accessibilityRole="button" accessibilityLabel={accessibilityLabel} onPress={onPress} style={[base, style]}>{children}</MotionPressable>;
 }
@@ -137,7 +139,7 @@ export function DayPills({ days, selected, onSelect }: { days: DayPill[]; select
       const on = day.key === selected;
       return <MotionPressable key={day.key} selected={on} pressScale={0.92} accessibilityRole="tab" accessibilityLabel={day.accessibilityLabel} accessibilityState={{ selected: on, disabled: !!day.disabled }} disabled={day.disabled} onPress={() => onSelect(day.key)}
         style={{ flex: 1, minWidth: 0, minHeight: 56, borderRadius: 999, alignItems: 'center', justifyContent: 'center', gap: 2, backgroundColor: on ? undefined : p.c8, opacity: day.disabled ? 0.4 : 1,
-          ...(on ? candyStyle(p, 'pill') : light ? { boxShadow: '0px 1px 2px rgba(73,16,139,0.04), 0px 6px 14px -8px rgba(73,16,139,0.16)' } : { borderWidth: 1, borderColor: p.c8Line }),
+          ...(on ? { backgroundImage: linearGradient(p.pillAngle, p.pill), boxShadow: p.style === 'lotus' ? `0px 8px 20px -6px ${p.candyGlow}` : `0px 5px 10px ${p.plGlow}` } : light ? { boxShadow: '0px 1px 2px rgba(73,16,139,0.04), 0px 6px 14px -8px rgba(73,16,139,0.16)' } : { borderWidth: 1, borderColor: p.c8Line }),
           ...(!on && day.today ? { borderWidth: 1.5, borderColor: p.accent } : {}) }}>
         <Text style={{ color: on ? p.candyInk : day.today ? p.accent : p.text, fontFamily: fonts.displayHeavy, fontSize: 15, lineHeight: 18 }}>{day.number}</Text>
         <Text numberOfLines={1} style={{ color: on ? p.candyInk : p.muted, opacity: on ? 0.9 : 1, fontFamily: fonts.semibold, fontSize: 10.5 }}>{day.label}</Text>

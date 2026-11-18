@@ -163,10 +163,11 @@ export function shiftMonth(month: string, delta: number) {
 }
 
 /** Monday-first weeks; `null` pads days outside the month. 4, 5 or 6 rows depending on the month. */
-export function monthWeeks(month: string): (string | null)[][] {
+/** Calendar rows for a month; `weekStartsOn` 1 = Monday (default), 0 = Sunday (History calendar). */
+export function monthWeeks(month: string, weekStartsOn: 0 | 1 = 1): (string | null)[][] {
   const [y, m] = month.split('-').map(Number);
   const first = firstOfMonth(y, m - 1), last = lastOfMonth(y, m - 1);
-  const lead = (fromDay(first).getDay() + 6) % 7;
+  const lead = (fromDay(first).getDay() + 7 - weekStartsOn) % 7;
   const cells: (string | null)[] = Array.from({ length: lead }, () => null);
   for (let day = first; day <= last; day = addDays(day, 1)) cells.push(day);
   while (cells.length % 7) cells.push(null);

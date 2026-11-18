@@ -10,10 +10,10 @@ import { Button, message } from './components';
 import { fonts, brand } from './theme';
 import { CircleButton, isLight, usePalette } from './voltKit';
 import { HabitGlyph, groupColors } from './HabitVisuals';
-import { HistoryScale, MiniMonth, MonthGrid, historyColors } from './HistoryCalendar';
+import { HISTORY_WEEK_START, HistoryScale, MiniMonth, MonthGrid, WeekRow, historyColors } from './HistoryCalendar';
 import { SHARE_HEIGHT, SHARE_WIDTH, YearShareCard } from './YearShareCard';
 import { useReducedMotion } from './motion';
-import { dayKey, fromDay } from '../core/date';
+import { addDays, dayKey, fromDay } from '../core/date';
 import { cellState, historyAccess, monthKey, percentLabel, shiftMonth, yearMonths, type HistoryDay, type HistoryItem } from '../core/habitHistory';
 import { formatAmount } from '../core/habitProgress';
 import { habitGroup } from '../core/habitDesign';
@@ -22,7 +22,9 @@ import { useApp } from '../state/app';
 import { useSubscription } from '../state/subscriptions';
 import { canShareFiles, shareFile, writePng } from '../services/shareImage';
 
-type Tab = 'month' | 'year';
+type Tab = 'week' | 'month' | 'year';
+/** First day (Sunday) of the history week containing `day`. */
+const historyWeekStart = (day: string) => addDays(day, -((fromDay(day).getDay() - HISTORY_WEEK_START + 7) % 7));
 type Locked = 'months' | 'year' | 'share' | null;
 const SHEET_PADDING = 20;
 
@@ -34,7 +36,7 @@ const SHEET_PADDING = 20;
 export function HabitHistorySheet({ visible, onClose, onUpgrade, locale }: { visible: boolean; onClose: () => void; onUpgrade: () => void; locale: string }) {
   const [sheetTab, setSheetTab] = useState<Tab>('month');
   useEffect(() => { if (!visible) setSheetTab('month'); }, [visible]);
-  return <BottomSheet layout="fixed" fixedHeight={sheetTab === 'month' ? '60%' : '82%'} visible={visible} title="History" onClose={onClose}>{close => <HistoryBody locale={locale} onTabChange={setSheetTab} onUpgrade={() => close(onUpgrade)}/>}</BottomSheet>;
+  return <BottomSheet layout="fixed" fixedHeight={sheetTab === 'week' ? '60%' : '82%'} visible={visible} title="History" onClose={onClose}>{close => <HistoryBody locale={locale} onTabChange={setSheetTab} onUpgrade={() => close(onUpgrade)}/>}</BottomSheet>;
 }
 
 function HistoryBody({ locale, onTabChange, onUpgrade }: { locale: string; onTabChange: (tab: Tab) => void; onUpgrade: () => void }) {
@@ -56,6 +58,8 @@ function HistoryBody({ locale, onTabChange, onUpgrade }: { locale: string; onTab
   const [sharing, setSharing] = useState(false);
   const [first, setFirst] = useState<string | null>(null);
   const [monthRows, setMonthRows] = useState<Map<string, HistoryDay> | null>(null);
+  const [week, setWeek] = useState(() => historyWeekStart(today));
+  const [weekRows, setWeekRows] = useState<Map<string, HistoryDay> | null>(null);
   const [yearRows, setYearRows] = useState<Map<string, HistoryDay> | null>(null);
 
   // Entitlement can expire while the sheet is open: fall back to what Free may see. Data is untouched.
@@ -70,6 +74,14 @@ function HistoryBody({ locale, onTabChange, onUpgrade }: { locale: string; onTab
     repo.habitHistory(`${month}-01`, last, month === current).then(rows => { if (active) setMonthRows(new Map(rows.map(row => [row.day, row]))); }).catch(error => { if (active) { setMonthRows(new Map()); message(error); } });
     return () => { active = false; };
   }, [month, current, revision]);
+  useEffect(() => {
+    if (tab !== 'week') return;
+    let active = true;
+    const end = addDays(week, 6);
+    // Items (habit detail) are only read when the week touches the current month, where detail is allowed.
+    repo.habitHistory(week, end, monthKey(end) === current || monthKey(week) === current).then(rows => { if (active) setWeekRows(new Map(rows.map(row => [row.day, row]))); }).catch(error => { if (active) { setWeekRows(new Map()); message(error); } });
+    return () => { active = false; };
+  }, [tab, week, current, revision]);
   useEffect(() => {
     if (tab !== 'year' || !access.canOpenYear) return;
     let active = true;
@@ -87,9 +99,17 @@ function HistoryBody({ locale, onTabChange, onUpgrade }: { locale: string; onTab
     if (!access.canBrowseMonth(next)) return;
     setLocked(null); setMonth(next); setSelected(next === current ? today : null);
   }
+  function goWeek(delta: number) {
+    const next = addDays(week, delta * 7);
+    if (delta > 0 && next > today) return;
+    // A week is reachable when its last day is in a month the plan allows (Free: the current month).
+    if (delta < 0 && !access.canBrowseMonth(monthKey(addDays(next, 6)))) { setLocked('months'); return; }
+    setLocked(null); setWeek(next); setSelected(today >= next && today <= addDays(next, 6) ? today : null);
+  }
   function chooseTab(next: Tab) {
     if (next === 'year' && !access.canOpenYear) { setLocked('year'); setTab('year'); onTabChange('year'); return; }
     setLocked(null); setSharing(false); setTab(next); onTabChange(next);
+    if (next === 'week') { const start = historyWeekStart(selected && access.canBrowseMonth(monthKey(selected)) ? selected : today); setWeek(start); }
   }
   function openMonth(next: string) {
     if (!access.canBrowseMonth(next)) return;
@@ -101,7 +121,10 @@ function HistoryBody({ locale, onTabChange, onUpgrade }: { locale: string; onTab
     <ScrollView contentContainerStyle={{ paddingHorizontal: SHEET_PADDING, paddingBottom: Math.max(24, insets.bottom + 12), gap: 12 }}>
       {/* Shown where the tap happened, above the calendar, so it is never below the fold. */}
       {locked === 'months' && <UpgradePrompt reason={locked} checking={!subscription.ready && !subscription.error} onUpgrade={onUpgrade} onDismiss={() => setLocked(null)}/>}
-      {tab === 'month' ? <MonthView month={month} rows={monthRows} today={today} selected={selected} locale={locale} width={content}
+      {tab === 'week' ? <WeekView week={week} rows={weekRows} today={today} selected={selected} locale={locale} width={content}
+          canPrevious={monthKey(addDays(week, -1)) >= firstMonth || !isPro} previousLocked={!access.canBrowseMonth(monthKey(addDays(week, -1)))} canNext={addDays(week, 7) <= today}
+          onPrevious={() => goWeek(-1)} onNext={() => goWeek(1)} onSelect={setSelected} detailAllowed={access.canSeeDetail} isLocked={day => !access.canBrowseMonth(monthKey(day))}/>
+        : tab === 'month' ? <MonthView month={month} rows={monthRows} today={today} selected={selected} locale={locale} width={content}
           canPrevious={canPrevious || !isPro} previousLocked={!access.canBrowseMonth(previousMonth)} canNext={month < current}
           onPrevious={() => goMonth(-1)} onNext={() => goMonth(1)} onSelect={setSelected} detailAllowed={access.canSeeDetail}/>
         : locked === 'year' ? null
@@ -113,23 +136,26 @@ function HistoryBody({ locale, onTabChange, onUpgrade }: { locale: string; onTab
   </View>;
 }
 
-/** Connected Month / Year selector with a sliding navy thumb. */
+const TABS: Tab[] = ['week', 'month', 'year'];
+/** WEEK | MONTH | YEAR segmented selector (reference): pale track, white sliding pill. */
 function TabSwitch({ tab, width, yearLocked, onChange }: { tab: Tab; width: number; yearLocked: boolean; onChange: (tab: Tab) => void }) {
   const p = usePalette();
   const reduced = useReducedMotion();
   const light = isLight(p);
-  const half = (width - 8) / 2;
-  const offset = useSharedValue(tab === 'year' ? half : 0);
-  useEffect(() => { offset.value = reduced ? (tab === 'year' ? half : 0) : withTiming(tab === 'year' ? half : 0, { duration: 220 }); }, [tab, half, offset, reduced]);
+  const third = (width - 8) / 3;
+  const target = TABS.indexOf(tab) * third;
+  const offset = useSharedValue(target);
+  useEffect(() => { offset.value = reduced ? target : withTiming(target, { duration: 220 }); }, [target, offset, reduced]);
   const thumb = useAnimatedStyle(() => ({ transform: [{ translateX: offset.value }] }));
   return <View accessibilityRole="tablist" style={{ flexDirection: 'row', padding: 4, borderRadius: 999, backgroundColor: light ? p.soft1 : p.card2 }}>
-    <Animated.View style={[{ position: 'absolute', top: 4, left: 4, bottom: 4, width: half, borderRadius: 999, backgroundColor: light ? p.c8 : p.lime, shadowColor: p.navShadow, shadowOpacity: light ? 0.11 : 0, shadowRadius: 5, shadowOffset: { width: 0, height: 2 }, elevation: light ? 2 : 0 }, thumb]}/>
-    {(['month', 'year'] as const).map(item => {
+    <Animated.View style={[{ position: 'absolute', top: 4, left: 4, bottom: 4, width: third, borderRadius: 999, backgroundColor: light ? p.c8 : p.lime, boxShadow: light ? '0px 2px 8px rgba(11,20,70,0.12)' : undefined }, thumb]}/>
+    {TABS.map(item => {
+      const name = item === 'week' ? 'Week' : item === 'month' ? 'Month' : 'Year';
       const on = tab === item;
       const ink = on ? (light ? p.text : brand.ink) : p.muted;
-      return <Pressable key={item} accessibilityRole="tab" accessibilityState={{ selected: on }} accessibilityLabel={item === 'month' ? 'Month' : yearLocked ? 'Year, Cubyfit Pro' : 'Year'} onPress={() => onChange(item)}
-        style={{ flex: 1, minHeight: 40, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-        <Text style={{ color: ink, fontFamily: fonts.bold, fontSize: 14 }}>{item === 'month' ? 'Month' : 'Year'}</Text>
+      return <Pressable key={item} accessibilityRole="tab" accessibilityState={{ selected: on }} accessibilityLabel={item === 'year' && yearLocked ? 'Year, Cubyfit Pro' : name} onPress={() => onChange(item)}
+        style={{ flex: 1, minHeight: 40, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+        <Text style={{ color: ink, fontFamily: fonts.bold, fontSize: 12, letterSpacing: 0.7, textTransform: 'uppercase' }}>{name}</Text>
         {item === 'year' && yearLocked && <Ionicons name="lock-closed" size={12} color={ink}/>}
       </Pressable>;
     })}
@@ -152,16 +178,42 @@ function MonthView({ month, rows, today, selected, locale, width, canPrevious, p
   const p = usePalette();
   const reduced = useReducedMotion();
   const gap = 6;
-  const size = Math.min(36, Math.floor((width - gap * 6) / 7));
+  const size = Math.min(56, Math.floor((width - gap * 6) / 7));
   const title = new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric' }).format(fromDay(`${month}-15`));
   const row = selected ? rows?.get(selected) : undefined;
   return <>
     <NavRow title={title} onPrevious={onPrevious} onNext={onNext} canPrevious={canPrevious} previousLocked={previousLocked} canNext={canNext} previousLabel="Previous month" nextLabel="Next month"/>
     {rows ? <Animated.View key={month} entering={reduced ? undefined : FadeIn.duration(200)}>
-      <MonthGrid month={month} rows={rows} today={today} selected={selected} size={size} locale={locale} onSelect={onSelect}/>
+      <MonthGrid month={month} rows={rows} today={today} selected={selected} size={size} gap={gap} locale={locale} onSelect={onSelect}/>
     </Animated.View> : <View style={{ height: size * 6, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color={p.accent}/></View>}
     <HistoryScale/>
     {selected && rows && <DayPanel key={selected} day={selected} row={row} today={today} locale={locale} detail={detailAllowed(selected)}/>}
+  </>;
+}
+
+function WeekView({ week, rows, today, selected, locale, width, canPrevious, previousLocked, canNext, onPrevious, onNext, onSelect, detailAllowed, isLocked }: {
+  week: string; rows: Map<string, HistoryDay> | null; today: string; selected: string | null; locale: string; width: number;
+  canPrevious: boolean; previousLocked: boolean; canNext: boolean; onPrevious: () => void; onNext: () => void; onSelect: (day: string) => void; detailAllowed: (day: string) => boolean; isLocked: (day: string) => boolean;
+}) {
+  const p = usePalette();
+  const reduced = useReducedMotion();
+  const gap = 6;
+  const size = Math.min(56, Math.floor((width - gap * 6) / 7));
+  const days = Array.from({ length: 7 }, (_, index) => addDays(week, index));
+  const end = days[6];
+  const fmt = (day: string, withYear: boolean) => new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short', ...(withYear ? { year: 'numeric' as const } : {}) }).format(fromDay(day));
+  const title = `${fmt(week, week.slice(0, 4) !== end.slice(0, 4))} \u2013 ${fmt(end, true)}`;
+  const row = selected ? rows?.get(selected) : undefined;
+  const summary = rows ? [...rows.values()].filter(item => item.eligible > 0 && !isLocked(item.day)) : [];
+  const due = summary.reduce((sum, item) => sum + item.eligible, 0), done = summary.reduce((sum, item) => sum + Math.min(item.completed, item.eligible), 0);
+  return <>
+    <NavRow title={title} onPrevious={onPrevious} onNext={onNext} canPrevious={canPrevious} previousLocked={previousLocked} canNext={canNext} previousLabel="Previous week" nextLabel="Next week"/>
+    {rows ? <Animated.View key={week} entering={reduced ? undefined : FadeIn.duration(200)}>
+      <WeekRow days={days} rows={rows} today={today} selected={selected} size={size} gap={gap} locale={locale} onSelect={onSelect} isLocked={isLocked}/>
+    </Animated.View> : <View style={{ height: size * 2, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color={p.accent}/></View>}
+    <Text style={{ textAlign: 'center', color: p.muted, fontFamily: fonts.semibold, fontSize: 12.5 }}>{due ? `${done} of ${due} habits completed this week \u00b7 ${Math.round(done / due * 100)}%` : 'No habits recorded this week'}</Text>
+    <HistoryScale/>
+    {selected && rows && !isLocked(selected) && <DayPanel key={selected} day={selected} row={row} today={today} locale={locale} detail={detailAllowed(selected)}/>}
   </>;
 }
 

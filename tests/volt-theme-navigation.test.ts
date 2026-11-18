@@ -1,16 +1,16 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { getAppearancePalette, colors, parseAppearance, setAppearancePalette } from '../src/ui/theme';
+import { getAppearancePalette, colors, parseAppearance, parseStyleMode, resolveStyle, setAppearancePalette, setThemePalette, brand } from '../src/ui/theme';
 import { primaryTabRoutes, secondaryTabRoutes } from '../src/core/voltNavigation';
 
 const source = (path: string) => readFileSync(join(process.cwd(), path), 'utf8');
 
-afterEach(() => setAppearancePalette('shore'));
+afterEach(() => setThemePalette('volt', 'shore'));
 
 describe('Volt appearance foundation', () => {
   it('uses the Lotus Shore values from the final prototype (html.x-f.t-shore)', () => {
-    const shore = getAppearancePalette('shore');
+    const shore = getAppearancePalette('shore', 'lotus');
     expect(shore.light).toBe(true);
     expect(shore.bg).toBe('#F3F8FF');
     expect(shore.card).toBe('#FFFFFF');
@@ -25,7 +25,7 @@ describe('Volt appearance foundation', () => {
   });
 
   it('uses the Lotus Abyss values and dark ink on orchid surfaces', () => {
-    const abyss = getAppearancePalette('abyss');
+    const abyss = getAppearancePalette('abyss', 'lotus');
     expect(abyss.light).toBe(false);
     expect(abyss.bg).toBe('#12061F');
     expect(abyss.card).toBe('#1C0B30');
@@ -42,12 +42,50 @@ describe('Volt appearance foundation', () => {
   });
 
   it('replaces the current palette object when the selected appearance changes', () => {
+    setThemePalette('lotus', 'shore');
     const original = colors;
     setAppearancePalette('abyss');
     expect(colors).not.toBe(original);
     expect(colors.bg).toBe('#12061F');
     setAppearancePalette('shore');
     expect(colors.bg).toBe('#F3F8FF');
+  });
+
+  it('keeps the original Volt values (restored from a17d83b) as their own style', () => {
+    const shore = getAppearancePalette('shore', 'volt'), abyss = getAppearancePalette('abyss', 'volt');
+    expect([shore.style, shore.bg, shore.text, shore.accent, shore.lime, shore.blue]).toEqual(['volt', '#F5F9FF', '#0B1446', '#1D2E8F', '#DFFF1F', '#9CCBFF']);
+    expect([abyss.bg, abyss.card, abyss.accent, abyss.titleAccent, abyss.navActiveIcon]).toEqual(['#000000', '#0B0E1A', '#9CCBFF', '#DFFF1F', '#0B1446']);
+  });
+
+  it('style and light/dark are independent, and brand colours follow the style', () => {
+    for (const style of ['volt', 'lotus'] as const) for (const appearance of ['shore', 'abyss'] as const) {
+      setThemePalette(style, appearance);
+      expect(colors.style).toBe(style);
+      expect(colors.light).toBe(appearance === 'shore');
+    }
+    setThemePalette('volt', 'abyss'); expect(brand.violet).toBe('#1D2E8F'); expect(brand.orchid).toBe('#DFFF1F');
+    setThemePalette('lotus', 'abyss'); expect(brand.violet).toBe('#7E30E1'); expect(brand.orchid).toBe('#E26EE5');
+    setAppearancePalette('shore'); expect(colors.style).toBe('lotus');
+  });
+
+  it('Match my profile is only a visual default; manual choices ignore sex', () => {
+    expect(parseStyleMode(undefined)).toBe('profile');
+    expect(parseStyleMode('lotus')).toBe('lotus');
+    expect(parseStyleMode('nonsense')).toBe('profile');
+    expect(resolveStyle('profile', 'female')).toBe('lotus');
+    expect(resolveStyle('profile', 'male')).toBe('volt');
+    expect(resolveStyle('profile', null)).toBe('volt');
+    expect(resolveStyle('volt', 'female')).toBe('volt');
+    expect(resolveStyle('lotus', 'male')).toBe('lotus');
+  });
+
+  it('persists the style choice as a synced preference without touching profile data', () => {
+    const appState = source('src/state/app.tsx');
+    expect(appState).toContain("export const STYLE_MODE_KEY = 'style_mode'");
+    expect(appState).toContain('repo.setPreference(STYLE_MODE_KEY, next)');
+    expect(appState).toContain('applyStyle(resolveStyle(savedMode, savedSex))');
+    const setStyleMode = appState.slice(appState.indexOf('const setStyleMode'), appState.indexOf('const setSex'));
+    expect(setStyleMode).not.toMatch(/saveProfile|prefKeys.sex/);
   });
 
   it('parses saved appearance values and safely defaults unknown values to Shore', () => {
@@ -71,7 +109,7 @@ describe('Volt appearance foundation', () => {
     expect(root).toContain('<VoltThemeProvider>');
     expect(root).toContain('<ClerkProvider');
     expect(root).not.toContain('resetAppearance()');
-    expect(appState).toContain('const { appearance, setAppearance: applyAppearance } = useVoltTheme()');
+    expect(appState).toContain('const { appearance, setAppearance: applyAppearance, style, setStyle: applyStyle } = useVoltTheme()');
     expect(appState).toContain('applyAppearance(savedAppearance)');
     expect(appState).not.toContain('useState<Appearance>');
     expect(provider).toContain('<RouterThemeProvider value={routerTheme}>');

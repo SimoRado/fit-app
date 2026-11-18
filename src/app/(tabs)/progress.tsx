@@ -232,9 +232,8 @@ function WeightCard({ weights, startWeight, target, locale }: { weights: WeightE
   const readout = selected && picked ? `${shortDay(locale, selected.day)} · ${selected.kg.toFixed(1)} kg` : points.length > 1 ? `${range === 'Week' ? 'Last 7 days' : range === 'Month' ? 'Last 30 days' : 'All weigh-ins'} · tap a point` : points.length === 1 ? 'One weigh-in in this range · add more to see a trend' : 'No weigh-ins in this range';
   const tabs: WeightRange[] = ['All', 'Month', 'Week'];
   return <Pressable accessibilityRole="button" accessibilityLabel="Open weight details" onPress={() => router.push('/weight')}
-    style={{ marginTop: 4, paddingTop: 20, paddingHorizontal: 18, paddingBottom: 14, borderRadius: 26, overflow: 'hidden', backgroundImage: linearGradient(140, p.hero), boxShadow: p.light ? '0px 18px 40px -16px rgba(73,16,139,0.55)' : '0px 0px 0px 1px rgba(226,110,229,0.18), 0px 20px 44px -18px rgba(226,110,229,0.35)' }}>
-    <LotusFlower size={210} style={{ right: -46, top: -34 }}/>
-    <HeroWaves/>
+    style={{ marginTop: 4, paddingTop: 20, paddingHorizontal: 18, paddingBottom: 14, borderRadius: 26, overflow: 'hidden', backgroundImage: linearGradient(140, p.hero), boxShadow: p.style === 'volt' ? undefined : p.light ? '0px 18px 40px -16px rgba(73,16,139,0.55)' : '0px 0px 0px 1px rgba(226,110,229,0.18), 0px 20px 44px -18px rgba(226,110,229,0.35)' }}>
+    {p.style === 'lotus' && <><LotusFlower size={210} style={{ right: -46, top: -34 }}/><HeroWaves/></>}
     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
       <Text style={{ color: '#FFFFFF', fontFamily: fonts.displayHeavy, fontSize: 19, letterSpacing: -0.19 }}>Weight</Text>
       <View style={{ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.12)' }}><Ionicons name="chevron-forward" size={16} color="#FFFFFF"/></View>
@@ -254,7 +253,7 @@ function WeightCard({ weights, startWeight, target, locale }: { weights: WeightE
         {geometry.points.map((point, index) => {
           const isSelected = point === selected, isLast = index === geometry.points.length - 1;
           return <React.Fragment key={point.id}>
-            <Circle cx={point.x} cy={point.y} r={isSelected || isLast ? 5 : 3.6} fill={isSelected ? p.pgHl : '#FFFFFF'} stroke={p.heroCard === '#49108B' ? '#49108B' : '#7E30E1'} strokeWidth={2}/>
+            <Circle cx={point.x} cy={point.y} r={isSelected || isLast ? 5 : 3.6} fill={isSelected ? p.pgHl : '#FFFFFF'} stroke={p.heroCard} strokeWidth={2}/>
             <Circle cx={point.x} cy={point.y} r={16} fill="transparent" onPress={() => setPicked(point.id)}/>
           </React.Fragment>;
         })}

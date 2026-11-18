@@ -17,6 +17,7 @@ import { View, useWindowDimensions, type ViewStyle } from 'react-native';
 import Svg, { Circle, Defs, G, LinearGradient, Path, Stop } from 'react-native-svg';
 import { useVoltTheme } from './VoltThemeProvider';
 import type { GradientStops } from './theme';
+import { GraffitiBackground } from './GraffitiBackground';
 
 /** CSS `linear-gradient(<angle>deg, ...)` string for React Native `backgroundImage`. */
 export function linearGradient(angle: number, stops: GradientStops) {
@@ -104,4 +105,10 @@ export const HeroWaves = memo(function HeroWaves() {
       <Path d="M0 92C80 62 140 66 210 88S340 112 400 86V120H0Z" fill="#FFFFFF" fillOpacity={0.08}/>
     </Svg>
   </View>;
+});
+
+/** The page background for the active style: Lotus line art, or the original Volt graffiti. */
+export const PageBackground = memo(function PageBackground({ fade = true }: { fade?: boolean }) {
+  const { style } = useVoltTheme();
+  return style === 'lotus' ? <LotusBackground fade={fade}/> : <GraffitiBackground fade={fade}/>;
 });

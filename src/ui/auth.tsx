@@ -8,7 +8,7 @@ import { colors, fonts, spacing } from './theme';
 import { useVoltTheme } from './VoltThemeProvider';
 import Svg, { Rect } from 'react-native-svg';
 import { CubyMark } from './CubyMark';
-import { LotusBackground } from './LotusArt';
+import { PageBackground } from './LotusArt';
 
 export function AuthPage({ title, detail, children }: { title: string; detail: string; children: React.ReactNode }) {
   const { appearance } = useVoltTheme();
@@ -16,7 +16,7 @@ export function AuthPage({ title, detail, children }: { title: string; detail: s
   const light = appearance === 'shore';
   return <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     {/* Prototype `.auth::before`: the graffiti layer without the top/bottom fade. */}
-    <LotusBackground fade={false}/>
+    <PageBackground fade={false}/>
     <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1, width: '100%', maxWidth: 620, alignSelf: 'center', paddingHorizontal: spacing.screen, paddingTop: insets.top + 14, paddingBottom: insets.bottom + 32, gap: 12 }}>
       {/* Volt auth backdrop: nested rounded-square arcs in the top-right corner. */}
       <Svg pointerEvents="none" width={220} height={220} viewBox="0 0 220 220" style={{ position: 'absolute', top: -60 + insets.top, right: -70 }}>

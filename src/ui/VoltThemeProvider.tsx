@@ -1,18 +1,22 @@
 import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import { DefaultTheme, ThemeProvider as RouterThemeProvider, type Theme } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { Appearance, getAppearancePalette, Palette, parseAppearance, setAppearancePalette } from './theme';
+import { Appearance, getAppearancePalette, getActiveStyle, Palette, parseAppearance, setThemePalette, type Style } from './theme';
 
 type VoltThemeState = {
   appearance: Appearance;
+  style: Style;
   palette: Readonly<Palette>;
   setAppearance: (appearance: Appearance) => void;
+  setStyle: (style: Style) => void;
 };
 
 const fallbackTheme: VoltThemeState = {
   appearance: 'shore',
+  style: getActiveStyle(),
   palette: getAppearancePalette('shore'),
-  setAppearance: setAppearancePalette,
+  setAppearance: appearance => setThemePalette(getActiveStyle(), appearance),
+  setStyle: style => setThemePalette(style, 'shore'),
 };
 
 const VoltThemeContext = createContext<VoltThemeState>(fallbackTheme);
@@ -32,16 +36,26 @@ function navigationTheme(palette: Readonly<Palette>, appearance: Appearance): Th
   };
 }
 
-/** The only state owner for a rendered Volt appearance. */
+/** The only state owner for the rendered style (Volt/Lotus) and appearance (light/dark). */
 export function VoltThemeProvider({ children }: { children: React.ReactNode }) {
-  const [appearance, setAppearanceState] = useState<Appearance>('shore');
+  const [theme, setTheme] = useState<{ style: Style; appearance: Appearance }>(() => ({ style: getActiveStyle(), appearance: 'shore' }));
   const setAppearance = useCallback((next: Appearance) => {
-    const resolved = parseAppearance(next);
-    setAppearancePalette(resolved);
-    setAppearanceState(resolved);
+    setTheme(current => {
+      const appearance = parseAppearance(next);
+      setThemePalette(current.style, appearance);
+      return current.appearance === appearance ? current : { ...current, appearance };
+    });
   }, []);
-  const palette = getAppearancePalette(appearance);
-  const value = useMemo<VoltThemeState>(() => ({ appearance, palette, setAppearance }), [appearance, palette, setAppearance]);
+  const setStyle = useCallback((next: Style) => {
+    setTheme(current => {
+      const style: Style = next === 'lotus' ? 'lotus' : 'volt';
+      setThemePalette(style, current.appearance);
+      return current.style === style ? current : { ...current, style };
+    });
+  }, []);
+  const { style, appearance } = theme;
+  const palette = getAppearancePalette(appearance, style);
+  const value = useMemo<VoltThemeState>(() => ({ appearance, style, palette, setAppearance, setStyle }), [appearance, style, palette, setAppearance, setStyle]);
   const routerTheme = useMemo(() => navigationTheme(palette, appearance), [appearance, palette]);
 
   return <VoltThemeContext.Provider value={value}>

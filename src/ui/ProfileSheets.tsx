@@ -11,7 +11,6 @@ import { router } from 'expo-router';
 import { Text } from './LocalizedText';
 import { Button, Choices, Field, message, notify } from './components';
 import { MotionPressable } from './MotionPressable';
-import { VoltAppearanceSelector } from './volt';
 import { fonts, radii, brand } from './theme';
 import { usePalette, type VoltIcon } from './voltKit';
 import { useApp } from '../state/app';
@@ -259,17 +258,6 @@ export function LanguageSheet({ close }: { close: Close }) {
   return <View style={{ gap: 10 }}>
     {languageOptions.map(option => <OptionCard key={option.value} title={languageNames[option.value]} subtitle={option.subtitle} selected={language === option.value} onPress={() => { void choose(option.value); }}/>)}
     <Text style={{ color: p.muted, fontFamily: fonts.bold, fontSize: 10.5, letterSpacing: 0.6, lineHeight: 15, marginTop: 2 }}>PREVIEW: NAVIGATION AND KEY HEADINGS SWITCH LANGUAGE AND LAYOUT DIRECTION.</Text>
-  </View>;
-}
-
-/* ───────────────────────── Appearance ───────────────────────── */
-
-export function AppearanceSheet() {
-  const p = usePalette();
-  const { appearance, setAppearance } = useApp();
-  return <View style={{ gap: 10 }}>
-    <VoltAppearanceSelector value={appearance} onChange={async next => { try { await setAppearance(next); } catch (error) { message(error); } }}/>
-    <Text style={{ color: p.muted, fontSize: 12 }}>Shore is the light theme; Abyss is a true-black dark theme for OLED screens.</Text>
   </View>;
 }
 

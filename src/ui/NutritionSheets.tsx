@@ -389,7 +389,7 @@ export function FoodSheet({ entry, meal: initialMeal, day: initialDay, close, on
       {canSave && <View style={{ gap: 8 }}><Text style={sectionLabel}>MEAL</Text><Segmented options={meals} value={meal} onChange={setMeal} label={title} compact/></View>}
       {entry && <Button title="Delete entry" kind="danger" onPress={remove}/>}
     </ScrollView>
-    {(canSave || !!error) && <View style={{ paddingHorizontal: 20, paddingTop: 10, paddingBottom: insets.bottom + 14, gap: 8, borderTopWidth: 1, borderTopColor: colors.c8Line, backgroundColor: colors.light ? colors.c8 : colors.card }}>
+    {(canSave || !!error) && <View style={{ paddingHorizontal: 20, paddingTop: 10, paddingBottom: insets.bottom + 14, gap: 8, borderTopWidth: 1, borderTopColor: colors.c8Line, backgroundColor: colors.light ? colors.bg : colors.card }}>
       {error ? <Text accessibilityRole="alert" style={{ color: colors.danger }}>{error}</Text> : null}
       {canSave && <Button title={busy ? 'Saving…' : entry ? 'Save entry' : 'Add food'} disabled={busy} onPress={save}/>}
     </View>}

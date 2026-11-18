@@ -154,7 +154,7 @@ export default function Home() {
         <Text numberOfLines={1} accessibilityRole="header" style={{ color: p.text, fontFamily: fonts.displayHeavy, fontSize: 19, letterSpacing: -0.4 }}>Hi {firstName}</Text>
         <Text numberOfLines={1} style={{ color: p.muted, fontFamily: fonts.medium, fontSize: 12.5 }}>Here&apos;s your day so far</Text>
       </View>
-      <Pressable accessibilityRole="button" accessibilityLabel="Profile" hitSlop={8} onPress={() => router.navigate('/profile')} style={{ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: p.light ? p.soft1 : p.c8, borderWidth: p.light ? 0 : 1, borderColor: p.c8Line }}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Profile" hitSlop={8} onPress={() => router.navigate('/profile')} style={{ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', backgroundColor: p.light ? p.soft1 : p.c8, borderWidth: 1, borderColor: p.light ? p.soft1 : p.c8Line }}>
         <Text style={{ color: p.accent, fontFamily: fonts.displayHeavy, fontSize: 15 }}>{initials}</Text>
       </Pressable>
     </View>
@@ -223,9 +223,9 @@ export default function Home() {
           <Text numberOfLines={2} style={{ color: p.muted, fontFamily: fonts.medium, fontSize: 12 }}>{selectedWorkout ? `Done${selectedWorkout.duration_min ? ` · ${selectedWorkout.duration_min} min` : ''}` : routine ? `${plannedRoutine ? 'Planned · ' : ''}${routineExerciseCount} exercise${routineExerciseCount === 1 ? '' : 's'}` : dayPlan?.kind === 'rest' ? 'Rest day' : 'Create your first routine'}</Text>
         </View>
       </VCard>
-      <VCard tone="soft2" raised onPress={() => setFoodOpen(true)} accessibilityLabel={`Add food to ${mealTitle[nextMeal]}`} style={{ flex: 1, minHeight: 132, padding: 14, gap: 3, overflow: 'hidden', backgroundImage: p.light ? 'linear-gradient(160deg, #FBE4FB, #F3E9FE)' : 'linear-gradient(160deg, rgba(226,110,229,0.16), rgba(126,48,225,0.10))' }}>
+      <VCard tone="soft2" raised onPress={() => setFoodOpen(true)} accessibilityLabel={`Add food to ${mealTitle[nextMeal]}`} style={{ flex: 1, minHeight: 132, padding: 14, gap: 3, overflow: 'hidden', backgroundImage: p.style !== 'lotus' ? undefined : p.light ? 'linear-gradient(160deg, #FBE4FB, #F3E9FE)' : 'linear-gradient(160deg, rgba(226,110,229,0.16), rgba(126,48,225,0.10))' }}>
           {/* Lotus `.ml8`: violet line flower in the bottom-right corner. */}
-          {p.light && <LotusFlower size={150} color={brand.violet} fillOpacity={0.06} strokeOpacity={0.18} style={{ right: -34, bottom: -26 }}/>}
+          {p.light && p.style === 'lotus' && <LotusFlower size={150} color={brand.violet} fillOpacity={0.06} strokeOpacity={0.18} style={{ right: -34, bottom: -26 }}/>}
           <IconBox icon="restaurant-outline" size={36} iconSize={18}/>
           <View style={{ marginTop: 'auto' }}>
             <Text numberOfLines={1} style={{ color: p.text, fontFamily: fonts.displayHeavy, fontSize: 16 }}>{mealTitle[nextMeal]}</Text>
@@ -284,6 +284,11 @@ function Legend({ icon, color, label, value }: { icon: VoltIcon; color: string; 
 /** `.sc8b` — Lotus shortcut: a 54px ringed orb with the label underneath. */
 function Shortcut({ icon, title, onPress }: { icon: VoltIcon; title: string; onPress: () => void }) {
   const p = usePalette();
+  // Volt keeps its original tile; Lotus uses the ringed orb.
+  if (p.style === 'volt') return <MotionPressable pressScale={0.93} accessibilityRole="button" accessibilityLabel={title} onPress={onPress} style={{ flex: 1, minWidth: 0, alignItems: 'center', gap: 7, paddingTop: 12, paddingBottom: 10, paddingHorizontal: 4, borderRadius: 20, backgroundColor: p.c8, borderWidth: 1, borderColor: p.c8Line }}>
+    <IconBox icon={icon} size={42} radius={14} background={p.soft1} iconSize={20}/>
+    <Text numberOfLines={1} style={{ color: p.text, fontFamily: fonts.bold, fontSize: 11.5 }}>{title}</Text>
+  </MotionPressable>;
   return <MotionPressable pressScale={0.93} accessibilityRole="button" accessibilityLabel={title} onPress={onPress} style={{ flex: 1, minWidth: 0, alignItems: 'center', gap: 7, paddingTop: 4, paddingBottom: 2, paddingHorizontal: 2 }}>
     <View style={{ width: 54, height: 54, borderRadius: 27, alignItems: 'center', justifyContent: 'center', backgroundImage: `radial-gradient(circle at 35% 30%, ${p.orbFrom}, ${p.orbTo})`, boxShadow: p.light ? `inset 0px 0px 0px 1.5px ${p.orbRing}, 0px 8px 18px -10px rgba(126,48,225,0.5)` : `inset 0px 0px 0px 1.5px ${p.orbRing}, 0px 0px 16px -4px rgba(226,110,229,0.45)` }}><Ionicons name={icon} size={22} color={p.orbIcon}/></View>
     <Text numberOfLines={1} style={{ color: p.text, fontFamily: fonts.bold, fontSize: 11.5 }}>{title}</Text>

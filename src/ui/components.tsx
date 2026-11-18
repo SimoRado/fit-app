@@ -11,14 +11,14 @@ import { Text } from './LocalizedText';
 import { useReducedMotion, useTabMotion } from './motion';
 import { PageReveal } from './PageReveal';
 import { MotionPressable } from './MotionPressable';
-import { LotusBackground, candyStyle } from './LotusArt';
+import { PageBackground, candyStyle } from './LotusArt';
 
 export const styles = {
   get page() { return { flex: 1 as const, backgroundColor: colors.bg }; },
   content: { width: '100%' as const, maxWidth: 620, alignSelf: 'center' as const, gap: spacing.md },
   get title() { return { fontSize: 41, lineHeight: 45, fontFamily: fonts.displayHeavy, color: colors.text, letterSpacing: -1.2, includeFontPadding: false as const }; },
   get subtitle() { return { fontSize: 17, lineHeight: 22, fontFamily: fonts.displayHeavy, color: colors.text, marginTop: spacing.sm, letterSpacing: -.35 }; },
-  get card() { return { padding: spacing.card, gap: spacing.md, position: 'relative' as const, borderRadius: radii.card, backgroundColor: colors.c8, borderWidth: 1, borderColor: colors.c8Line, ...(colors.light ? { borderColor: 'transparent', boxShadow: '0px 1px 2px rgba(73,16,139,0.04), 0px 12px 30px -14px rgba(73,16,139,0.16)' } : {}) }; },
+  get card() { return { padding: spacing.card, gap: spacing.md, position: 'relative' as const, borderRadius: radii.card, backgroundColor: colors.c8, borderWidth: 1, borderColor: colors.c8Line, ...(!colors.light ? {} : colors.style === 'volt' ? { boxShadow: '0px 3px 12px rgba(11,20,70,0.06)' } : { borderColor: 'transparent', boxShadow: '0px 1px 2px rgba(73,16,139,0.04), 0px 12px 30px -14px rgba(73,16,139,0.16)' }) }; },
   get text() { return { color: colors.text, fontSize: 16, lineHeight: 23 }; },
   get muted() { return { color: colors.muted, fontSize: 14, lineHeight: 21 }; },
   row: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const, gap: 10 },
@@ -73,12 +73,12 @@ export function Page({ title, children, headerAction, eyebrow, headerContent, fo
         {children}
       </ScrollView>;
   return <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-    <LotusBackground fade={pathname !== '/onboarding'}/>
+    <PageBackground fade={pathname !== '/onboarding'}/>
     <View style={{ flex: 1 }}>
       {tabRoute ? <PageReveal sequence={revealActive ? transition.sequence : 0}>{pageContent}</PageReveal> : pageContent}
     </View>
     {/* Status-bar strip: repaint the same fixed background so scrolled content never shows under the clock. */}
-    <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: insets.top, overflow: 'hidden' }}><LotusBackground fade={pathname !== '/onboarding'}/></View>
+    <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: insets.top, overflow: 'hidden', backgroundColor: colors.bg }}><PageBackground fade={pathname !== '/onboarding'}/></View>
     {/* Prototype `.dock`: sticky bottom actions above the system navigation area. */}
     {footer && <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0 }}>
       <View pointerEvents="none" style={{ height: 22, opacity: 0.9 }}><View style={{ flex: 1, backgroundColor: colors.bg, opacity: 0.35 }}/></View>

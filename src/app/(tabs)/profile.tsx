@@ -21,14 +21,15 @@ import { CubyMark } from '../../ui/CubyMark';
 import { Page, message } from '../../ui/components';
 import { Text } from '../../ui/LocalizedText';
 import { MotionPressable } from '../../ui/MotionPressable';
-import { AppearanceSheet, EditProfileSheet, GoalsSheet, LanguageSheet, NotificationsSheet, NutritionTargetsSheet, languageNames, notificationsOn } from '../../ui/ProfileSheets';
+import { EditProfileSheet, GoalsSheet, LanguageSheet, NotificationsSheet, NutritionTargetsSheet, languageNames, notificationsOn } from '../../ui/ProfileSheets';
+import { PersonalizationSheet } from '../../ui/PersonalizationSheet';
 import { fonts, brand } from '../../ui/theme';
 import { ScreenTop, cardShadow, usePalette, useEntering, type VoltIcon } from '../../ui/voltKit';
 import Animated from 'react-native-reanimated';
 
 type Sheet = 'edit' | 'goals' | 'nutrition' | 'notifications' | 'language' | 'appearance';
 type Summary = { weight: number | null; workouts: number; habits: number; streak: number; kcal: number | null; notifications: boolean };
-const sheetTitles: Record<Sheet, string> = { edit: 'Edit profile', goals: 'Goals', nutrition: 'Nutrition · Target', notifications: 'Notifications', language: 'Language', appearance: 'Appearance' };
+const sheetTitles: Record<Sheet, string> = { edit: 'Edit profile', goals: 'Goals', nutrition: 'Nutrition · Target', notifications: 'Notifications', language: 'Language', appearance: 'Personalization' };
 const num = (value: number) => Math.round(value).toLocaleString('en-US');
 
 function StatCard({ label, value }: { label: string; value: string }) {
@@ -58,7 +59,7 @@ export default function ProfileScreen() {
   const p = usePalette();
   const { signOut } = useAuth();
   const subscription = useSubscription();
-  const { profile, revision, changed, appearance, language } = useApp();
+  const { profile, revision, changed, appearance, style, language } = useApp();
   const [summary, setSummary] = useState<Summary>({ weight: null, workouts: 0, habits: 0, streak: 0, kcal: null, notifications: false });
   const [sheet, setSheet] = useState<Sheet | null>(null);
   const [signingOut, setSigningOut] = useState(false);
@@ -119,7 +120,7 @@ export default function ProfileScreen() {
     { icon: 'restaurant-outline', title: 'Nutrition targets', value: summary.kcal ? `${num(summary.kcal)} kcal` : 'Not set', onPress: () => setSheet('nutrition') },
     { icon: 'notifications-outline', title: 'Notifications', value: summary.notifications ? 'On' : 'Off', onPress: () => setSheet('notifications') },
     { icon: 'globe-outline', title: 'Language', value: languageNames[language], onPress: () => setSheet('language') },
-    { icon: 'color-palette-outline', title: 'Appearance', value: appearance === 'abyss' ? 'Abyss' : appearance === 'deep' ? 'Deep' : 'Shore', onPress: () => setSheet('appearance') },
+    { icon: 'color-palette-outline', title: 'Appearance', value: `${style === 'lotus' ? 'Lotus' : 'Volt'} · ${appearance === 'shore' ? 'Light' : 'Dark'}`, onPress: () => setSheet('appearance') },
     ...(admobTestingEnabled ? [{ icon: 'bug-outline' as const, title: 'AdMob Testing', value: 'Internal', onPress: () => router.push('/admob-testing') }] : []),
     { icon: 'log-out-outline', title: signingOut ? 'Signing out…' : 'Sign out', onPress: confirmSignOut },
     { icon: 'trash-outline', title: 'Delete account', onPress: () => router.push('/delete-account'), danger: true },
@@ -169,7 +170,7 @@ export default function ProfileScreen() {
       {sheet === 'nutrition' && <NutritionTargetsSheet close={close} onSaved={changed}/>}
       {sheet === 'notifications' && <NotificationsSheet onChanged={changed}/>}
       {sheet === 'language' && <LanguageSheet close={close}/>}
-      {sheet === 'appearance' && <AppearanceSheet/>}
+      {sheet === 'appearance' && <PersonalizationSheet/>}
     </>}</BottomSheet>
   </Page>;
 }

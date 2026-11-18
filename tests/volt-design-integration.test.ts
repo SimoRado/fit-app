@@ -8,7 +8,7 @@ const source = (path: string) => readFileSync(join(process.cwd(), path), 'utf8')
 
 describe('Volt prototype tokens', () => {
   it('uses the Lotus Shore values for rings, pills, gauge and macro chips', () => {
-    const shore = getAppearancePalette('shore');
+    const shore = getAppearancePalette('shore', 'lotus');
     expect([shore.q1, shore.q2, shore.q3]).toEqual(['#7E30E1', '#B98AF0', '#E26EE5']);
     expect(shore.qTrack).toBe('#F1EBFC');
     expect([shore.g1, shore.g2, shore.plInk]).toEqual(['#7E30E1', '#49108B', '#FFFFFF']);
@@ -21,7 +21,7 @@ describe('Volt prototype tokens', () => {
   });
 
   it('uses the Lotus Abyss values: orchid anchors on deep violet surfaces', () => {
-    const abyss = getAppearancePalette('abyss');
+    const abyss = getAppearancePalette('abyss', 'lotus');
     expect(abyss.bg).toBe('#12061F');
     expect([abyss.q1, abyss.q2, abyss.q3]).toEqual(['#E26EE5', '#C69BFF', '#E9C6FA']);
     expect([abyss.g1, abyss.g2, abyss.plInk]).toEqual(['#E26EE5', '#B04FE4', '#2A0950']);

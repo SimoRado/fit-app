@@ -65,9 +65,9 @@ function FloatingTabBar({ state, emitter, navigateToTab }: BottomTabBarProps) {
   const tabBaseWidth = Math.max(30, (barWidth - 10 - 16) / (5 + 1.7));
   const light = appearance === 'shore';
   // Prototype `.tabs`: 12px inset, 5px padding, 28px radius, 44px tabs, active tab flex 2.7.
-  return <View style={{ position: 'absolute', bottom: 12 + insets.bottom, left: 12, right: 12, maxWidth: 540, alignSelf: 'center', height: 54, padding: 5, borderRadius: 28, backgroundColor: palette.navBackground, borderWidth: light ? 0 : 1, borderColor: 'rgba(255,255,255,0.07)',
+  return <View style={{ position: 'absolute', bottom: 12 + insets.bottom, left: 12, right: 12, maxWidth: 540, alignSelf: 'center', height: 54, padding: 5, borderRadius: 28, backgroundColor: palette.navBackground, borderWidth: light && palette.style === 'lotus' ? 0 : 1,  borderColor: light ? 'rgba(11,20,70,0.05)' : 'rgba(255,255,255,0.07)',
     // Lotus `.tabs`: 0 12px 32px rgba(42,9,80,.14), 0 0 0 1px rgba(42,9,80,.04), 0 22px 46px -10px rgba(185,138,240,.55)
-    boxShadow: light ? '0px 12px 32px rgba(42,9,80,0.14), 0px 0px 0px 1px rgba(42,9,80,0.04), 0px 22px 46px -10px rgba(185,138,240,0.55)' : '0px 12px 32px rgba(0,0,0,0.55), 0px 18px 40px -14px rgba(226,110,229,0.25)' }}>
+    boxShadow: palette.style === 'volt' ? (light ? '0px 10px 26px rgba(11,20,70,0.14)' : '0px 10px 26px rgba(0,0,0,0.55)') : light ? '0px 12px 32px rgba(42,9,80,0.14), 0px 0px 0px 1px rgba(42,9,80,0.04), 0px 22px 46px -10px rgba(185,138,240,0.55)' : '0px 12px 32px rgba(0,0,0,0.55), 0px 18px 40px -14px rgba(226,110,229,0.25)' }}>
     <View style={{ flex: 1, flexDirection: language === 'ar' ? 'row-reverse' : 'row', gap: 4 }}>
       {state.routes.map((route, index) => {
         const item = items[route.name];
