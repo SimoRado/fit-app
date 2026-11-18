@@ -12,10 +12,9 @@ import { Text } from './LocalizedText';
 import { Button, Choices, Field, message, notify } from './components';
 import { MotionPressable } from './MotionPressable';
 import { VoltAppearanceSelector } from './volt';
-import { fonts, radii } from './theme';
+import { fonts, radii, brand } from './theme';
 import { usePalette, type VoltIcon } from './voltKit';
 import { useApp } from '../state/app';
-import { dayKey, uid } from '../core/date';
 import type { Language } from '../core/types';
 import { validateProfileValues } from '../core/validation';
 import { reminderDefaults } from '../core/reminderDefinitions';
@@ -47,7 +46,7 @@ function OptionCard({ title, subtitle, icon, selected, onPress, accessibilityLab
   const p = usePalette();
   return <MotionPressable selected={selected} pressScale={0.98} accessibilityRole="radio" accessibilityState={{ selected }} accessibilityLabel={accessibilityLabel ?? title} onPress={onPress}
     style={{ flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 72, paddingVertical: 12, paddingHorizontal: 14, borderRadius: radii.row, backgroundColor: p.c8, borderWidth: 1.5, borderColor: selected ? p.text : p.c8Line }}>
-    {icon && <View style={{ width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: p.bg === '#F5F9FF' ? p.paleBlue : p.soft1 }}><Ionicons name={icon} size={20} color={p.accent}/></View>}
+    {icon && <View style={{ width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: p.light ? p.paleBlue : p.soft1 }}><Ionicons name={icon} size={20} color={p.accent}/></View>}
     <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
       <Text style={{ color: p.text, fontFamily: fonts.displayHeavy, fontSize: 15 }}>{title}</Text>
       <Text style={{ color: p.muted, fontSize: 12 }}>{subtitle}</Text>
@@ -128,10 +127,8 @@ export function GoalsSheet({ close, onSaved }: { close: Close; onSaved: () => vo
       if (activity) await repo.setPreference(prefKeys.activity, activity);
       await repo.setPreference(prefKeys.alsoGoals, also.join(','));
       if (Math.abs(w - inputs.weightKg) >= 0.05) {
-        // A changed weight is a weigh-in for today (replacing today's entry if one exists).
-        const today = dayKey();
-        const existing = (await repo.weights()).find(entry => entry.day === today);
-        await repo.saveWeight({ id: existing?.id ?? uid(), owner_id: profile.id, day: today, kg: w, note: existing?.note ?? '', created_at: existing?.created_at ?? new Date().toISOString() });
+        // A changed weight is a weigh-in for today (updating today's entry if one exists; history is never touched).
+        await repo.saveTodayWeight(profile.id, w);
       }
       // Off while in auto mode means "keep what I have": freeze the current targets as custom.
       if (updateTargets) await resetToEstimate();
@@ -166,7 +163,7 @@ export function GoalsSheet({ close, onSaved }: { close: Close; onSaved: () => vo
     {showTarget && <View style={{ gap: 6 }}><Text style={{ color: p.muted, fontSize: 12, fontFamily: fonts.semibold }}>{goal === 'habits' ? 'Target weight (optional)' : 'Target weight'}</Text><NumberInput label="Target weight in kilograms" value={target} onChangeText={setTarget} suffix="kg"/></View>}
     <Text style={{ color: p.muted, fontSize: 12 }}>{age !== null ? `Age ${age} · from your date of birth (change it in Edit profile).` : 'Add your date of birth in Edit profile so your age can be used.'}</Text>
 
-    <View style={{ marginTop: 6, padding: 14, gap: 8, borderRadius: radii.row, backgroundColor: p.bg === '#F5F9FF' ? p.soft1 : p.card2 }}>
+    <View style={{ marginTop: 6, padding: 14, gap: 8, borderRadius: radii.row, backgroundColor: p.light ? p.soft1 : p.card2 }}>
       <SheetLabel>Tracking · estimate</SheetLabel>
       {draft ? <>
         <Text style={{ color: p.text, fontFamily: fonts.displayHeavy, fontSize: 22 }}>{num(draft.kcal)} <Text style={{ color: p.muted, fontFamily: fonts.bold, fontSize: 12 }}>KCAL / DAY</Text></Text>
@@ -233,7 +230,7 @@ export function NotificationsSheet({ onChanged }: { onChanged: () => void }) {
           <Text style={{ color: p.muted, fontSize: 12 }}>{row.subtitle(time)}</Text>
         </View>
         {pending === row.kind ? <ActivityIndicator color={p.accent}/> : <Switch value={on} onValueChange={value => { void toggle(row.kind, value); }} accessibilityLabel={row.title}
-          trackColor={{ false: p.line3, true: p.text }} thumbColor={on ? (p.bg === '#F5F9FF' ? '#1D2E8F' : p.lime) : '#FFFFFF'} ios_backgroundColor={p.line3}/>}
+          trackColor={{ false: p.line3, true: p.text }} thumbColor={on ? (p.light ? brand.violet : p.lime) : '#FFFFFF'} ios_backgroundColor={p.line3}/>}
       </View>;
     })}
     <Text style={{ color: p.muted, fontSize: 11.5, lineHeight: 16, marginTop: 10 }}>Reminders use your device&apos;s local time. Permission is requested only when you turn one on.</Text>

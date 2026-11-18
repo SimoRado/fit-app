@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from './LocalizedText';
 import { BottomSheet } from './BottomSheet';
 import { Button, message } from './components';
-import { fonts } from './theme';
+import { fonts, brand } from './theme';
 import { CircleButton, isLight, usePalette } from './voltKit';
 import { HabitGlyph, groupColors } from './HabitVisuals';
 import { HistoryScale, MiniMonth, MonthGrid, historyColors } from './HistoryCalendar';
@@ -126,7 +126,7 @@ function TabSwitch({ tab, width, yearLocked, onChange }: { tab: Tab; width: numb
     <Animated.View style={[{ position: 'absolute', top: 4, left: 4, bottom: 4, width: half, borderRadius: 999, backgroundColor: light ? p.c8 : p.lime, shadowColor: p.navShadow, shadowOpacity: light ? 0.11 : 0, shadowRadius: 5, shadowOffset: { width: 0, height: 2 }, elevation: light ? 2 : 0 }, thumb]}/>
     {(['month', 'year'] as const).map(item => {
       const on = tab === item;
-      const ink = on ? (light ? p.text : '#0B1446') : p.muted;
+      const ink = on ? (light ? p.text : brand.ink) : p.muted;
       return <Pressable key={item} accessibilityRole="tab" accessibilityState={{ selected: on }} accessibilityLabel={item === 'month' ? 'Month' : yearLocked ? 'Year, Cubyfit Pro' : 'Year'} onPress={() => onChange(item)}
         style={{ flex: 1, minHeight: 40, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
         <Text style={{ color: ink, fontFamily: fonts.bold, fontSize: 14 }}>{item === 'month' ? 'Month' : 'Year'}</Text>
@@ -279,15 +279,15 @@ function UpgradePrompt({ reason, checking, onUpgrade, onDismiss }: { reason: Exc
     : reason === 'share' ? 'Cubyfit Pro lets you export a clean image of your year to share.'
     : 'Your earlier months are saved. Cubyfit Pro lets you browse every month you have recorded.';
   return <Animated.View entering={FadeInDown.duration(220).withInitialValues({ opacity: 0, transform: [{ translateY: 8 }] })}
-    style={{ gap: 14, padding: 18, borderRadius: 26, backgroundColor: light ? '#1D2E8F' : p.card2, borderWidth: light ? 0 : 1, borderColor: p.c8Line }}>
-    <View style={{ flexDirection: 'row', gap: 4 }}>{c.fill.map((fill, index) => <View key={index} style={{ width: 18, height: 18, borderRadius: 6, backgroundColor: light && index === 3 ? '#DFFF1F' : fill }}/>)}</View>
+    style={{ gap: 14, padding: 18, borderRadius: 26, backgroundColor: light ? brand.violet : p.card2, borderWidth: light ? 0 : 1, borderColor: p.c8Line }}>
+    <View style={{ flexDirection: 'row', gap: 4 }}>{c.fill.map((fill, index) => <View key={index} style={{ width: 18, height: 18, borderRadius: 6, backgroundColor: light && index === 3 ? brand.orchid : fill }}/>)}</View>
     <View style={{ gap: 6 }}>
       <Text style={{ color: light ? '#FFFFFF' : p.text, fontFamily: fonts.displayHeavy, fontSize: 20 }}>{title}</Text>
       <Text style={{ color: light ? 'rgba(255,255,255,0.82)' : p.muted, fontFamily: fonts.medium, fontSize: 13.5, lineHeight: 19 }}>{body}</Text>
       {checking && <Text style={{ color: light ? 'rgba(255,255,255,0.7)' : p.muted, fontFamily: fonts.medium, fontSize: 12 }}>Checking your Cubyfit Pro status…</Text>}
     </View>
-    <Pressable accessibilityRole="button" onPress={onUpgrade} style={{ minHeight: 48, alignItems: 'center', justifyContent: 'center', borderRadius: 999, backgroundColor: light ? '#DFFF1F' : p.lime }}>
-      <Text style={{ color: '#0B1446', fontFamily: fonts.bold, fontSize: 15 }}>See Cubyfit Pro</Text>
+    <Pressable accessibilityRole="button" onPress={onUpgrade} style={{ minHeight: 48, alignItems: 'center', justifyContent: 'center', borderRadius: 999, backgroundColor: light ? brand.orchid : p.lime }}>
+      <Text style={{ color: brand.ink, fontFamily: fonts.bold, fontSize: 15 }}>See Cubyfit Pro</Text>
     </Pressable>
     <Pressable accessibilityRole="button" onPress={onDismiss} style={{ minHeight: 36, alignItems: 'center', justifyContent: 'center' }}>
       <Text style={{ color: light ? '#FFFFFF' : p.text, fontFamily: fonts.semibold, fontSize: 13.5 }}>Not now</Text>

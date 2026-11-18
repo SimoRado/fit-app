@@ -4,7 +4,7 @@ import { cellState, monthWeeks, yearMonths, type HistoryDay } from '../core/habi
 import { fromDay } from '../core/date';
 import { CUBY_CAT_PATH, CUBY_EYES_PATH } from './CubyMark';
 import { LEGEND } from './HistoryCalendar';
-import { fonts } from './theme';
+import { fonts, brand } from './theme';
 
 /**
  * "Share my year" image: drawn entirely in SVG so it renders to a PNG on the device
@@ -13,8 +13,8 @@ import { fonts } from './theme';
  * names, measurements or account details.
  */
 export const SHARE_WIDTH = 1080, SHARE_HEIGHT = 1350;
-const SHADES = ['#E3ECFA', '#C9E3FF', '#9CCBFF', '#1D2E8F'];
-const NAVY = '#0B1446', MUTED = '#4A5679', OUTLINE = '#CCDAEE';
+const SHADES = ['#E3ECFA', brand.lilac, brand.lavender, brand.violet];
+const NAVY = brand.ink, MUTED = '#4A5679', OUTLINE = '#CCDAEE';
 
 export function shareHeadline(rows: HistoryDay[]) {
   const tracked = rows.filter(row => row.eligible);
@@ -33,17 +33,17 @@ export const YearShareCard = forwardRef<Svg, { year: number; rows: ReadonlyMap<s
   const gridTop = 450, monthHeight = 34 + 6 * (cell + gap);
   return <Svg ref={ref} width={width} height={width * SHARE_HEIGHT / SHARE_WIDTH} viewBox={`0 0 ${SHARE_WIDTH} ${SHARE_HEIGHT}`}>
     <Defs>
-      <LinearGradient id="shareTile" x1="0" y1="1024" x2="1024" y2="0" gradientUnits="userSpaceOnUse"><Stop offset="0" stopColor="#EEF6FF"/><Stop offset="0.5" stopColor="#C9E3FF"/><Stop offset="1" stopColor="#9CCBFF"/></LinearGradient>
+      <LinearGradient id="shareTile" x1="0" y1="1024" x2="1024" y2="0" gradientUnits="userSpaceOnUse"><Stop offset="0" stopColor={brand.mist}/><Stop offset="0.5" stopColor={brand.lilac}/><Stop offset="1" stopColor={brand.lavender}/></LinearGradient>
     </Defs>
-    <Rect width={SHARE_WIDTH} height={SHARE_HEIGHT} fill="#F5F9FF"/>
-    <Rect x={SHARE_WIDTH - 300} y={-140} width={440} height={440} rx={200} fill="#EEF6FF"/>
-    <Rect x={-160} y={SHARE_HEIGHT - 260} width={380} height={380} rx={170} fill="#F6FFC2"/>
+    <Rect width={SHARE_WIDTH} height={SHARE_HEIGHT} fill={brand.snow}/>
+    <Rect x={SHARE_WIDTH - 300} y={-140} width={440} height={440} rx={200} fill={brand.mist}/>
+    <Rect x={-160} y={SHARE_HEIGHT - 260} width={380} height={380} rx={170} fill={brand.blush}/>
     <G transform={`translate(${pad} ${pad}) scale(${96 / 1024})`}>
       <Rect width={1024} height={1024} rx={148.2} fill="url(#shareTile)"/>
-      <G transform="scale(1.043833) translate(-18.5 -19)"><Path d={CUBY_CAT_PATH} fill="#1D2E8F"/><Path d={CUBY_EYES_PATH} fill="#DFFF1F"/></G>
+      <G transform="scale(1.043833) translate(-18.5 -19)"><Path d={CUBY_CAT_PATH} fill={brand.violet}/><Path d={CUBY_EYES_PATH} fill={brand.orchid}/></G>
     </G>
     <SvgText x={pad + 120} y={pad + 62} fill={NAVY} fontSize={44} fontFamily={fonts.displayHeavy} fontWeight="800">Cubyfit</SvgText>
-    <SvgText x={pad} y={pad + 210} fill="#1D2E8F" fontSize={128} fontFamily={fonts.displayHeavy} fontWeight="800" letterSpacing={-4}>{String(year)}</SvgText>
+    <SvgText x={pad} y={pad + 210} fill={brand.violet} fontSize={128} fontFamily={fonts.displayHeavy} fontWeight="800" letterSpacing={-4}>{String(year)}</SvgText>
     <SvgText x={pad} y={pad + 280} fill={NAVY} fontSize={46} fontFamily={fonts.displayHeavy} fontWeight="800">{headline}</SvgText>
     <SvgText x={pad} y={pad + 326} fill={MUTED} fontSize={28} fontFamily={fonts.semibold}>{strong === 1 ? '1 day at 68% or more' : `${strong} days at 68% or more`}</SvgText>
     {yearMonths(year).map((month, index) => {

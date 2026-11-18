@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import { GestureDetector, GestureHandlerRootView, usePanGesture } from 'react-native-gesture-handler';
 import Animated, { Easing, runOnJS, runOnUI, useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming, type SharedValue } from 'react-native-reanimated';
 import { SWIPE, clampIndex, dragOffset, releaseVelocity, stepIndex, swipeDecision } from '../../core/motivationDeck';
+import { brand } from '../theme';
 
 /**
  * Volt Motivation card deck — a native port of the prototype's `.stage` / `.mwrap` deck.
@@ -204,5 +205,5 @@ const DeckLayer = memo(function DeckLayer({ slot, width, height, surface, childr
 });
 
 const styles = StyleSheet.create({
-  layer: { borderRadius: 28, shadowColor: '#0B1446', shadowOpacity: 0.12, shadowRadius: 18, shadowOffset: { width: 0, height: 8 } },
+  layer: { borderRadius: 28, shadowColor: brand.ink, shadowOpacity: 0.12, shadowRadius: 18, shadowOffset: { width: 0, height: 8 } },
 });

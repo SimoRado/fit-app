@@ -16,7 +16,7 @@ export function EndOfDeckCard({ width, height, seen, isPro }: { width: number; h
     <View style={{ flex: 1, padding: pad, justifyContent: 'space-between' }}>
       <Text style={{ color: p.muted, fontFamily: fonts.bold, fontSize: 10.5, letterSpacing: 0.9 }}>{`${String(seen).padStart(2, '0')} / ${String(seen).padStart(2, '0')}`}</Text>
       <View style={{ gap: 14 }}>
-        <View style={{ width: 54, height: 54, borderRadius: 27, alignItems: 'center', justifyContent: 'center', backgroundColor: light ? p.paleBlue : 'rgba(156,203,255,0.16)' }}>
+        <View style={{ width: 54, height: 54, borderRadius: 27, alignItems: 'center', justifyContent: 'center', backgroundColor: light ? p.paleBlue : 'rgba(185,138,240,0.16)' }}>
           <Ionicons name={isPro ? 'checkmark-done' : 'sparkles'} size={26} color={light ? p.accent : p.g1}/>
         </View>
         <Text style={{ color: p.text, fontFamily: fonts.displayHeavy, fontSize: Math.round(width * 0.092), lineHeight: Math.round(width * 0.098), textTransform: 'uppercase' }}>That’s today’s deck</Text>

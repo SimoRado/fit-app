@@ -58,7 +58,7 @@ function SavedReader({ card, language, saved, onClose, onToggleSaved, onShare }:
   const cardWidth = Math.min(width - 36, 380, (height - insets.top - insets.bottom - 170) / RATIO);
   const light = isLight(p);
   return <Modal visible={!!card} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
-    <View style={{ flex: 1, backgroundColor: light ? 'rgba(11,20,70,0.55)' : 'rgba(0,0,0,0.72)', alignItems: 'center', justifyContent: 'center', paddingTop: insets.top, paddingBottom: insets.bottom }}>
+    <View style={{ flex: 1, backgroundColor: light ? 'rgba(42,9,80,0.55)' : 'rgba(0,0,0,0.72)', alignItems: 'center', justifyContent: 'center', paddingTop: insets.top, paddingBottom: insets.bottom }}>
       <Pressable accessibilityRole="button" accessibilityLabel="Close card" onPress={onClose} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}/>
       {shown && <Animated.View entering={reduced ? undefined : ZoomIn.duration(240).withInitialValues({ transform: [{ scale: 0.92 }] })} exiting={reduced ? undefined : FadeOut.duration(120)} style={{ gap: 18, alignItems: 'center' }}>
         <View style={{ borderRadius: 28, backgroundColor: light ? '#FFFFFF' : p.card, elevation: 10, shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 24, shadowOffset: { width: 0, height: 12 } }}>
@@ -93,7 +93,7 @@ export function HeartButton({ saved, onPress, cardKey, size = 52, disabled }: { 
   const popStyle = useAnimatedStyle(() => ({ transform: [{ scale: pop.value }] }));
   return <MotionPressable pressScale={0.88} accessibilityRole="button" accessibilityLabel={saved ? 'Remove from saved' : 'Save card'} accessibilityState={{ selected: saved, disabled: !!disabled }} disabled={disabled} hitSlop={6} onPress={onPress}
     style={{ width: size, height: size, borderRadius: size / 2, alignItems: 'center', justifyContent: 'center', opacity: disabled ? 0.35 : 1,
-      backgroundColor: saved ? (light ? p.blue : 'rgba(156,203,255,0.18)') : p.c8, borderWidth: light ? 0 : 1, borderColor: saved ? p.blue : p.borderStrong,
+      backgroundColor: saved ? (light ? p.blue : 'rgba(185,138,240,0.18)') : p.c8, borderWidth: light ? 0 : 1, borderColor: saved ? p.blue : p.borderStrong,
       ...(light ? { shadowColor: p.navShadow, shadowOpacity: 0.12, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 2 } : {}) }}>
     <Animated.View style={popStyle}>
       <Ionicons name={saved ? 'heart' : 'heart-outline'} size={size * 0.46} color={saved ? (light ? p.text : p.blue) : p.text}/>

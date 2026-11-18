@@ -9,7 +9,7 @@ import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 import { Text } from './LocalizedText';
 import { AuthError } from './auth';
-import { colors, fonts } from './theme';
+import { colors, fonts, brand } from './theme';
 import { useVoltTheme } from './VoltThemeProvider';
 import { appleOAuthMessage, googleOAuthMessage, googleOAuthOutcome, oauthOutcome } from '../core/oauthErrors';
 import { authDiagnostic, runtimeSignals } from '../core/runtime';
@@ -25,7 +25,7 @@ WebBrowser.maybeCompleteAuthSession();
 function SocialButton({ provider, enabled, busy, onPress }: { provider: 'google' | 'apple'; enabled: boolean; busy: boolean; onPress: () => void }) {
   const label = `Continue with ${provider === 'google' ? 'Google' : 'Apple'}`;
   // Volt: Apple is the inverted ink pill (navy on Shore, ice on Abyss); Google is the outlined surface pill.
-  const appleBackground = colors.text, appleInk = colors.bg === '#F5F9FF' ? '#FFFFFF' : '#0B1446';
+  const appleBackground = colors.text, appleInk = colors.light ? '#FFFFFF' : brand.ink;
   return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled: busy || !enabled }} disabled={busy || !enabled} onPress={onPress} style={({ pressed }) => ({ minHeight: 52, borderWidth: provider === 'google' ? 1.5 : 0, borderColor: colors.borderStrong, borderRadius: 999, backgroundColor: provider === 'apple' ? appleBackground : colors.c8, flexDirection: 'row', gap: 12, alignItems: 'center', justifyContent: 'center', opacity: enabled ? 1 : .5, transform: [{ scale: pressed ? 0.98 : 1 }] })}>
     <Ionicons name={provider === 'google' ? 'logo-google' : 'logo-apple'} size={20} color={provider === 'google' ? '#4285F4' : appleInk}/><Text style={{ color: provider === 'google' ? colors.text : appleInk, fontSize: 15.5, fontFamily: fonts.bold }}>{busy ? 'Connecting…' : label}</Text>
   </Pressable>;

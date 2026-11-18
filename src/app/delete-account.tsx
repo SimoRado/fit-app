@@ -96,7 +96,7 @@ export default function DeleteAccount() {
   const phraseOk = confirmation === DELETE_PHRASE;
   const managementURL = subscription.info?.managementURL;
   return <Page title="Delete Account">
-    <View style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start', padding: 16, borderRadius: 22, backgroundColor: colors.bg === '#F5F9FF' ? '#FDECEA' : 'rgba(255,138,138,0.12)', borderWidth: 1, borderColor: colors.danger }}>
+    <View style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start', padding: 16, borderRadius: 22, backgroundColor: colors.light ? '#FDECEA' : 'rgba(255,138,138,0.12)', borderWidth: 1, borderColor: colors.danger }}>
       <Ionicons name="warning-outline" size={22} color={colors.danger}/>
       <Text style={{ flex: 1, color: colors.danger, fontFamily: fonts.bold, fontSize: 13.5, lineHeight: 19 }}>Permanently delete your account? This action cannot be undone.</Text>
     </View>

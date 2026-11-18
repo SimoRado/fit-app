@@ -16,7 +16,7 @@ const num = (value: number) => Math.round(value).toLocaleString('en-US');
 
 function RoundButton({ icon, label, onPress, disabled }: { icon: VoltIcon; label: string; onPress: () => void; disabled?: boolean }) {
   const p = usePalette();
-  const light = p.bg === '#F5F9FF';
+  const light = p.light;
   return <MotionPressable pressScale={0.9} accessibilityRole="button" accessibilityLabel={label} disabled={disabled} onPress={onPress} hitSlop={4}
     style={{ width: 50, height: 50, borderRadius: 25, alignItems: 'center', justifyContent: 'center', backgroundColor: p.c8, opacity: disabled ? 0.4 : 1, ...(light ? { shadowColor: p.navShadow, shadowOpacity: 0.1, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 2 } : { borderWidth: 1, borderColor: p.borderStrong }) }}>
     <Ionicons name={icon} size={22} color={p.text}/>

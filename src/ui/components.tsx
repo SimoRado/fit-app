@@ -5,20 +5,20 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getActiveLanguage, localize } from '../core/i18n';
 import { storageErrorMessage } from '../core/errors';
-import { colors, fonts, spacing, radii, shadows } from './theme';
+import { colors, fonts, spacing, radii } from './theme';
 import { useApp } from '../state/app';
 import { Text } from './LocalizedText';
 import { useReducedMotion, useTabMotion } from './motion';
 import { PageReveal } from './PageReveal';
 import { MotionPressable } from './MotionPressable';
-import { GraffitiBackground } from './GraffitiBackground';
+import { LotusBackground, candyStyle } from './LotusArt';
 
 export const styles = {
   get page() { return { flex: 1 as const, backgroundColor: colors.bg }; },
   content: { width: '100%' as const, maxWidth: 620, alignSelf: 'center' as const, gap: spacing.md },
   get title() { return { fontSize: 41, lineHeight: 45, fontFamily: fonts.displayHeavy, color: colors.text, letterSpacing: -1.2, includeFontPadding: false as const }; },
   get subtitle() { return { fontSize: 17, lineHeight: 22, fontFamily: fonts.displayHeavy, color: colors.text, marginTop: spacing.sm, letterSpacing: -.35 }; },
-  get card() { return { padding: spacing.card, gap: spacing.md, position: 'relative' as const, borderRadius: radii.card, backgroundColor: colors.c8, borderWidth: 1, borderColor: colors.c8Line, ...(colors.bg === '#F5F9FF' ? shadows.card : {}) }; },
+  get card() { return { padding: spacing.card, gap: spacing.md, position: 'relative' as const, borderRadius: radii.card, backgroundColor: colors.c8, borderWidth: 1, borderColor: colors.c8Line, ...(colors.light ? { borderColor: 'transparent', boxShadow: '0px 1px 2px rgba(73,16,139,0.04), 0px 12px 30px -14px rgba(73,16,139,0.16)' } : {}) }; },
   get text() { return { color: colors.text, fontSize: 16, lineHeight: 23 }; },
   get muted() { return { color: colors.muted, fontSize: 14, lineHeight: 21 }; },
   row: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const, gap: 10 },
@@ -54,7 +54,7 @@ export function Page({ title, children, headerAction, eyebrow, headerContent, fo
   // Volt prototype: tab screens use a 44px `.top` row (eyebrow + actions) above a 41px
   // `.page-t` title; secondary screens use a back circle with an inline 22px `.bar-t` title.
   const titleSize = language === 'ar' ? 34 : compactHeader ? 22.4 : pathname === '/onboarding' ? 34 : width < 360 ? 36 : 41;
-  const back = showBack && <MotionPressable pressScale={0.9} accessibilityRole="button" accessibilityLabel={localize('Back', language)} hitSlop={6} onPress={() => onBack ? onBack() : router.canGoBack() ? router.back() : router.replace('/(tabs)')} style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.c8, ...(colors.bg === '#F5F9FF' ? { shadowColor: colors.navShadow, shadowOpacity: .12, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 2 } : { borderWidth: 1, borderColor: colors.borderStrong }) }}>
+  const back = showBack && <MotionPressable pressScale={0.9} accessibilityRole="button" accessibilityLabel={localize('Back', language)} hitSlop={6} onPress={() => onBack ? onBack() : router.canGoBack() ? router.back() : router.replace('/(tabs)')} style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.c8, ...(colors.light ? { shadowColor: colors.navShadow, shadowOpacity: .12, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 2 } : { borderWidth: 1, borderColor: colors.borderStrong }) }}>
     <Ionicons name={language === 'ar' ? 'chevron-forward' : 'chevron-back'} size={18} color={colors.text}/>
   </MotionPressable>;
   const titleNode = !!title && <Text accessibilityRole="header" style={[styles.title, { fontSize: titleSize, lineHeight: language === 'ar' ? titleSize + 14 : Math.round(titleSize * 1.1), letterSpacing: -titleSize * .03, flexShrink: 1 }]}>{title}<Text style={{ color: colors.titleAccent }}>.</Text></Text>;
@@ -73,11 +73,12 @@ export function Page({ title, children, headerAction, eyebrow, headerContent, fo
         {children}
       </ScrollView>;
   return <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-    <GraffitiBackground fade={pathname !== '/onboarding'}/>
+    <LotusBackground fade={pathname !== '/onboarding'}/>
     <View style={{ flex: 1 }}>
       {tabRoute ? <PageReveal sequence={revealActive ? transition.sequence : 0}>{pageContent}</PageReveal> : pageContent}
     </View>
-    <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: insets.top, backgroundColor: colors.bg }}/>
+    {/* Status-bar strip: repaint the same fixed background so scrolled content never shows under the clock. */}
+    <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: insets.top, overflow: 'hidden' }}><LotusBackground fade={pathname !== '/onboarding'}/></View>
     {/* Prototype `.dock`: sticky bottom actions above the system navigation area. */}
     {footer && <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0 }}>
       <View pointerEvents="none" style={{ height: 22, opacity: 0.9 }}><View style={{ flex: 1, backgroundColor: colors.bg, opacity: 0.35 }}/></View>
@@ -108,11 +109,11 @@ export function Button({ title, onPress, kind = 'primary', disabled = false, siz
   const inactive = disabled || pending;
   // Volt: primary actions use the gradient-anchor colour (navy on Shore, lime on Abyss).
   const color = kind === 'primary' ? colors.g1 : kind === 'danger' ? colors.danger : colors.c8;
-  const textColor = kind === 'primary' ? colors.plInk : kind === 'danger' ? colors.dangerText : colors.text;
+  const textColor = kind === 'primary' ? colors.candyInk : kind === 'danger' ? colors.dangerText : colors.text;
   return <View style={{ flexShrink: 1 }}>
     <MotionPressable accessibilityRole="button" accessibilityState={{ disabled: inactive }} disabled={inactive} onPress={press}
-      style={[styles.button, size === 'hero' && { minHeight: 58, paddingHorizontal: 24 }, { direction: language === 'ar' ? 'rtl' : 'ltr', opacity: disabled ? .45 : pending ? .8 : 1 }]}>
-      <AngularBackground color={color} border={kind === 'ghost' ? colors.borderStrong : color}/>
+      style={[styles.button, size === 'hero' && { minHeight: 58, paddingHorizontal: 24 }, kind === 'primary' && !inactive && { overflow: 'visible', boxShadow: '0px 10px 22px -8px ' + colors.candyGlow }, { direction: language === 'ar' ? 'rtl' : 'ltr', opacity: disabled ? .45 : pending ? .8 : 1 }]}>
+      {kind === 'primary' ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderRadius: radii.pill }, candyStyle(colors, 'none')]}/> : <AngularBackground color={color} border={kind === 'ghost' ? colors.borderStrong : color}/>}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         {pending && <ActivityIndicator size="small" color={textColor}/>}
         <Text style={[styles.buttonText, { color: textColor }, size === 'hero' && { fontFamily: fonts.displayHeavy, fontSize: 17 }]}>{title}</Text>

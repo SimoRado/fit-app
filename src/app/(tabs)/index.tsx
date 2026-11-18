@@ -11,7 +11,7 @@ import { repo } from '../../data/db';
 import { useApp } from '../../state/app';
 import { useScreenRevision } from '../../state/useScreenRevision';
 import { Button, Page, message } from '../../ui/components';
-import { colors, fonts } from '../../ui/theme';
+import { colors, fonts, brand } from '../../ui/theme';
 import { cards } from '../../core/cards';
 import { gymSchedulePreferenceKey, parseGymSchedule, resolveDayPlan, type GymDayPlan } from '../../core/gymSchedule';
 import { dailyProgressPercent } from '../../core/voltGeometry';
@@ -21,7 +21,8 @@ import { BottomSheet } from '../../ui/BottomSheet';
 import { FoodSheet } from '../../ui/NutritionSheets';
 import { MotionPressable } from '../../ui/MotionPressable';
 import { CubyMark } from '../../ui/CubyMark';
-import { DayPills, HeroNumber, IconBox, SquareRings, VCard, VChip, useEntering, usePalette, type VoltIcon } from '../../ui/voltKit';
+import { DayPills, HeroNumber, IconBox, SquareRings, VCard, VChip, cardShadow, useEntering, usePalette, type VoltIcon } from '../../ui/voltKit';
+import { LotusFlower, candyStyle } from '../../ui/LotusArt';
 import type { OpenWorkout } from '../../data/db';
 
 const localeFor = (language: string) => language === 'fr' ? 'fr-FR' : language === 'ar' ? 'ar-u-nu-arab' : 'en-US';
@@ -151,15 +152,15 @@ export default function Home() {
       <View style={{ width: 40, height: 40, borderRadius: 12, overflow: 'hidden' }}><CubyMark size={40}/></View>
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text numberOfLines={1} accessibilityRole="header" style={{ color: p.text, fontFamily: fonts.displayHeavy, fontSize: 19, letterSpacing: -0.4 }}>Hi {firstName}</Text>
-        <Text numberOfLines={1} style={{ color: p.muted, fontFamily: fonts.medium, fontSize: 12.5 }}>FAST REFRESH CHECK: LIVE</Text>
+        <Text numberOfLines={1} style={{ color: p.muted, fontFamily: fonts.medium, fontSize: 12.5 }}>Here&apos;s your day so far</Text>
       </View>
-      <Pressable accessibilityRole="button" accessibilityLabel="Profile" hitSlop={8} onPress={() => router.navigate('/profile')} style={{ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: p.c8, borderWidth: 1, borderColor: p.c8Line }}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Profile" hitSlop={8} onPress={() => router.navigate('/profile')} style={{ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: p.light ? p.soft1 : p.c8, borderWidth: p.light ? 0 : 1, borderColor: p.c8Line }}>
         <Text style={{ color: p.accent, fontFamily: fonts.displayHeavy, fontSize: 15 }}>{initials}</Text>
       </Pressable>
     </View>
 
     {/* Month chip + week pills */}
-    <MotionPressable pressScale={0.96} accessibilityRole="button" accessibilityLabel={`Choose date, ${selectedLabel}`} onPress={() => { setMonthCursor(fromDay(selectedDay)); setCalendarOpen(true); }} style={{ alignSelf: 'flex-start', minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 13, borderRadius: 999, backgroundColor: p.c8, borderWidth: 1, borderColor: p.c8Line }}>
+    <MotionPressable pressScale={0.96} accessibilityRole="button" accessibilityLabel={`Choose date, ${selectedLabel}`} onPress={() => { setMonthCursor(fromDay(selectedDay)); setCalendarOpen(true); }} style={{ alignSelf: 'flex-start', minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 13, borderRadius: 999, backgroundColor: p.c8, borderWidth: p.light ? 0 : 1, borderColor: p.c8Line, ...(p.light ? { boxShadow: '0px 1px 2px rgba(73,16,139,0.04), 0px 8px 20px -12px rgba(73,16,139,0.2)' } : {}) }}>
       <Ionicons name="calendar-outline" size={15} color={p.text}/><Text style={{ color: p.text, fontFamily: fonts.bold, fontSize: 12.5 }}>{monthLabel}</Text><Ionicons name="chevron-down" size={14} color={p.text}/>
     </MotionPressable>
     <DayPills selected={selectedDay} onSelect={setSelectedDay} days={weekDays.map(day => ({
@@ -216,18 +217,20 @@ export default function Home() {
     <View style={{ flexDirection: 'row', gap: 10 }}>
       <VCard tone="soft1" raised onPress={handleWorkoutPress} accessibilityLabel={selectedWorkout ? `View workout ${selectedWorkout.name}` : routine ? `Start ${routine.name}` : 'Open workouts'} style={{ flex: 1, minHeight: 132, padding: 14, gap: 3 }}>
         <IconBox icon="barbell-outline" size={36} iconSize={18}/>
-        <View style={{ position: 'absolute', top: 14, right: 14, width: 34, height: 34, borderRadius: 17, backgroundColor: p.g1, alignItems: 'center', justifyContent: 'center' }}><Ionicons name={selectedWorkout ? 'checkmark' : 'play'} size={15} color={p.plInk}/></View>
+        <View style={{ position: 'absolute', top: 14, right: 14, width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', ...candyStyle(p) }}><Ionicons name={selectedWorkout ? 'checkmark' : 'play'} size={15} color={p.candyInk}/></View>
         <View style={{ marginTop: 'auto' }}>
           <Text numberOfLines={1} style={{ color: p.text, fontFamily: fonts.displayHeavy, fontSize: 16 }}>{selectedWorkout?.name ?? routine?.name ?? 'Workout'}</Text>
           <Text numberOfLines={2} style={{ color: p.muted, fontFamily: fonts.medium, fontSize: 12 }}>{selectedWorkout ? `Done${selectedWorkout.duration_min ? ` · ${selectedWorkout.duration_min} min` : ''}` : routine ? `${plannedRoutine ? 'Planned · ' : ''}${routineExerciseCount} exercise${routineExerciseCount === 1 ? '' : 's'}` : dayPlan?.kind === 'rest' ? 'Rest day' : 'Create your first routine'}</Text>
         </View>
       </VCard>
-      <VCard tone="soft2" raised onPress={() => setFoodOpen(true)} accessibilityLabel={`Add food to ${mealTitle[nextMeal]}`} style={{ flex: 1, minHeight: 132, padding: 14, gap: 3 }}>
+      <VCard tone="soft2" raised onPress={() => setFoodOpen(true)} accessibilityLabel={`Add food to ${mealTitle[nextMeal]}`} style={{ flex: 1, minHeight: 132, padding: 14, gap: 3, overflow: 'hidden', backgroundImage: p.light ? 'linear-gradient(160deg, #FBE4FB, #F3E9FE)' : 'linear-gradient(160deg, rgba(226,110,229,0.16), rgba(126,48,225,0.10))' }}>
+          {/* Lotus `.ml8`: violet line flower in the bottom-right corner. */}
+          {p.light && <LotusFlower size={150} color={brand.violet} fillOpacity={0.06} strokeOpacity={0.18} style={{ right: -34, bottom: -26 }}/>}
           <IconBox icon="restaurant-outline" size={36} iconSize={18}/>
           <View style={{ marginTop: 'auto' }}>
             <Text numberOfLines={1} style={{ color: p.text, fontFamily: fonts.displayHeavy, fontSize: 16 }}>{mealTitle[nextMeal]}</Text>
             <Text numberOfLines={1} style={{ color: p.muted, fontFamily: fonts.medium, fontSize: 12 }}>{nextMealKcal ? `${Math.round(nextMealKcal).toLocaleString(locale)} kcal logged` : 'Not logged yet'}</Text>
-            <View style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8, paddingHorizontal: 11, paddingVertical: 6, borderRadius: 999, backgroundColor: p.g1 }}><Ionicons name="add" size={14} color={p.plInk}/><Text style={{ color: p.plInk, fontFamily: fonts.bold, fontSize: 11.5 }}>Add meal</Text></View>
+            <View style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8, paddingHorizontal: 11, paddingVertical: 6, borderRadius: 999, ...candyStyle(p) }}><Ionicons name="add" size={14} color={p.candyInk}/><Text style={{ color: p.candyInk, fontFamily: fonts.bold, fontSize: 11.5 }}>Add meal</Text></View>
           </View>
         </VCard>
     </View>
@@ -260,7 +263,7 @@ export default function Home() {
           const selected = day === selectedDay;
           const outside = fromDay(day).getMonth() !== monthCursor.getMonth();
           const future = day > today;
-          return <Pressable key={day} accessibilityRole="button" accessibilityState={{ selected, disabled: future }} accessibilityLabel={new Intl.DateTimeFormat(locale, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(fromDay(day))} disabled={future} onPress={() => { setSelectedDay(day); close(() => setCalendarOpen(false)); }} style={{ width: '14.285%', minHeight: 42, alignItems: 'center', justifyContent: 'center' }}><View style={{ width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: selected ? colors.g1 : 'transparent', opacity: future ? .32 : outside ? .48 : 1 }}><Text style={{ color: selected ? colors.plInk : colors.text, fontFamily: selected ? fonts.bold : fonts.body, fontSize: 13 }}>{fromDay(day).getDate()}</Text></View></Pressable>;
+          return <Pressable key={day} accessibilityRole="button" accessibilityState={{ selected, disabled: future }} accessibilityLabel={new Intl.DateTimeFormat(locale, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(fromDay(day))} disabled={future} onPress={() => { setSelectedDay(day); close(() => setCalendarOpen(false)); }} style={{ width: '14.285%', minHeight: 42, alignItems: 'center', justifyContent: 'center' }}><View style={{ width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', ...(selected ? candyStyle(colors, 'pill') : null), opacity: future ? .32 : outside ? .48 : 1 }}><Text style={{ color: selected ? colors.candyInk : colors.text, fontFamily: selected ? fonts.bold : fonts.body, fontSize: 13 }}>{fromDay(day).getDate()}</Text></View></Pressable>;
         })}
       </View>
       <Button title="Today" kind="ghost" disabled={selectedDay === today} onPress={() => { setSelectedDay(today); close(() => setCalendarOpen(false)); }}/>
@@ -278,11 +281,11 @@ function Legend({ icon, color, label, value }: { icon: VoltIcon; color: string; 
   </View>;
 }
 
-/** `.sc8b` — shortcut tile. */
+/** `.sc8b` — Lotus shortcut: a 54px ringed orb with the label underneath. */
 function Shortcut({ icon, title, onPress }: { icon: VoltIcon; title: string; onPress: () => void }) {
   const p = usePalette();
-  return <MotionPressable pressScale={0.93} accessibilityRole="button" accessibilityLabel={title} onPress={onPress} style={{ flex: 1, minWidth: 0, alignItems: 'center', gap: 7, paddingTop: 12, paddingBottom: 10, paddingHorizontal: 4, borderRadius: 20, backgroundColor: p.c8, borderWidth: 1, borderColor: p.c8Line }}>
-    <IconBox icon={icon} size={42} radius={14} background={p.soft1} iconSize={20}/>
+  return <MotionPressable pressScale={0.93} accessibilityRole="button" accessibilityLabel={title} onPress={onPress} style={{ flex: 1, minWidth: 0, alignItems: 'center', gap: 7, paddingTop: 4, paddingBottom: 2, paddingHorizontal: 2 }}>
+    <View style={{ width: 54, height: 54, borderRadius: 27, alignItems: 'center', justifyContent: 'center', backgroundImage: `radial-gradient(circle at 35% 30%, ${p.orbFrom}, ${p.orbTo})`, boxShadow: p.light ? `inset 0px 0px 0px 1.5px ${p.orbRing}, 0px 8px 18px -10px rgba(126,48,225,0.5)` : `inset 0px 0px 0px 1.5px ${p.orbRing}, 0px 0px 16px -4px rgba(226,110,229,0.45)` }}><Ionicons name={icon} size={22} color={p.orbIcon}/></View>
     <Text numberOfLines={1} style={{ color: p.text, fontFamily: fonts.bold, fontSize: 11.5 }}>{title}</Text>
   </MotionPressable>;
 }
@@ -290,16 +293,16 @@ function Shortcut({ icon, title, onPress }: { icon: VoltIcon; title: string; onP
 /** `.nx` — "Up next" row with a round completion button. */
 function UpNextRow({ icon, caption, title, detail, onOpen, action, done = false, emphasis = false, link }: { icon: VoltIcon; caption: string; title: string; detail?: string; onOpen: () => void; action?: { icon: VoltIcon; label: string; onPress: () => void | Promise<void> }; done?: boolean; emphasis?: boolean; link?: string }) {
   const p = usePalette();
-  return <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingLeft: 12, paddingRight: 10, borderRadius: 22, backgroundColor: p.c8, borderWidth: 1, borderColor: p.c8Line }}>
+  return <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingLeft: 12, paddingRight: 10, borderRadius: 22, backgroundColor: p.c8, borderWidth: 1, borderColor: p.light ? 'transparent' : p.c8Line, ...cardShadow(p) }}>
     <Pressable accessibilityRole="button" accessibilityLabel={title} onPress={onOpen} style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-      <IconBox icon={icon} size={42} radius={14} background={done ? p.lime : emphasis ? p.g1 : p.soft1} color={done ? '#0B1446' : emphasis ? p.plInk : p.accent} iconSize={18}/>
+      <IconBox icon={icon} size={42} radius={14} background={done ? p.lime : emphasis ? p.g1 : p.soft1} color={done ? (p.light ? brand.white : brand.ink) : emphasis ? p.plInk : p.accent} iconSize={18}/>
       <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
         <Text numberOfLines={1} style={{ color: p.muted, fontFamily: fonts.semibold, fontSize: 11.5 }}>{caption}</Text>
         <Text numberOfLines={1} style={{ color: p.text, fontFamily: fonts.displayHeavy, fontSize: 15 }}>{title}</Text>
         {!!detail && <Text numberOfLines={1} style={{ color: p.accent, fontFamily: fonts.semibold, fontSize: 11.5 }}>{detail}</Text>}
       </View>
     </Pressable>
-    {action ? <MotionPressable pressScale={0.86} accessibilityRole="button" accessibilityLabel={action.label} onPress={() => { void action.onPress(); }} style={{ width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', backgroundColor: p.g1 }}><Ionicons name={action.icon} size={20} color={p.plInk}/></MotionPressable>
+    {action ? <MotionPressable pressScale={0.86} accessibilityRole="button" accessibilityLabel={action.label} onPress={() => { void action.onPress(); }} style={{ width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', ...candyStyle(p) }}><Ionicons name={action.icon} size={20} color={p.candyInk}/></MotionPressable>
       : link ? <Pressable accessibilityRole="button" onPress={onOpen} style={{ paddingHorizontal: 8, paddingVertical: 6 }}><Text style={{ color: p.accent, fontFamily: fonts.bold, fontSize: 12.5 }}>{link}</Text></Pressable>
         : <Ionicons name="chevron-forward" size={16} color={p.text}/>}
   </View>;
@@ -307,5 +310,5 @@ function UpNextRow({ icon, caption, title, detail, onOpen, action, done = false,
 
 function MoreLink({ icon, label, onPress }: { icon: VoltIcon; label: string; onPress: () => void }) {
   const p = usePalette();
-  return <MotionPressable pressScale={0.95} accessibilityRole="button" onPress={onPress} style={{ flex: 1, minWidth: 0, minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: p.c8, borderWidth: 1, borderColor: p.c8Line, borderRadius: 16, paddingHorizontal: 7 }}><Ionicons name={icon} size={15} color={p.accent}/><Text numberOfLines={1} style={{ color: p.text, fontFamily: fonts.bold, fontSize: 11.5 }}>{label}</Text></MotionPressable>;
+  return <MotionPressable pressScale={0.95} accessibilityRole="button" onPress={onPress} style={{ flex: 1, minWidth: 0, minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: p.c8, borderWidth: 1, borderColor: p.light ? 'transparent' : p.c8Line, borderRadius: 16, paddingHorizontal: 7, ...cardShadow(p) }}><Ionicons name={icon} size={15} color={p.accent}/><Text numberOfLines={1} style={{ color: p.text, fontFamily: fonts.bold, fontSize: 11.5 }}>{label}</Text></MotionPressable>;
 }

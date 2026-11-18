@@ -4,6 +4,7 @@ import { Text } from './LocalizedText';
 import { isLight } from './voltKit';
 import type { Palette } from './theme';
 import { HABIT_ICONS, isHabitIconId, type HabitGroup } from '../core/habitDesign';
+import { brand } from './theme';
 
 /** Stable icon id → Ionicons glyph; legacy emoji/text icons render as text. */
 export function HabitGlyph({ icon, size, color, filled = false }: { icon: string; size: number; color: string; filled?: boolean }) {
@@ -18,7 +19,7 @@ export function HabitGlyph({ icon, size, color, filled = false }: { icon: string
  */
 export function groupColors(p: Readonly<Palette>, group: HabitGroup) {
   const light = isLight(p);
-  if (group === 'Body') return { solid: p.blue, ink: '#0B1446', soft: light ? '#EAF3FF' : 'rgba(156,203,255,0.12)', softInk: light ? '#5E7FAE' : 'rgba(156,203,255,0.78)' };
-  if (group === 'Mind') return { solid: p.lime, ink: '#0B1446', soft: light ? '#F4FBD2' : 'rgba(223,255,31,0.10)', softInk: light ? '#7C8A2E' : 'rgba(223,255,31,0.72)' };
-  return { solid: light ? '#1D2E8F' : '#EEF6FF', ink: light ? '#FFFFFF' : '#0B1446', soft: light ? '#E7ECF8' : 'rgba(238,246,255,0.08)', softInk: light ? '#55618A' : 'rgba(238,246,255,0.66)' };
+  if (group === 'Body') return { solid: p.blue, ink: brand.ink, soft: light ? '#EAF3FF' : 'rgba(185,138,240,0.12)', softInk: light ? '#5E7FAE' : 'rgba(185,138,240,0.78)' };
+  if (group === 'Mind') return { solid: p.lime, ink: brand.ink, soft: light ? '#F4FBD2' : 'rgba(226,110,229,0.10)', softInk: light ? '#7C8A2E' : 'rgba(226,110,229,0.72)' };
+  return { solid: light ? brand.violet : brand.mist, ink: light ? '#FFFFFF' : brand.ink, soft: light ? '#E7ECF8' : 'rgba(238,246,255,0.08)', softInk: light ? '#55618A' : 'rgba(238,246,255,0.66)' };
 }

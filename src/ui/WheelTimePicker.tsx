@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { Animated, Platform, Pressable, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { Text } from './LocalizedText';
-import { fonts } from './theme';
+import { fonts, brand } from './theme';
 import { usePalette } from './voltKit';
 import { useReducedMotion } from './motion';
 import { wheelIndexes, wheelTime } from '../core/habitDesign';
@@ -59,7 +59,7 @@ export function WheelTimePicker({ value, hour12, onConfirm, onCancel }: { value:
   const [minute, setMinute] = useState(initial.minute);
   const [period, setPeriod] = useState(initial.period);
   const result = useMemo(() => wheelTime(hourIndex, minute, period, hour12), [hour12, hourIndex, minute, period]);
-  return <View style={{ borderRadius: 24, backgroundColor: p.c8, borderWidth: 1, borderColor: p.c8Line, paddingTop: 10, paddingHorizontal: 14, paddingBottom: 12, shadowColor: '#0B1446', shadowOpacity: 0.18, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 12 }}>
+  return <View style={{ borderRadius: 24, backgroundColor: p.c8, borderWidth: 1, borderColor: p.c8Line, paddingTop: 10, paddingHorizontal: 14, paddingBottom: 12, shadowColor: brand.ink, shadowOpacity: 0.18, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 12 }}>
     <View style={{ height: WHEEL_HEIGHT, flexDirection: 'row', justifyContent: 'center', alignItems: 'center' }}>
       {/* Ruled centre row */}
       <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: WHEEL_ITEM * 2, height: WHEEL_ITEM, borderTopWidth: 1, borderBottomWidth: 1, borderColor: p.borderStrong }}/>

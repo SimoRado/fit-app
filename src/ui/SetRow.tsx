@@ -40,7 +40,7 @@ function Cell({ value, onChange, label, decimal, done, width, height }: { value:
   return <TextInput accessibilityLabel={label} value={value} onChangeText={onChange} keyboardType={decimal ? 'decimal-pad' : 'number-pad'} selectTextOnFocus maxLength={decimal ? 6 : 5}
     placeholder="–" placeholderTextColor={p.subtle} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
     style={{ width, height, borderRadius: 16, paddingHorizontal: 4, textAlign: 'center', color: p.text, fontFamily: fonts.displayHeavy, fontSize: 18, fontVariant: ['tabular-nums'],
-      backgroundColor: done ? (light ? p.softLime : 'rgba(223,255,31,0.16)') : focused ? p.c8 : (light ? p.soft1 : p.card2),
+      backgroundColor: done ? (light ? p.softLime : 'rgba(226,110,229,0.16)') : focused ? p.c8 : (light ? p.soft1 : p.card2),
       borderWidth: focused ? 2 : 0, borderColor: p.accent }}/>;
 }
 

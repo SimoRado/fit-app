@@ -7,27 +7,27 @@ import { HORSESHOE, dailyProgressPercent, horseshoeArc, horseshoeBadge, horsesho
 const source = (path: string) => readFileSync(join(process.cwd(), path), 'utf8');
 
 describe('Volt prototype tokens', () => {
-  it('uses the final Shore values for rings, pills, gauge and macro chips', () => {
+  it('uses the Lotus Shore values for rings, pills, gauge and macro chips', () => {
     const shore = getAppearancePalette('shore');
-    expect([shore.q1, shore.q2, shore.q3]).toEqual(['#1D2E8F', '#9CCBFF', '#DFFF1F']);
-    expect(shore.qTrack).toBe('#EEF6FF');
-    expect([shore.g1, shore.g2, shore.plInk]).toEqual(['#1D2E8F', '#0B1446', '#FFFFFF']);
-    expect([shore.c8, shore.c8Line, shore.soft1, shore.soft2]).toEqual(['#FFFFFF', '#E4EEFB', '#EEF6FF', '#F6FFC2']);
-    expect([shore.hsRim, shore.hsTrack, shore.hsIb, shore.hsIc]).toEqual(['#C9E3FF', '#FFFFFF', '#DFFF1F', '#1D2E8F']);
-    expect([shore.mc1, shore.mc2, shore.mc3]).toEqual(['#EEF6FF', '#F6FFC2', '#E3F1FF']);
-    expect(shore.navActiveBackground).toBe('#1D2E8F');
-    expect(shore.navActiveIcon).toBe('#DFFF1F');
+    expect([shore.q1, shore.q2, shore.q3]).toEqual(['#7E30E1', '#B98AF0', '#E26EE5']);
+    expect(shore.qTrack).toBe('#F1EBFC');
+    expect([shore.g1, shore.g2, shore.plInk]).toEqual(['#7E30E1', '#49108B', '#FFFFFF']);
+    expect([shore.c8, shore.c8Line, shore.soft1, shore.soft2]).toEqual(['#FFFFFF', '#ECE3F8', '#F1EBFC', '#FBE4FB']);
+    expect([shore.hsRim, shore.hsTrack, shore.hsIb, shore.hsIc]).toEqual(['#E6D6FA', '#FFFFFF', '#E26EE5', '#7E30E1']);
+    expect([shore.mc1, shore.mc2, shore.mc3]).toEqual(['#F1EBFC', '#FBE4FB', '#F3E9FE']);
+    // --lt-candy: linear-gradient(135deg,#7E30E1 0%,#B04FE4 55%,#E26EE5 100%)
+    expect(shore.candy.map(stop => [stop.offset, stop.color])).toEqual([[0, '#7E30E1'], [0.55, '#B04FE4'], [1, '#E26EE5']]);
+    expect(shore.navActiveIcon).toBe('#FFFFFF');
   });
 
-  it('uses the final Abyss values: lime anchors on true black with midnight surfaces', () => {
+  it('uses the Lotus Abyss values: orchid anchors on deep violet surfaces', () => {
     const abyss = getAppearancePalette('abyss');
-    expect(abyss.bg).toBe('#000000');
-    expect([abyss.q1, abyss.q2, abyss.q3]).toEqual(['#DFFF1F', '#9CCBFF', '#C9E3FF']);
-    expect([abyss.g1, abyss.g2, abyss.plInk]).toEqual(['#DFFF1F', '#9CCBFF', '#0B1446']);
-    expect(abyss.c8).toBe('#0B0E1A');
-    expect(abyss.navBackground).toBe('rgba(11,14,26,0.94)');
-    expect(abyss.navActiveBackground).toBe('#DFFF1F');
-    expect(abyss.heroCard).toBe('#1A2A80');
+    expect(abyss.bg).toBe('#12061F');
+    expect([abyss.q1, abyss.q2, abyss.q3]).toEqual(['#E26EE5', '#C69BFF', '#E9C6FA']);
+    expect([abyss.g1, abyss.g2, abyss.plInk]).toEqual(['#E26EE5', '#B04FE4', '#2A0950']);
+    expect(abyss.c8).toBe('#1C0B30');
+    expect(abyss.navActiveBackground).toBe('#E26EE5');
+    expect(abyss.candy.map(stop => stop.color)).toEqual(['#E26EE5', '#B887F5']);
   });
 
   it('does not reintroduce colors from earlier prototype concepts', () => {

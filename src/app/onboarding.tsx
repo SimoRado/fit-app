@@ -97,7 +97,7 @@ export default function Onboarding() {
       <View style={{ gap: 8 }}>{([['Lose weight', 'scale-outline', 'A gentle, sustainable deficit'], ['Gain muscle', 'barbell-outline', 'Build strength with a small surplus'], ['Improve general fitness', 'pulse-outline', 'Train regularly, recover well'], ['Maintain current fitness', 'shield-checkmark-outline', 'Stay steady and balanced']] as const).map(([option, icon, detail]) => {
         const on = goal === option;
         return <MotionPressable key={option} selected={on} pressScale={0.98} accessibilityRole="radio" accessibilityState={{ selected: on }} onPress={() => setGoal(option)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 20, backgroundColor: colors.c8, borderWidth: 1.5, borderColor: on ? colors.text : colors.c8Line }}>
-          <View style={{ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg === '#F5F9FF' ? colors.paleBlue : colors.soft1 }}><Ionicons name={icon} size={18} color={colors.accent}/></View>
+          <View style={{ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.light ? colors.paleBlue : colors.soft1 }}><Ionicons name={icon} size={18} color={colors.accent}/></View>
           <View style={{ flex: 1 }}><Text style={{ color: colors.text, fontFamily: fonts.displayHeavy, fontSize: 15 }}>{option}</Text><Text style={{ color: colors.muted, fontSize: 12 }}>{detail}</Text></View>
           {on && <Ionicons name="checkmark" size={20} color={colors.text}/>}
         </MotionPressable>;

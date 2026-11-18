@@ -8,7 +8,7 @@ import { colors, fonts, spacing } from './theme';
 import { useVoltTheme } from './VoltThemeProvider';
 import Svg, { Rect } from 'react-native-svg';
 import { CubyMark } from './CubyMark';
-import { GraffitiBackground } from './GraffitiBackground';
+import { LotusBackground } from './LotusArt';
 
 export function AuthPage({ title, detail, children }: { title: string; detail: string; children: React.ReactNode }) {
   const { appearance } = useVoltTheme();
@@ -16,7 +16,7 @@ export function AuthPage({ title, detail, children }: { title: string; detail: s
   const light = appearance === 'shore';
   return <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     {/* Prototype `.auth::before`: the graffiti layer without the top/bottom fade. */}
-    <GraffitiBackground fade={false}/>
+    <LotusBackground fade={false}/>
     <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1, width: '100%', maxWidth: 620, alignSelf: 'center', paddingHorizontal: spacing.screen, paddingTop: insets.top + 14, paddingBottom: insets.bottom + 32, gap: 12 }}>
       {/* Volt auth backdrop: nested rounded-square arcs in the top-right corner. */}
       <Svg pointerEvents="none" width={220} height={220} viewBox="0 0 220 220" style={{ position: 'absolute', top: -60 + insets.top, right: -70 }}>
@@ -24,7 +24,7 @@ export function AuthPage({ title, detail, children }: { title: string; detail: s
         <Rect x={58} y={58} width={190} height={190} rx={44} fill="none" stroke={colors.blue} strokeOpacity={light ? 0.45 : 0.55} strokeWidth={22}/>
       </Svg>
       <View style={{ height: 52, flexDirection: 'row', alignItems: 'center', gap: 9 }}>
-        <View style={{ width: 30, height: 30, borderRadius: 9, overflow: 'hidden' }}><CubyMark size={30}/></View>
+        <View style={{ width: 30, height: 30, borderRadius: 9, overflow: 'hidden' }}><CubyMark size={30} variant="brand"/></View>
         <Text style={{ color: colors.text, fontFamily: fonts.displayHeavy, fontSize: 16, letterSpacing: -0.2 }}>Cubyfit</Text>
       </View>
       <Text accessibilityRole="header" style={{ ...styles.title, fontSize: 44, lineHeight: 46, letterSpacing: -1.8, maxWidth: 330, marginTop: 14 }}>{title}<Text style={{ color: colors.titleAccent }}>.</Text></Text>

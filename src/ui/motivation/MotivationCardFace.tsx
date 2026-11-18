@@ -2,7 +2,7 @@ import React, { memo, useId } from 'react';
 import { View } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient, Pattern, Rect, Stop } from 'react-native-svg';
 import { Text } from '../LocalizedText';
-import { fonts } from '../theme';
+import { fonts, brand } from '../theme';
 import { isLight, usePalette } from '../voltKit';
 import { phraseRuns, type CardLanguage, type MotivationCard } from '../../core/motivationCatalog';
 import { fitPhrase } from '../../core/motivationDeck';
@@ -22,12 +22,12 @@ export function CardBackdrop({ width, height }: { width: number; height: number 
   return <Svg pointerEvents="none" width={width} height={height} style={{ position: 'absolute', top: 0, left: 0 }}>
     <Defs>
       <LinearGradient id={`g${id}`} x1="1" y1="0" x2="0.15" y2="0.75">
-        <Stop offset="0" stopColor={light ? '#C9E3FF' : '#9CCBFF'} stopOpacity={light ? 0.95 : 0.22}/>
-        <Stop offset="0.55" stopColor={light ? '#EEF6FF' : '#9CCBFF'} stopOpacity={light ? 0.55 : 0.05}/>
+        <Stop offset="0" stopColor={light ? brand.lilac : brand.lavender} stopOpacity={light ? 0.95 : 0.22}/>
+        <Stop offset="0.55" stopColor={light ? brand.mist : brand.lavender} stopOpacity={light ? 0.55 : 0.05}/>
         <Stop offset="1" stopColor={light ? '#FFFFFF' : '#0B0E1A'} stopOpacity={0}/>
       </LinearGradient>
       <Pattern id={`d${id}`} width={14} height={14} patternUnits="userSpaceOnUse">
-        <Circle cx={3} cy={3} r={1.05} fill={light ? 'rgba(29,46,143,0.17)' : 'rgba(156,203,255,0.16)'}/>
+        <Circle cx={3} cy={3} r={1.05} fill={light ? 'rgba(126,48,225,0.17)' : 'rgba(185,138,240,0.16)'}/>
       </Pattern>
     </Defs>
     <Rect x={0} y={0} width={width} height={height} fill={`url(#g${id})`}/>

@@ -14,7 +14,7 @@ import { repo } from '../../data/db';
 import { useApp } from '../../state/app';
 import { useScreenRevision } from '../../state/useScreenRevision';
 import { Button, Page, message, confirm } from '../../ui/components';
-import { fonts } from '../../ui/theme';
+import { fonts, brand } from '../../ui/theme';
 import { WorkoutInProgressCard } from '../../ui/WorkoutInProgressCard';
 import { BottomSheet } from '../../ui/BottomSheet';
 import { MotionPressable } from '../../ui/MotionPressable';
@@ -23,10 +23,10 @@ import { CircleButton, EmptyAction, IconBox, MenuItem, SectionLink, StatTrio, is
 import type { OpenWorkout } from '../../data/db';
 
 const covers = [
-  { background: '#1D2E8F', ink: '#DFFF1F' },
-  { background: '#9CCBFF', ink: '#0B1446' },
-  { background: '#DFFF1F', ink: '#1D2E8F' },
-  { background: '#0B1446', ink: '#9CCBFF' },
+  { background: brand.violet, ink: brand.orchid },
+  { background: brand.lavender, ink: brand.ink },
+  { background: brand.orchid, ink: brand.violet },
+  { background: brand.ink, ink: brand.lavender },
 ] as const;
 const daysAgo = (day: string, today: string) => Math.round((fromDay(today).getTime() - fromDay(day).getTime()) / 86400000);
 const lastDoneLabel = (day: string | undefined, today: string) => {
@@ -119,7 +119,7 @@ export default function Workouts() {
 
     {/* Today's plan (`.nx` style): start the scheduled routine in one tap. */}
     {!openWorkout && (todayRoutine ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, paddingLeft: 12, paddingRight: 10, borderRadius: 22, backgroundColor: p.c8, borderWidth: 1, borderColor: p.c8Line }}>
-      <IconBox icon={trainedToday ? 'checkmark' : 'calendar-outline'} size={42} radius={14} background={trainedToday ? p.lime : p.soft1} color={trainedToday ? '#0B1446' : p.accent}/>
+      <IconBox icon={trainedToday ? 'checkmark' : 'calendar-outline'} size={42} radius={14} background={trainedToday ? p.lime : p.soft1} color={trainedToday ? brand.ink : p.accent}/>
       <Pressable accessibilityRole="button" accessibilityLabel={`Edit ${todayRoutine.name}`} onPress={() => router.push({ pathname: '/routine-form', params: { id: todayRoutine.id } })} style={{ flex: 1, minWidth: 0 }}>
         <Text style={{ color: p.muted, fontFamily: fonts.semibold, fontSize: 11.5 }}>{trainedToday ? 'Planned today · done' : 'Planned today'}</Text>
         <Text numberOfLines={1} style={{ color: p.text, fontFamily: fonts.displayHeavy, fontSize: 15 }}>{todayRoutine.name}</Text>
@@ -203,7 +203,7 @@ function GalleryCard({ width, index, on, cover, eyebrow, title, meta, onStart, o
     <Pressable accessibilityRole="button" accessibilityLabel={`${title} options`} onPress={onMore}>
       <View style={{ height: 178, backgroundColor: cover.background, alignItems: 'center', justifyContent: 'center' }}>
         <Ionicons name="barbell" size={96} color={cover.ink}/>
-        <View style={{ position: 'absolute', top: 12, right: 12, width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.9)', alignItems: 'center', justifyContent: 'center' }}><Ionicons name="ellipsis-horizontal" size={18} color="#1D2E8F"/></View>
+        <View style={{ position: 'absolute', top: 12, right: 12, width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.9)', alignItems: 'center', justifyContent: 'center' }}><Ionicons name="ellipsis-horizontal" size={18} color={brand.violet}/></View>
       </View>
       <View style={{ paddingTop: 14, paddingBottom: 16, paddingLeft: 16, paddingRight: 76, gap: 3 }}>
         <Text numberOfLines={1} style={{ color: p.muted, fontFamily: fonts.bold, fontSize: 10.5, letterSpacing: 0.8, textTransform: 'uppercase' }}>{eyebrow}</Text>

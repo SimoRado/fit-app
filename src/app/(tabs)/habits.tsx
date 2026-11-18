@@ -16,7 +16,7 @@ import { useApp } from '../../state/app';
 import { useScreenRevision } from '../../state/useScreenRevision';
 import { Button, Field, Page, confirm, message } from '../../ui/components';
 import { BottomSheet } from '../../ui/BottomSheet';
-import { fonts } from '../../ui/theme';
+import { fonts, brand } from '../../ui/theme';
 import { reconcileReminders } from '../../services/reminders';
 import { MotionPressable } from '../../ui/MotionPressable';
 import { CircleButton, EmptyAction, MiniBar, SectionLink, VCard, isLight, useEntering, usePalette, type VoltIcon } from '../../ui/voltKit';
@@ -326,7 +326,7 @@ function Segment({ value }: { value: number }) {
 function NowMarker() {
   const p = usePalette();
   return <View accessibilityLabel="Now" style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginVertical: 2 }}>
-    <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, backgroundColor: p.lime }}><Text style={{ color: '#0B1446', fontFamily: fonts.bold, fontSize: 10.5 }}>Now</Text></View>
+    <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, backgroundColor: p.lime }}><Text style={{ color: brand.ink, fontFamily: fonts.bold, fontSize: 10.5 }}>Now</Text></View>
     <View style={{ flex: 1, height: 1.5, backgroundColor: p.lime }}/>
   </View>;
 }
@@ -419,7 +419,7 @@ function ManageSheet({ open, habits, onClose, onEdit }: { open: boolean; habits:
 function ActionItem({ icon, label, onPress, tone, disabled = false }: { icon: VoltIcon; label: string; onPress: () => void; tone?: 'ok' | 'ed' | 'del'; disabled?: boolean }) {
   const p = usePalette();
   const bg = tone === 'ok' ? p.lime : tone === 'ed' ? p.blue : tone === 'del' ? p.g1 : p.c8;
-  const fg = tone === 'ok' || tone === 'ed' ? '#0B1446' : tone === 'del' ? p.plInk : p.text;
+  const fg = tone === 'ok' || tone === 'ed' ? brand.ink : tone === 'del' ? p.plInk : p.text;
   return <MotionPressable pressScale={0.97} accessibilityRole="button" accessibilityState={{ disabled }} disabled={disabled} onPress={onPress} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 16, backgroundColor: isLight(p) ? p.soft1 : p.card2, opacity: disabled ? 0.45 : 1 }}>
     <View style={{ width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: bg }}><Ionicons name={icon} size={18} color={fg}/></View>
     <Text style={{ color: p.text, fontFamily: fonts.bold, fontSize: 15 }}>{label}</Text>

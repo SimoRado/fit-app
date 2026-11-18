@@ -12,9 +12,10 @@ import Svg, { Defs, G, LinearGradient, Path, Rect, Stop } from 'react-native-svg
 import { Text } from './LocalizedText';
 import { MotionPressable } from './MotionPressable';
 import { useReducedMotion } from './motion';
-import { easing, fonts, type Palette } from './theme';
+import { easing, fonts, type Palette, brand } from './theme';
 import { HORSESHOE, SQUARE_RINGS, horseshoeArc, horseshoeLength, ringFraction, squareRing } from '../core/voltGeometry';
 import { useVoltTheme } from './VoltThemeProvider';
+import { candyStyle, linearGradient } from './LotusArt';
 
 export type VoltIcon = React.ComponentProps<typeof Ionicons>['name'];
 const AnimatedRect = Animated.createAnimatedComponent(Rect);
@@ -22,7 +23,7 @@ const AnimatedPath = Animated.createAnimatedComponent(Path);
 const outEase = Easing.bezier(...easing.out);
 
 export function usePalette(): Readonly<Palette> { return useVoltTheme().palette; }
-export const isLight = (palette: Readonly<Palette>) => palette.bg === '#F5F9FF';
+export const isLight = (palette: Readonly<Palette>) => palette.light;
 
 /** Shared entrance used for list rows and hero blocks (prototype `pgIn`). */
 export function useEntering(index = 0) {
@@ -31,16 +32,17 @@ export function useEntering(index = 0) {
 }
 
 export function cardShadow(palette: Readonly<Palette>): ViewStyle {
-  return palette.bg === '#F5F9FF'
-    ? { shadowColor: palette.navShadow, shadowOpacity: 0.05, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 1 }
-    : {};
+  return palette.light
+    // Lotus `.card8`: borderless with a soft violet drop shadow; Abyss gets a faint violet wash.
+    ? { boxShadow: '0px 1px 2px rgba(73,16,139,0.04), 0px 12px 30px -14px rgba(73,16,139,0.16)' }
+    : { backgroundImage: 'linear-gradient(160deg, rgba(126,48,225,0.10), transparent 60%)' };
 }
 
 /** `.card8` — the primary Volt surface. */
 export function VCard({ children, style, onPress, accessibilityLabel, tone = 'card', raised = false }: { children: React.ReactNode; style?: StyleProp<ViewStyle>; onPress?: () => void; accessibilityLabel?: string; tone?: 'card' | 'soft1' | 'soft2'; raised?: boolean }) {
   const p = usePalette();
   const background = tone === 'soft1' ? p.soft1 : tone === 'soft2' ? p.soft2 : p.c8;
-  const base: ViewStyle = { backgroundColor: background, borderWidth: 1, borderColor: tone === 'card' ? p.c8Line : 'transparent', borderRadius: 26, padding: 16, ...(tone === 'card' ? cardShadow(p) : raised ? { shadowColor: p.navShadow, shadowOpacity: 0.04, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 1 } : {}) };
+  const base: ViewStyle = { backgroundColor: background, borderWidth: 1, borderColor: tone === 'card' && !p.light ? p.c8Line : 'transparent', borderRadius: 26, padding: 16, ...(tone === 'card' ? cardShadow(p) : raised ? { boxShadow: '0px 4px 14px -6px rgba(73,16,139,0.14)' } : {}) };
   if (!onPress) return <View style={[base, style]}>{children}</View>;
   return <MotionPressable pressScale={0.97} accessibilityRole="button" accessibilityLabel={accessibilityLabel} onPress={onPress} style={[base, style]}>{children}</MotionPressable>;
 }
@@ -64,10 +66,10 @@ export function PageTitle({ title, size = 41 }: { title: string; size?: number }
 export function CircleButton({ icon, onPress, label, tone = 'plain', size = 36, disabled }: { icon: VoltIcon; onPress: () => void; label: string; tone?: 'plain' | 'accent'; size?: number; disabled?: boolean }) {
   const p = usePalette();
   const accent = tone === 'accent';
-  const light = p.bg === '#F5F9FF';
+  const light = p.light;
   return <MotionPressable pressScale={0.88} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled: !!disabled }} disabled={disabled} hitSlop={6} onPress={onPress}
-    style={{ width: size, height: size, borderRadius: size / 2, alignItems: 'center', justifyContent: 'center', opacity: disabled ? 0.35 : 1, backgroundColor: accent ? p.g1 : p.c8, borderWidth: !accent && !light ? 1 : 0, borderColor: p.borderStrong, ...(!accent && light ? { shadowColor: p.navShadow, shadowOpacity: 0.12, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 2 } : {}) }}>
-    <Ionicons name={icon} size={size * 0.5} color={accent ? p.plInk : p.text}/>
+    style={{ width: size, height: size, borderRadius: size / 2, alignItems: 'center', justifyContent: 'center', opacity: disabled ? 0.35 : 1, backgroundColor: accent ? undefined : p.c8, borderWidth: !accent && !light ? 1 : 0, borderColor: p.borderStrong, ...(accent ? candyStyle(p) : light ? { boxShadow: '0px 2px 10px rgba(42,9,80,0.12)' } : {}) }}>
+    <Ionicons name={icon} size={size * 0.5} color={accent ? p.candyInk : p.text}/>
   </MotionPressable>;
 }
 
@@ -80,9 +82,9 @@ export function IconBox({ icon, size = 36, radius = 12, background, color, iconS
 /** `.chip8` — soft lime pill (streaks, counters). */
 export function VChip({ icon, text }: { icon?: VoltIcon; text: string }) {
   const p = usePalette();
-  return <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: p.chipBg }}>
-    {icon && <Ionicons name={icon} size={12} color={p.chipFg}/>}
-    <Text numberOfLines={1} style={{ color: p.chipFg, fontFamily: fonts.bold, fontSize: 11.5 }}>{text}</Text>
+  return <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundImage: linearGradient(135, p.chipStops) }}>
+    {icon && <Ionicons name={icon} size={12} color={p.chipInk}/>}
+    <Text numberOfLines={1} style={{ color: p.chipInk, fontFamily: fonts.bold, fontSize: 11.5 }}>{text}</Text>
   </View>;
 }
 
@@ -122,32 +124,23 @@ export function RowValue({ value, unit }: { value: string; unit?: string }) {
 /** `.plus8` — small accent circle with a plus. */
 export function PlusDot({ size = 30 }: { size?: number }) {
   const p = usePalette();
-  return <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: p.g1, alignItems: 'center', justifyContent: 'center' }}><Ionicons name="add" size={size * 0.56} color={p.plInk}/></View>;
-}
-
-/** Gradient-filled selected surface for pills (`linear-gradient(165deg, g2, g1)`). */
-function GradientFill({ from, to, radius }: { from: string; to: string; radius: number }) {
-  const id = `g${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
-  return <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, borderRadius: radius, overflow: 'hidden' }}>
-    <Svg width="100%" height="100%"><Defs><LinearGradient id={id} x1="0.35" y1="0" x2="0.65" y2="1"><Stop offset="0" stopColor={from}/><Stop offset="1" stopColor={to}/></LinearGradient></Defs><Rect x="0" y="0" width="100%" height="100%" fill={`url(#${id})`}/></Svg>
-  </View>;
+  return <View style={{ width: size, height: size, borderRadius: size / 2, alignItems: 'center', justifyContent: 'center', ...candyStyle(p) }}><Ionicons name="add" size={size * 0.56} color={p.candyInk}/></View>;
 }
 
 export type DayPill = { key: string; number: string; label: string; disabled?: boolean; accessibilityLabel?: string; marker?: React.ReactNode; today?: boolean };
 /** `.pills` — seven rounded day pills with a gradient selected state. */
 export function DayPills({ days, selected, onSelect }: { days: DayPill[]; selected: string; onSelect: (key: string) => void }) {
   const p = usePalette();
-  const light = p.bg === '#F5F9FF';
+  const light = p.light;
   return <View accessibilityRole="tablist" style={{ flexDirection: 'row', gap: 5 }}>
     {days.map(day => {
       const on = day.key === selected;
       return <MotionPressable key={day.key} selected={on} pressScale={0.92} accessibilityRole="tab" accessibilityLabel={day.accessibilityLabel} accessibilityState={{ selected: on, disabled: !!day.disabled }} disabled={day.disabled} onPress={() => onSelect(day.key)}
-        style={{ flex: 1, minWidth: 0, minHeight: 56, borderRadius: 999, alignItems: 'center', justifyContent: 'center', gap: 2, backgroundColor: on ? p.g1 : p.c8, opacity: day.disabled ? 0.4 : 1,
-          ...(on ? { shadowColor: p.g1, shadowOpacity: 0.32, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 4 } : light ? { shadowColor: p.navShadow, shadowOpacity: 0.06, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 1 } : { borderWidth: 1, borderColor: p.c8Line }),
+        style={{ flex: 1, minWidth: 0, minHeight: 56, borderRadius: 999, alignItems: 'center', justifyContent: 'center', gap: 2, backgroundColor: on ? undefined : p.c8, opacity: day.disabled ? 0.4 : 1,
+          ...(on ? candyStyle(p, 'pill') : light ? { boxShadow: '0px 1px 2px rgba(73,16,139,0.04), 0px 6px 14px -8px rgba(73,16,139,0.16)' } : { borderWidth: 1, borderColor: p.c8Line }),
           ...(!on && day.today ? { borderWidth: 1.5, borderColor: p.accent } : {}) }}>
-        {on && <GradientFill from={p.g2} to={p.g1} radius={999}/>}
-        <Text style={{ color: on ? p.plInk : day.today ? p.accent : p.text, fontFamily: fonts.displayHeavy, fontSize: 15, lineHeight: 18 }}>{day.number}</Text>
-        <Text numberOfLines={1} style={{ color: on ? p.plInk : p.muted, opacity: on ? 0.82 : 1, fontFamily: fonts.semibold, fontSize: 10.5 }}>{day.label}</Text>
+        <Text style={{ color: on ? p.candyInk : day.today ? p.accent : p.text, fontFamily: fonts.displayHeavy, fontSize: 15, lineHeight: 18 }}>{day.number}</Text>
+        <Text numberOfLines={1} style={{ color: on ? p.candyInk : p.muted, opacity: on ? 0.9 : 1, fontFamily: fonts.semibold, fontSize: 10.5 }}>{day.label}</Text>
         {day.marker}
       </MotionPressable>;
     })}
@@ -270,9 +263,9 @@ export type TrioItem = { label: string; value: string; unit?: string };
 /** `.trio` — three colored stat tiles (lilac / accent / mint). */
 export function StatTrio({ items }: { items: TrioItem[] }) {
   const p = usePalette();
-  const light = p.bg === '#F5F9FF';
+  const light = p.light;
   const fills = light ? [p.paleBlue, p.accent, p.softLime] : [p.blue, p.lime, p.blue];
-  const inks = light ? [p.text, '#FFFFFF', p.text] : ['#0B1446', '#0B1446', '#0B1446'];
+  const inks = light ? [p.text, '#FFFFFF', p.text] : [brand.ink, brand.ink, brand.ink];
   return <View style={{ flexDirection: 'row', gap: 8 }}>
     {items.slice(0, 3).map((item, index) => <View key={item.label} style={{ flex: 1, minWidth: 0, borderRadius: 19, paddingVertical: 14, paddingHorizontal: 14, backgroundColor: fills[index] }}>
       <Text numberOfLines={1} style={{ color: inks[index], opacity: 0.75, fontFamily: fonts.bold, fontSize: 10, letterSpacing: 0.7, textTransform: 'uppercase' }}>{item.label}</Text>
@@ -310,12 +303,12 @@ export function Segmented<T extends string>({ options, value, onChange, labels, 
   const index = Math.max(0, options.indexOf(value));
   const position = useSharedValue(index);
   useEffect(() => { position.value = reduced ? index : withTiming(index, { duration: 320, easing: outEase }); }, [index, position, reduced]);
-  const cell = (width - 6) / Math.max(1, options.length);
+  const cell = (width - 8) / Math.max(1, options.length);
   const thumb = useAnimatedStyle(() => ({ transform: [{ translateX: interpolate(position.value, [0, Math.max(1, options.length - 1)], [0, cell * Math.max(1, options.length - 1)]) }] }), [cell, options.length]);
-  return <View onLayout={(event: LayoutChangeEvent) => setWidth(event.nativeEvent.layout.width)} accessibilityRole="tablist" style={{ flexDirection: 'row', alignSelf: stretch ? 'stretch' : 'flex-start', padding: 3, borderRadius: 999, backgroundColor: p.bg === '#F5F9FF' ? p.soft1 : p.card2 }}>
-    {width > 0 && <Animated.View pointerEvents="none" style={[{ position: 'absolute', left: 3, top: 3, bottom: 3, width: cell, borderRadius: 999, backgroundColor: p.c8, shadowColor: p.navShadow, shadowOpacity: 0.12, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1 }, thumb]}/>}
-    {options.map(option => <Pressable key={option} accessibilityRole="tab" accessibilityState={{ selected: option === value }} onPress={() => onChange(option)} style={{ flex: stretch ? 1 : undefined, minHeight: 36, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center' }}>
-      <Text style={{ color: option === value ? p.text : p.muted, fontFamily: fonts.bold, fontSize: 12.5 }}>{labels?.[option] ?? option}</Text>
+  return <View onLayout={(event: LayoutChangeEvent) => setWidth(event.nativeEvent.layout.width)} accessibilityRole="tablist" style={{ flexDirection: 'row', alignSelf: stretch ? 'stretch' : 'flex-start', padding: 4, borderRadius: 999, backgroundColor: p.light ? p.soft1 : p.card2 }}>
+    {width > 0 && <Animated.View pointerEvents="none" style={[{ position: 'absolute', left: 4, top: 4, bottom: 4, width: cell, borderRadius: 999, backgroundColor: p.light ? p.c8 : p.elevated, boxShadow: p.light ? '0px 2px 8px rgba(42,9,80,0.14)' : undefined }, thumb]}/>}
+    {options.map(option => <Pressable key={option} accessibilityRole="tab" accessibilityState={{ selected: option === value }} onPress={() => onChange(option)} style={{ flex: stretch ? 1 : undefined, minHeight: 34, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center' }}>
+      <Text style={{ color: option === value ? p.text : p.muted, fontFamily: fonts.bold, fontSize: 11.5, letterSpacing: 0.23 }}>{labels?.[option] ?? option}</Text>
     </Pressable>)}
   </View>;
 }

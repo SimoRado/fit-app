@@ -12,6 +12,7 @@ import type { RoutineDraft } from '../core/routineDraft';
 import { reportFailure } from '../core/monitoring';
 import { perfMark, perfNow } from '../core/perf';
 import { historyFirstDay, historyRange, reconcileHistory, withHistory } from './habitHistory';
+import { assertWeightDelete, assertWeightWrite, prepareTodayWeight } from '../core/weightPolicy';
 
 let promise: Promise<SQLite.SQLiteDatabase> | undefined;
 let activeAccount: string | null = null;
@@ -208,7 +209,12 @@ async function writeHabitAmount(tx: SQLite.SQLiteDatabase, habitId: string, day:
 const upsertSql = (table: string, cols: string[]) => `INSERT INTO ${table} (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')}) ON CONFLICT(id) DO UPDATE SET ${cols.filter(c=>c!=='id').map(c=>`${c}=excluded.${c}`).join(',')}`;
 export async function put(table: string, record: Record<string, unknown>) { await (await db()).runAsync(upsertSql(table, Object.keys(record)), ...(Object.values(record) as (string | number | null)[])); }
 async function upsertRow(tx: SQLite.SQLiteDatabase, table: string, record: Record<string, unknown>) { await tx.runAsync(upsertSql(table, Object.keys(record)), ...(Object.values(record) as (string | number | null)[])); }
-export async function remove(table: string, id: string) { await (await db()).runAsync(`DELETE FROM ${table} WHERE id=?`, id); }
+export async function remove(table: string, id: string) {
+  const d = await db();
+  // Earlier weigh-ins are read-only history (see core/weightPolicy).
+  if (table === 'weights') assertWeightDelete(await d.getFirstAsync<WeightEntry>('SELECT * FROM weights WHERE id=?', id), dayKey());
+  await d.runAsync(`DELETE FROM ${table} WHERE id=?`, id);
+}
 
 export type WorkoutBundle = { workout: Workout; exercises: { link: WorkoutExercise; sets: WorkoutSet[] }[] };
 export type OpenWorkout = Workout & { total_sets: number; completed_sets: number };
@@ -307,7 +313,28 @@ export const repo = {
   setMissionCompletion: async (id: string, day: string, completed: boolean) => { const d = await db(); if (completed) await d.runAsync('INSERT OR IGNORE INTO mission_completions VALUES (?,?,?)', uid(), id, day); else await d.runAsync('DELETE FROM mission_completions WHERE mission_id=? AND day=?', id, day); },
   setWeeklyMissionCompletion: async (id: string, week: string, completed: boolean) => { const d = await db(); if (completed) await d.runAsync('INSERT OR IGNORE INTO mission_completions VALUES (?,?,?)', uid(), id, week); else await d.runAsync('DELETE FROM mission_completions WHERE mission_id=? AND day BETWEEN ? AND ?', id, week, addDays(week, 6)); },
   weights: () => all<WeightEntry>('weights', 'ORDER BY day DESC, created_at DESC'),
-  saveWeight: (w: WeightEntry) => put('weights', w),
+  /** Low-level weigh-in write; refuses anything except today's row (see core/weightPolicy). Prefer `saveTodayWeight`. */
+  saveWeight: async (w: WeightEntry) => {
+    const d = await db();
+    await d.withExclusiveTransactionAsync(async tx => {
+      assertWeightWrite(w, await tx.getFirstAsync<WeightEntry>('SELECT * FROM weights WHERE id=?', w.id), dayKey());
+      await tx.runAsync(upsertSql('weights', Object.keys(w)), ...(Object.values(w) as (string | number | null)[]));
+    });
+  },
+  /** Adds today's weigh-in, or updates it in place when one already exists for the current local day. */
+  saveTodayWeight: async (ownerId: string, kg: number, note?: string) => {
+    const d = await db();
+    let saved: WeightEntry | null = null;
+    await d.withExclusiveTransactionAsync(async tx => {
+      const today = dayKey();
+      const entries = await tx.getAllAsync<WeightEntry>('SELECT * FROM weights WHERE day=?', today);
+      const entry = prepareTodayWeight({ entries, today, kg, note, ownerId, now: new Date().toISOString(), newId: uid });
+      assertWeightWrite(entry, await tx.getFirstAsync<WeightEntry>('SELECT * FROM weights WHERE id=?', entry.id), today);
+      await tx.runAsync(upsertSql('weights', Object.keys(entry)), ...(Object.values(entry) as (string | number | null)[]));
+      saved = entry;
+    });
+    return saved as WeightEntry | null;
+  },
   measurements: () => all<Measurement>('measurements', 'ORDER BY day DESC'),
   saveMeasurement: (m: Measurement) => put('measurements', m),
   exercises: async () => { await ensureExerciseCatalog(); return all<Exercise>('exercises', 'ORDER BY custom, name'); },

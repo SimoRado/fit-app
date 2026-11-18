@@ -2,7 +2,7 @@ import React, { memo } from 'react';
 import { Pressable, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from './LocalizedText';
-import { fonts, type Palette } from './theme';
+import { fonts, type Palette, brand } from './theme';
 import { isLight, usePalette } from './voltKit';
 import { cellState, monthWeeks, percentLabel, type CellState, type HistoryDay } from '../core/habitHistory';
 import { fromDay } from '../core/date';
@@ -15,10 +15,10 @@ import { fromDay } from '../core/date';
 export function historyColors(p: Readonly<Palette>) {
   const light = isLight(p);
   return {
-    fill: light ? ['#E3ECFA', '#C9E3FF', '#9CCBFF', '#1D2E8F'] : ['rgba(156,203,255,0.10)', 'rgba(156,203,255,0.30)', 'rgba(156,203,255,0.60)', '#9CCBFF'],
-    ink: light ? ['#4A5679', '#0B1446', '#0B1446', '#FFFFFF'] : ['#A8B0C8', '#EEF6FF', '#EEF6FF', '#0B1446'],
+    fill: light ? ['#E3ECFA', brand.lilac, brand.lavender, brand.violet] : ['rgba(185,138,240,0.10)', 'rgba(185,138,240,0.30)', 'rgba(185,138,240,0.60)', brand.lavender],
+    ink: light ? ['#4A5679', brand.ink, brand.ink, '#FFFFFF'] : ['#A8B0C8', brand.mist, brand.mist, brand.ink],
     outline: light ? '#CCDAEE' : 'rgba(255,255,255,0.14)',
-    selected: light ? '#0B1446' : '#EEF6FF',
+    selected: light ? brand.ink : brand.mist,
   };
 }
 export type HistoryColors = ReturnType<typeof historyColors>;

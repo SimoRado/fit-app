@@ -13,7 +13,7 @@ import { useApp } from '../state/app';
 import { useSubscription } from '../state/subscriptions';
 import { canShareFiles, shareFile, writePng } from '../services/shareImage';
 import { Page, message } from '../ui/components';
-import { fonts } from '../ui/theme';
+import { fonts, brand } from '../ui/theme';
 import { useReducedMotion } from '../ui/motion';
 import { MotionPressable } from '../ui/MotionPressable';
 import { CircleButton, Segmented, isLight, usePalette } from '../ui/voltKit';
@@ -146,7 +146,7 @@ export default function Motivation() {
       </Animated.View>
       : <Animated.View key="discover" entering={reduced ? undefined : FadeIn.duration(220)} style={{ gap: 14 }}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -18 }} contentContainerStyle={{ paddingHorizontal: 18, gap: 6 }}>
-          {categories.map(option => { const on = option === category; return <MotionPressable key={option} selected={on} pressScale={0.95} accessibilityRole="radio" accessibilityState={{ selected: on }} onPress={() => setCategory(option)} style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: on ? (light ? p.text : p.blue) : p.c8, borderWidth: 1, borderColor: on ? 'transparent' : p.c8Line }}><Text style={{ color: on ? (light ? '#FFFFFF' : '#0B1446') : p.text, fontFamily: fonts.bold, fontSize: 12 }}>{option}</Text></MotionPressable>; })}
+          {categories.map(option => { const on = option === category; return <MotionPressable key={option} selected={on} pressScale={0.95} accessibilityRole="radio" accessibilityState={{ selected: on }} onPress={() => setCategory(option)} style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: on ? (light ? p.text : p.blue) : p.c8, borderWidth: 1, borderColor: on ? 'transparent' : p.c8Line }}><Text style={{ color: on ? (light ? '#FFFFFF' : brand.ink) : p.text, fontFamily: fonts.bold, fontSize: 12 }}>{option}</Text></MotionPressable>; })}
         </ScrollView>
 
         <View style={{ width: cardWidth, height: cardHeight + 14, alignSelf: 'center' }}>

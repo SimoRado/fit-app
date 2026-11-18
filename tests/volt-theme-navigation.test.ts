@@ -9,44 +9,45 @@ const source = (path: string) => readFileSync(join(process.cwd(), path), 'utf8')
 afterEach(() => setAppearancePalette('shore'));
 
 describe('Volt appearance foundation', () => {
-  it('uses the Shore values shown in the light reference', () => {
+  it('uses the Lotus Shore values from the final prototype (html.x-f.t-shore)', () => {
     const shore = getAppearancePalette('shore');
-    expect(shore.bg).toBe('#F5F9FF');
+    expect(shore.light).toBe(true);
+    expect(shore.bg).toBe('#F3F8FF');
     expect(shore.card).toBe('#FFFFFF');
-    expect(shore.card2).toBe('#EEF6FF');
-    expect(shore.elevated).toBe('#DDEAFB');
-    expect(shore.text).toBe('#0B1446');
-    expect(shore.muted).toBe('#4A5679');
-    expect(shore.accent).toBe('#1D2E8F');
-    expect(shore.titleAccent).toBe('#1D2E8F');
-    expect(shore.blue).toBe('#9CCBFF');
-    expect(shore.lime).toBe('#DFFF1F');
+    expect(shore.card2).toBe('#F1EBFC');
+    expect(shore.elevated).toBe('#E8DCF8');
+    expect(shore.text).toBe('#2A0950');
+    expect(shore.muted).toBe('#5B5075');
+    expect(shore.accent).toBe('#7E30E1');
+    expect(shore.titleAccent).toBe('#7E30E1');
+    expect(shore.blue).toBe('#B98AF0');
+    expect(shore.lime).toBe('#E26EE5');
   });
 
-  it('uses the OLED Abyss values and dark foregrounds on lime surfaces', () => {
+  it('uses the Lotus Abyss values and dark ink on orchid surfaces', () => {
     const abyss = getAppearancePalette('abyss');
-    expect(abyss.bg).toBe('#000000');
-    expect(abyss.card).toBe('#0B0E1A');
-    expect(abyss.card2).toBe('#141A2E');
-    expect(abyss.elevated).toBe('#1E2642');
-    expect(abyss.text).toBe('#EEF6FF');
-    expect(abyss.muted).toBe('#A8B0C8');
-    expect(abyss.accent).toBe('#9CCBFF');
-    expect(abyss.titleAccent).toBe('#DFFF1F');
-    expect(abyss.accentInk).toBe('#0B1446');
-    expect(abyss.lime).toBe('#DFFF1F');
-    expect(abyss.mint).toBe('#9CCBFF');
-    expect(abyss.navActiveIcon).toBe('#0B1446');
-    expect(abyss.softLimeText).toBe('#DFFF1F');
+    expect(abyss.light).toBe(false);
+    expect(abyss.bg).toBe('#12061F');
+    expect(abyss.card).toBe('#1C0B30');
+    expect(abyss.card2).toBe('#261041');
+    expect(abyss.elevated).toBe('#311654');
+    expect(abyss.text).toBe('#F3F8FF');
+    expect(abyss.muted).toBe('#C7B8E3');
+    expect(abyss.accent).toBe('#E9A2EC');
+    expect(abyss.titleAccent).toBe('#E26EE5');
+    expect(abyss.accentInk).toBe('#2A0950');
+    expect(abyss.lime).toBe('#E26EE5');
+    expect(abyss.navActiveIcon).toBe('#2A0950');
+    expect(abyss.candyInk).toBe('#2A0950');
   });
 
   it('replaces the current palette object when the selected appearance changes', () => {
     const original = colors;
     setAppearancePalette('abyss');
     expect(colors).not.toBe(original);
-    expect(colors.bg).toBe('#000000');
+    expect(colors.bg).toBe('#12061F');
     setAppearancePalette('shore');
-    expect(colors.bg).toBe('#F5F9FF');
+    expect(colors.bg).toBe('#F3F8FF');
   });
 
   it('parses saved appearance values and safely defaults unknown values to Shore', () => {

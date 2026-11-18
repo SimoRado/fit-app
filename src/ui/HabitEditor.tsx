@@ -242,7 +242,7 @@ export function HabitEditor({ habit, startDay, initialMode = 'time', close, onSa
       </View>}
     </ScrollView>
 
-    <View style={{ paddingHorizontal: 20, paddingTop: 10, paddingBottom: insets.bottom + 14, gap: 8, borderTopWidth: 1, borderTopColor: p.c8Line, backgroundColor: p.bg === '#F5F9FF' ? p.c8 : p.card }}>
+    <View style={{ paddingHorizontal: 20, paddingTop: 10, paddingBottom: insets.bottom + 14, gap: 8, borderTopWidth: 1, borderTopColor: p.c8Line, backgroundColor: p.light ? p.c8 : p.card }}>
       {error ? <Text accessibilityRole="alert" style={{ color: p.danger }}>{error}</Text> : null}
       <MotionPressable pressScale={0.98} accessibilityRole="button" disabled={busy} onPress={() => { void save(); }}
         style={{ minHeight: 56, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 20, backgroundColor: p.text, opacity: busy ? 0.6 : 1 }}>

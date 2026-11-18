@@ -10,7 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Purchases from 'react-native-purchases';
 import { Text } from './LocalizedText';
 import { MotionPressable } from './MotionPressable';
-import { fonts } from './theme';
+import { fonts, brand } from './theme';
 import { usePalette, type VoltIcon } from './voltKit';
 import { useSubscription } from '../state/subscriptions';
 import { subscriptionPackages } from '../services/subscriptionLogic';
@@ -117,7 +117,7 @@ export function Paywall({ onClose }: { onClose: () => void }) {
     <View style={{ alignItems: 'center', marginTop: 4 }}>
       <Text accessibilityRole="header" style={{ color: p.text, fontFamily: fonts.displayHeavy, fontSize: 36, lineHeight: 38, letterSpacing: -1.2, textAlign: 'center' }}>{subscription.isPremium ? 'Your whole\nroutine is' : 'Your whole\nroutine,'}</Text>
       <View style={{ marginTop: 2, paddingHorizontal: 8, borderRadius: 12, backgroundColor: p.lime }}>
-        <Text style={{ color: '#0B1446', fontFamily: fonts.displayHeavy, fontSize: 36, lineHeight: 40, letterSpacing: -1.2 }}>unlocked.</Text>
+        <Text style={{ color: brand.ink, fontFamily: fonts.displayHeavy, fontSize: 36, lineHeight: 40, letterSpacing: -1.2 }}>unlocked.</Text>
       </View>
     </View>
   </>;
@@ -148,7 +148,7 @@ export function Paywall({ onClose }: { onClose: () => void }) {
 
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', rowGap: 14, marginTop: 20 }}>
         {benefits.map(item => <View key={item.title} style={{ width: '50%', flexDirection: 'row', gap: 10, paddingRight: 8 }}>
-          <View style={{ width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: p.bg === '#F5F9FF' ? '#E4EFFD' : p.soft1 }}><Ionicons name={item.icon} size={20} color={p.accent}/></View>
+          <View style={{ width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: p.light ? '#E4EFFD' : p.soft1 }}><Ionicons name={item.icon} size={20} color={p.accent}/></View>
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={{ color: p.text, fontFamily: fonts.displayHeavy, fontSize: 14.5 }}>{item.title}</Text>
             <Text style={{ color: p.muted, fontSize: 12.5, lineHeight: 17 }}>{item.text}</Text>
@@ -188,21 +188,21 @@ export function Paywall({ onClose }: { onClose: () => void }) {
 
 function PrimaryButton({ title, onPress, disabled, small }: { title: string; onPress: () => void; disabled?: boolean; small?: boolean }) {
   const p = usePalette();
-  const light = p.bg === '#F5F9FF';
+  const light = p.light;
   return <MotionPressable pressScale={0.98} accessibilityRole="button" accessibilityState={{ disabled: !!disabled }} disabled={disabled} onPress={onPress}
-    style={{ minHeight: small ? 46 : 58, paddingHorizontal: 24, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: light ? '#0B1446' : p.lime, opacity: disabled ? 0.6 : 1, alignSelf: small ? 'center' : 'stretch' }}>
-    <Text style={{ color: light ? '#FFFFFF' : '#0B1446', fontFamily: fonts.displayHeavy, fontSize: small ? 15 : 18, letterSpacing: -0.3 }}>{title}</Text>
+    style={{ minHeight: small ? 46 : 58, paddingHorizontal: 24, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: light ? brand.ink : p.lime, opacity: disabled ? 0.6 : 1, alignSelf: small ? 'center' : 'stretch' }}>
+    <Text style={{ color: light ? '#FFFFFF' : brand.ink, fontFamily: fonts.displayHeavy, fontSize: small ? 15 : 18, letterSpacing: -0.3 }}>{title}</Text>
   </MotionPressable>;
 }
 
 function PlanCard({ plan, selected, badge, onPress }: { plan: Plan; selected: boolean; badge: string | null; onPress: () => void }) {
   const p = usePalette();
-  const light = p.bg === '#F5F9FF';
-  const navy = light ? '#0B1446' : p.lime;
+  const light = p.light;
+  const navy = light ? brand.ink : p.lime;
   return <MotionPressable selected={selected} pressScale={0.98} accessibilityRole="radio" accessibilityState={{ selected }} accessibilityLabel={`${plan.kind === 'annual' ? 'Yearly' : 'Monthly'}, ${plan.perMonth} per month. ${planSubtitle(plan)}`} onPress={onPress}
     style={{ flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 78, paddingVertical: 14, paddingHorizontal: 16, borderRadius: 22, backgroundColor: p.c8, borderWidth: 2, borderColor: selected ? navy : light ? 'transparent' : p.c8Line, ...(light ? { shadowColor: p.navShadow, shadowOpacity: selected ? 0.08 : 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 2 } : {}) }}>
     <View style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: selected ? navy : light ? '#E4EAF5' : p.card2 }}>
-      {selected && <View style={{ width: 11, height: 11, borderRadius: 6, backgroundColor: light ? '#FFFFFF' : '#0B1446' }}/>}
+      {selected && <View style={{ width: 11, height: 11, borderRadius: 6, backgroundColor: light ? '#FFFFFF' : brand.ink }}/>}
     </View>
     <View style={{ flex: 1, minWidth: 0 }}>
       <Text style={{ color: p.text, fontFamily: fonts.displayHeavy, fontSize: 18 }}>{plan.kind === 'annual' ? 'Yearly' : 'Monthly'}</Text>
@@ -213,7 +213,7 @@ function PlanCard({ plan, selected, badge, onPress }: { plan: Plan; selected: bo
       <Text style={{ color: p.muted, fontSize: 12 }}>/ month</Text>
     </View>
     {badge && <View style={{ position: 'absolute', top: -12, right: 40, paddingHorizontal: 10, paddingVertical: 3, borderRadius: 999, backgroundColor: p.lime }}>
-      <Text style={{ color: '#0B1446', fontFamily: fonts.bold, fontSize: 12 }}>{badge}</Text>
+      <Text style={{ color: brand.ink, fontFamily: fonts.bold, fontSize: 12 }}>{badge}</Text>
     </View>}
   </MotionPressable>;
 }
@@ -226,7 +226,7 @@ function Timeline({ plan }: { plan: Plan }) {
       <View style={{ width: 22, alignItems: 'center', alignSelf: 'stretch', justifyContent: 'center' }}>
         {index > 0 && <View style={{ position: 'absolute', top: 0, height: '50%', width: 1.5, backgroundColor: p.borderStrong }}/>}
         {index < steps.length - 1 && <View style={{ position: 'absolute', bottom: 0, height: '50%', width: 1.5, backgroundColor: p.borderStrong }}/>}
-        <View style={{ width: 16, height: 16, borderRadius: 8, borderWidth: 2, borderColor: index === 0 ? '#0B1446' : p.borderStrong, backgroundColor: index === 0 ? p.lime : p.bg }}/>
+        <View style={{ width: 16, height: 16, borderRadius: 8, borderWidth: 2, borderColor: index === 0 ? brand.ink : p.borderStrong, backgroundColor: index === 0 ? p.lime : p.bg }}/>
       </View>
       <Text style={{ width: 92, marginLeft: 12, color: p.text, fontFamily: fonts.displayHeavy, fontSize: 14.5 }}>{step.label}</Text>
       <View style={{ width: 1, alignSelf: 'stretch', backgroundColor: p.border, marginRight: 12 }}/>

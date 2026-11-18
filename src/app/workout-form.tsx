@@ -19,7 +19,7 @@ import { AddSetRow, SetHeader, SetRow } from '../ui/SetRow';
 import { activeExerciseIndex, formatPreviousSet, previousPerformance, removeAt, restRemaining, workoutTotals } from '../core/routineDraft';
 import { moveInList } from '../core/gymSchedule';
 import { useReducedMotion } from '../ui/motion';
-import { colors, fonts } from '../ui/theme';
+import { colors, fonts, brand } from '../ui/theme';
 import { CircleButton, EmptyAction, MenuItem, StatTrio, usePalette } from '../ui/voltKit';
 import { ExerciseBrowser } from '../ui/ExerciseBrowser';
 import { interstitialManager } from '../services/adMob';
@@ -380,7 +380,7 @@ export default function WorkoutForm() {
 
   return <Page title={live ? '' : draft.original?.completed ? 'Edit workout' : 'Log workout'}
     headerContent={live ? <LiveTimer timer={timerState(draft)}/> : undefined}
-    headerAction={live && ready ? <Pressable accessibilityRole="button" accessibilityLabel="Finish workout" onPress={() => setFinishing(true)} style={({ pressed }) => ({ minWidth: 72, minHeight: 36, paddingHorizontal: 16, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.g2 === '#0B1446' ? '#0B1446' : colors.g1, transform: [{ scale: pressed ? 0.95 : 1 }] })}><Text style={{ color: colors.g2 === '#0B1446' ? '#FFFFFF' : colors.plInk, fontFamily: fonts.bold, fontSize: 13 }}>Finish</Text></Pressable> : undefined}
+    headerAction={live && ready ? <Pressable accessibilityRole="button" accessibilityLabel="Finish workout" onPress={() => setFinishing(true)} style={({ pressed }) => ({ minWidth: 72, minHeight: 36, paddingHorizontal: 16, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.g2 === brand.ink ? brand.ink : colors.g1, transform: [{ scale: pressed ? 0.95 : 1 }] })}><Text style={{ color: colors.g2 === brand.ink ? '#FFFFFF' : colors.plInk, fontFamily: fonts.bold, fontSize: 13 }}>Finish</Text></Pressable> : undefined}
     footer={ready ? <>
       <View style={{ flex: 1 }}><Button title="+ Exercise" kind="ghost" disabled={!exercisesReady} onPress={() => { setEditingExercise(null); setPicker(true); }}/></View>
       <View style={{ flex: 1.3 }}><Button title={live ? '✓  Complete' : saving ? 'Saving…' : 'Save workout'} disabled={saving} onPress={() => setFinishing(true)}/></View>
@@ -390,7 +390,7 @@ export default function WorkoutForm() {
       <ProgressBar value={totals.totalSets ? totals.doneSets / totals.totalSets : 0}/>
       {live && <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
         <Text numberOfLines={1} style={{ flexShrink: 1, color: draft.sessionStatus === 'paused' ? colors.accent : colors.muted, fontFamily: fonts.bold, fontSize: 10.5, letterSpacing: 0.8, textTransform: 'uppercase' }}>{draft.sessionStatus === 'paused' ? 'Paused · ' : ''}{draft.name || 'Workout in progress'}</Text>
-        <Pressable accessibilityRole="button" accessibilityLabel={draft.sessionStatus === 'paused' ? 'Resume workout timer' : 'Pause workout timer'} disabled={timerActionBusy} onPress={togglePause} hitSlop={8} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: draft.sessionStatus === 'paused' ? colors.g1 : colors.bg === '#F5F9FF' ? colors.soft1 : colors.card2, opacity: timerActionBusy ? 0.5 : 1 }}>
+        <Pressable accessibilityRole="button" accessibilityLabel={draft.sessionStatus === 'paused' ? 'Resume workout timer' : 'Pause workout timer'} disabled={timerActionBusy} onPress={togglePause} hitSlop={8} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: draft.sessionStatus === 'paused' ? colors.g1 : colors.light ? colors.soft1 : colors.card2, opacity: timerActionBusy ? 0.5 : 1 }}>
           <Ionicons name={draft.sessionStatus === 'paused' ? 'play' : 'pause'} size={12} color={draft.sessionStatus === 'paused' ? colors.plInk : colors.text}/>
           <Text style={{ color: draft.sessionStatus === 'paused' ? colors.plInk : colors.text, fontFamily: fonts.bold, fontSize: 11.5 }}>{draft.sessionStatus === 'paused' ? 'Resume' : 'Pause'}</Text>
         </Pressable>
@@ -502,10 +502,10 @@ function RestTimer({ endsAt, onAdjust, onSkip }: { endsAt: number; onAdjust: (de
   const done = seconds <= 0;
   const chip = { width: 34, height: 34, borderRadius: 17, alignItems: 'center' as const, justifyContent: 'center' as const, backgroundColor: 'rgba(255,255,255,0.14)' };
   return <Animated.View entering={reduced ? undefined : FadeInDown.duration(220)} exiting={reduced ? undefined : FadeOut.duration(160)} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10, paddingVertical: 8, paddingLeft: 16, paddingRight: 8, borderRadius: 22, backgroundColor: done ? p.lime : p.heroCard }}>
-    <Ionicons name={done ? 'notifications' : 'timer-outline'} size={18} color={done ? '#0B1446' : '#FFFFFF'}/>
-    <Text accessibilityLiveRegion="polite" style={{ flex: 1, color: done ? '#0B1446' : '#FFFFFF', fontFamily: fonts.displayHeavy, fontSize: 18, fontVariant: ['tabular-nums'] }}>{done ? 'Rest over' : `Rest ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`}</Text>
+    <Ionicons name={done ? 'notifications' : 'timer-outline'} size={18} color={done ? brand.ink : '#FFFFFF'}/>
+    <Text accessibilityLiveRegion="polite" style={{ flex: 1, color: done ? brand.ink : '#FFFFFF', fontFamily: fonts.displayHeavy, fontSize: 18, fontVariant: ['tabular-nums'] }}>{done ? 'Rest over' : `Rest ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`}</Text>
     {!done && <Pressable accessibilityRole="button" accessibilityLabel="Rest 15 seconds less" onPress={() => onAdjust(-15)} style={chip}><Text style={{ color: '#FFFFFF', fontFamily: fonts.bold, fontSize: 11 }}>−15</Text></Pressable>}
     {!done && <Pressable accessibilityRole="button" accessibilityLabel="Rest 15 seconds more" onPress={() => onAdjust(15)} style={chip}><Text style={{ color: '#FFFFFF', fontFamily: fonts.bold, fontSize: 11 }}>+15</Text></Pressable>}
-    <Pressable accessibilityRole="button" accessibilityLabel={done ? 'Dismiss rest timer' : 'Skip rest'} onPress={onSkip} style={{ paddingHorizontal: 12, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: done ? '#0B1446' : '#DFFF1F' }}><Text style={{ color: done ? '#FFFFFF' : '#0B1446', fontFamily: fonts.bold, fontSize: 12 }}>{done ? 'OK' : 'Skip'}</Text></Pressable>
+    <Pressable accessibilityRole="button" accessibilityLabel={done ? 'Dismiss rest timer' : 'Skip rest'} onPress={onSkip} style={{ paddingHorizontal: 12, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: done ? brand.ink : brand.orchid }}><Text style={{ color: done ? '#FFFFFF' : brand.ink, fontFamily: fonts.bold, fontSize: 12 }}>{done ? 'OK' : 'Skip'}</Text></Pressable>
   </Animated.View>;
 }

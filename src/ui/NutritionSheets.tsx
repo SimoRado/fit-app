@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Link } from 'expo-router';
 import { Text } from './LocalizedText';
 import { Button, Field, confirm, message } from './components';
-import { colors, fonts, radii } from './theme';
+import { colors, fonts, radii, brand } from './theme';
 import { MotionPressable } from './MotionPressable';
 import { dayKey, validDay } from '../core/date';
 import { convertVolumeQuantity, displayQuantity, fromGrams, primaryUnits, parseQuantity, servingLabel, toGrams, unitOptions, type FoodUnit } from '../core/foodUnits';
@@ -50,10 +50,10 @@ export function Segmented<T extends string>({ options, value, onChange, label, t
   const offset = useSharedValue(index * segment);
   useEffect(() => { offset.value = reduced ? index * segment : withTiming(index * segment, { duration: 220, easing: Easing.out(Easing.cubic) }); }, [index, segment, offset, reduced]);
   const thumb = useAnimatedStyle(() => ({ transform: [{ translateX: offset.value }] }));
-  const light = colors.bg === '#F5F9FF';
+  const light = colors.light;
   const lime = tone === 'lime';
   return <View onLayout={event => setWidth(event.nativeEvent.layout.width)} accessibilityRole="tablist" style={{ flexDirection: 'row', padding: 4, borderRadius: radii.pill, backgroundColor: light ? colors.soft1 : colors.card2, borderWidth: 1, borderColor: colors.c8Line }}>
-    {width > 0 && found >= 0 && <Animated.View pointerEvents="none" style={[{ position: 'absolute', top: 4, bottom: 4, left: 4, width: segment, borderRadius: radii.pill, backgroundColor: lime ? colors.sun : colors.c8, ...(lime || !light ? {} : { shadowColor: '#0B1446', shadowOpacity: 0.08, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1 }) }, thumb]}/>}
+    {width > 0 && found >= 0 && <Animated.View pointerEvents="none" style={[{ position: 'absolute', top: 4, bottom: 4, left: 4, width: segment, borderRadius: radii.pill, backgroundColor: lime ? colors.sun : colors.c8, ...(lime || !light ? {} : { shadowColor: brand.ink, shadowOpacity: 0.08, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1 }) }, thumb]}/>}
     {options.map(item => {
       const on = item === value;
       return <Pressable key={item} accessibilityRole="tab" accessibilityLabel={accessibility ? accessibility(item) : label(item)} accessibilityState={{ selected: on }} onPress={() => onChange(item)} style={{ flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', paddingHorizontal: compact ? 2 : 8, minWidth: 0 }}>
@@ -389,7 +389,7 @@ export function FoodSheet({ entry, meal: initialMeal, day: initialDay, close, on
       {canSave && <View style={{ gap: 8 }}><Text style={sectionLabel}>MEAL</Text><Segmented options={meals} value={meal} onChange={setMeal} label={title} compact/></View>}
       {entry && <Button title="Delete entry" kind="danger" onPress={remove}/>}
     </ScrollView>
-    {(canSave || !!error) && <View style={{ paddingHorizontal: 20, paddingTop: 10, paddingBottom: insets.bottom + 14, gap: 8, borderTopWidth: 1, borderTopColor: colors.c8Line, backgroundColor: colors.bg === '#F5F9FF' ? colors.c8 : colors.card }}>
+    {(canSave || !!error) && <View style={{ paddingHorizontal: 20, paddingTop: 10, paddingBottom: insets.bottom + 14, gap: 8, borderTopWidth: 1, borderTopColor: colors.c8Line, backgroundColor: colors.light ? colors.c8 : colors.card }}>
       {error ? <Text accessibilityRole="alert" style={{ color: colors.danger }}>{error}</Text> : null}
       {canSave && <Button title={busy ? 'Saving…' : entry ? 'Save entry' : 'Add food'} disabled={busy} onPress={save}/>}
     </View>}

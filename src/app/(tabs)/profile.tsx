@@ -22,7 +22,7 @@ import { Page, message } from '../../ui/components';
 import { Text } from '../../ui/LocalizedText';
 import { MotionPressable } from '../../ui/MotionPressable';
 import { AppearanceSheet, EditProfileSheet, GoalsSheet, LanguageSheet, NotificationsSheet, NutritionTargetsSheet, languageNames, notificationsOn } from '../../ui/ProfileSheets';
-import { fonts } from '../../ui/theme';
+import { fonts, brand } from '../../ui/theme';
 import { ScreenTop, cardShadow, usePalette, useEntering, type VoltIcon } from '../../ui/voltKit';
 import Animated from 'react-native-reanimated';
 
@@ -46,7 +46,7 @@ function SettingsRow({ icon, title, value, onPress, danger, last, index }: { ico
   return <Animated.View entering={entering}>
     <MotionPressable pressScale={0.98} accessibilityRole="button" accessibilityLabel={value ? `${title}, ${value}` : title} onPress={onPress}
       style={{ minHeight: 62, flexDirection: 'row', alignItems: 'center', gap: 14, borderBottomWidth: last ? 0 : 1, borderBottomColor: p.border }}>
-      <View style={{ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: danger ? (p.bg === '#F5F9FF' ? '#FDECEA' : 'rgba(255,138,138,0.12)') : p.bg === '#F5F9FF' ? p.paleBlue : p.soft1 }}><Ionicons name={icon} size={18} color={tint}/></View>
+      <View style={{ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: danger ? (p.light ? '#FDECEA' : 'rgba(255,138,138,0.12)') : p.light ? p.paleBlue : p.soft1 }}><Ionicons name={icon} size={18} color={tint}/></View>
       <Text numberOfLines={1} style={{ flex: 1, color: danger ? p.danger : p.text, fontFamily: fonts.semibold, fontSize: 14.5 }}>{title}</Text>
       {!!value && <Text numberOfLines={1} style={{ maxWidth: '42%', color: p.muted, fontFamily: fonts.medium, fontSize: 12 }}>{value}</Text>}
       {!danger && <Ionicons name="chevron-forward" size={16} color={p.muted}/>}
@@ -128,7 +128,7 @@ export default function ProfileScreen() {
   return <Page title="">
     <ScreenTop label="Profile"/>
     <View style={{ alignItems: 'center', gap: 8, paddingTop: 4, paddingBottom: 6 }}>
-      <MotionPressable pressScale={0.95} accessibilityRole="button" accessibilityLabel="Edit profile" onPress={() => setSheet('edit')} style={{ width: 92, height: 92, borderRadius: 46, alignItems: 'center', justifyContent: 'center', backgroundColor: p.bg === '#F5F9FF' ? p.soft1 : p.card2 }}>
+      <MotionPressable pressScale={0.95} accessibilityRole="button" accessibilityLabel="Edit profile" onPress={() => setSheet('edit')} style={{ width: 92, height: 92, borderRadius: 46, alignItems: 'center', justifyContent: 'center', backgroundColor: p.light ? p.soft1 : p.card2 }}>
         <Text style={{ color: p.accent, fontFamily: fonts.displayHeavy, fontSize: 36 }}>{initial}</Text>
         <View style={{ position: 'absolute', right: 2, bottom: 6, width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: p.g1, borderWidth: 2, borderColor: p.bg }}><Ionicons name="pencil" size={12} color={p.plInk}/></View>
       </MotionPressable>
@@ -153,9 +153,9 @@ export default function ProfileScreen() {
       <View style={{ width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: p.paleBlue }}><CubyMark size={30} tile={false}/></View>
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={{ color: '#FFFFFF', fontFamily: fonts.displayHeavy, fontSize: 15 }}>{subscription.isPremium ? 'Cubyfit Pro' : 'Try Cubyfit Pro'}</Text>
-        <Text numberOfLines={1} style={{ color: '#C9E3FF', fontSize: 11.5 }}>{subscription.isPremium ? 'Active · manage your subscription' : proTeaser}</Text>
+        <Text numberOfLines={1} style={{ color: brand.lilac, fontSize: 11.5 }}>{subscription.isPremium ? 'Active · manage your subscription' : proTeaser}</Text>
       </View>
-      <View style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: p.lime }}><Text style={{ color: '#0B1446', fontFamily: fonts.bold, fontSize: 12 }}>{subscription.isPremium ? 'Manage' : proTrial ? 'Start free' : 'See plans'}</Text></View>
+      <View style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: p.lime }}><Text style={{ color: brand.ink, fontFamily: fonts.bold, fontSize: 12 }}>{subscription.isPremium ? 'Manage' : proTrial ? 'Start free' : 'See plans'}</Text></View>
     </MotionPressable>}
 
     <View style={{ marginTop: 10 }}>

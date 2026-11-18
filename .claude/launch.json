@@ -1,0 +1,6 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "prototype", "runtimeExecutable": "python", "runtimeArgs": ["-m", "http.server", "8765", "--bind", "127.0.0.1", "--directory", "C:/Users/User/AppData/Local/Temp/claude/e71533268d0db103/095c4aa5-88c3-4d7a-9df9-9197930e3444/scratchpad/proto"], "port": 8765 }
+  ]
+}
