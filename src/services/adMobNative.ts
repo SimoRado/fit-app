@@ -3,7 +3,7 @@ import type { AdsAdapter, ConsentResult, InterstitialHandle, AdEvent } from './i
 import { runtimeSignals } from '../core/runtime';
 import { canUseAdMobNative } from './adRuntime';
 
-export async function loadAdMobNative(): Promise<AdsAdapter | null> {
+export async function loadAdMobNative(debugEeaTestDeviceId?: string): Promise<AdsAdapter | null> {
   const names = ['RNGoogleMobileAdsModule', 'RNGoogleMobileAdsConsentModule', 'RNGoogleMobileAdsInterstitialModule'];
   const runtime = runtimeSignals().kind;
   if (runtime === 'expo-go' || Platform.OS !== 'android') return null;
@@ -20,9 +20,12 @@ export async function loadAdMobNative(): Promise<AdsAdapter | null> {
       consentFormAvailable: info.isConsentFormAvailable,
     });
     return {
-      gatherConsent: async () => consentResult(await ads.AdsConsent.gatherConsent()),
+      gatherConsent: async () => consentResult(await ads.AdsConsent.gatherConsent(
+        debugEeaTestDeviceId ? { debugGeography: ads.AdsConsentDebugGeography.EEA, testDeviceIdentifiers: [debugEeaTestDeviceId] } : undefined,
+      )),
       cachedConsent: async () => consentResult(await ads.AdsConsent.getConsentInfo()),
       privacyOptions: async () => consentResult(await ads.AdsConsent.showPrivacyOptionsForm()),
+      resetConsentForTesting: () => ads.AdsConsent.reset(),
       initialize: async () => { await ads.default().initialize(); },
       createInterstitial: (unitId): InterstitialHandle => {
         const ad = ads.InterstitialAd.createForAdRequest(unitId);

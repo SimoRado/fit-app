@@ -8,6 +8,7 @@ import { useVoltTheme } from '../../ui/VoltThemeProvider';
 import { View } from 'react-native';
 
 export default function Welcome() { useVoltTheme(); return <AuthPage title={'Grow a little,\nevery day'} detail="Habits, training and progress that adapt to your goals.">
+  <Text style={{ textAlign: 'center', color: colors.muted, fontSize: 12 }}>Cubyfit is for adults aged 18 and older.</Text>
   <View style={{ flexDirection: 'row', padding: 4, borderRadius: 999, backgroundColor: colors.bg === '#F5F9FF' ? colors.soft1 : colors.card2 }}><Link href="/(auth)/sign-up" accessibilityRole="button" style={{ flex: 1, minHeight: 44, paddingTop: 13, borderRadius: 999, backgroundColor: colors.c8, color: colors.text, fontFamily: fonts.bold, textAlign: 'center' }}>Sign up</Link><Link href="/(auth)/sign-in" accessibilityRole="button" style={{ flex: 1, minHeight: 44, paddingTop: 13, color: colors.muted, fontFamily: fonts.bold, textAlign: 'center' }}>Log in</Link></View>
   <SocialAuth/>
   <Text style={{ textAlign: 'center', color: colors.muted, fontFamily: fonts.bold, fontSize: 11, letterSpacing: .7 }}>OR USE EMAIL</Text>

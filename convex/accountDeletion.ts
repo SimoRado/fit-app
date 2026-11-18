@@ -2,7 +2,7 @@ import { internal } from './_generated/api';
 import { internalMutation, internalQuery, mutation, query } from './_generated/server';
 import { v } from 'convex/values';
 
-const privateTables = ['profiles', 'habits', 'habitCompletions', 'missions', 'missionCompletions', 'exercises', 'routines', 'workouts', 'weights', 'measurements', 'restDays', 'favorites', 'preferences', 'syncRecords', 'syncOperations'] as const;
+const privateTables = ['ageRejections', 'eligibility', 'profiles', 'habits', 'habitCompletions', 'missions', 'missionCompletions', 'exercises', 'routines', 'workouts', 'weights', 'measurements', 'restDays', 'favorites', 'preferences', 'syncRecords', 'syncOperations'] as const;
 const stage = v.union(v.literal('cloud_pending'), v.literal('revenuecat_pending'), v.literal('clerk_pending'));
 
 export const begin = internalMutation({ args: { owner: v.string(), clerkUserId: v.string(), receipt: v.string() }, handler: async (ctx, { owner, clerkUserId, receipt }) => {

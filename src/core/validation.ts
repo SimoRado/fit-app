@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { dayKey, fromDay, validDay } from './date';
+import { dayKey, validDay } from './date';
+import { ageOnDay } from '../../shared/ageEligibility';
 
 const profileSchema = z.object({
   name: z.string().trim().min(1),
@@ -12,9 +13,8 @@ const profileSchema = z.object({
 export type ProfileValues = z.infer<typeof profileSchema>;
 export function validateProfileValues(input: unknown, today = dayKey()): ProfileValues {
   const profile = profileSchema.parse(input);
-  if (profile.birth_date >= today) throw new Error('Enter a valid date of birth for someone aged 0–120.');
-  const birth = fromDay(profile.birth_date), current = fromDay(today);
-  const age = current.getFullYear() - birth.getFullYear() - (current.getMonth() < birth.getMonth() || (current.getMonth() === birth.getMonth() && current.getDate() < birth.getDate()) ? 1 : 0);
-  if (age > 120) throw new Error('Enter a valid date of birth for someone aged 0–120.');
+  const age = ageOnDay(profile.birth_date, today);
+  if (age === null) throw new Error('Enter a valid date of birth.');
+  if (age < 18) throw new Error('Cubyfit is for adults aged 18 and older.');
   return profile;
 }

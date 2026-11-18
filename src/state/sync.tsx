@@ -17,7 +17,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
   const { userId } = useAuth();
   const { isAuthenticated } = useConvexAuth();
   const client = useConvex();
-  const { revision, refresh } = useApp();
+  const { revision, refresh, profile, legalAccepted, ageRejected } = useApp();
   const [choice, setChoice] = useState<SyncChoice>('ask');
   const [pending, setPending] = useState(0);
   const [conflicts, setConflicts] = useState(0);
@@ -40,6 +40,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
         const status = await localSyncStatus();
         if (!current()) return;
         setChoice(status.choice); setPending(status.pending); setConflicts(status.conflicts); setFailureCount(status.failureCount); setFailures(status.failures); setLastCheck(status.lastCheck);
+        if (ageRejected || (profile && !legalAccepted)) { setPhase('waiting'); return; }
         if (status.choice !== 'enabled') { setPhase('local'); return; }
         if (!isAuthenticated) { setPhase('waiting'); return; }
         setPhase('syncing'); setError(null);
@@ -68,7 +69,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
     const kick = setTimeout(() => { void run(); }, 1500);
     const timer = setInterval(() => { void run(); }, 20000);
     return () => { active = false; clearTimeout(kick); clearInterval(timer); };
-  }, [client, isAuthenticated, userId, revision, nonce, refresh]);
+  }, [client, isAuthenticated, userId, revision, nonce, refresh, profile, legalAccepted, ageRejected]);
 
   async function enable() { await chooseSync('enabled'); setChoice('enabled'); setNonce(value => value + 1); }
   async function keepLocal() { await chooseSync('local'); setChoice('local'); setPhase('local'); setNonce(value => value + 1); }

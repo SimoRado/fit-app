@@ -1,3 +1,5 @@
+import { ANDROID_TEST_INTERSTITIAL } from './adUnit';
+
 export type AdTestingBuildSignals = {
   debugBuild: boolean;
   internalBuild: boolean;
@@ -10,6 +12,19 @@ export function canExposeAdMobTesting(signals: AdTestingBuildSignals): boolean {
   return explicitlyInternal &&
     signals.productionAdsEnabled !== 'true' &&
     !signals.productionBuild;
+}
+
+export function umpDebugEeaDeviceId(options: {
+  debugBuild: boolean;
+  testingEnabled: boolean;
+  activeUnit: string | null;
+  enabled: string | undefined;
+  deviceId: string | undefined;
+}): string | undefined {
+  return options.debugBuild && options.testingEnabled &&
+    options.activeUnit === ANDROID_TEST_INTERSTITIAL &&
+    options.enabled === 'true' && /^[A-Fa-f0-9]{32}$/.test(options.deviceId ?? '')
+    ? options.deviceId : undefined;
 }
 
 export function canUseManualTestInterstitial(options: {

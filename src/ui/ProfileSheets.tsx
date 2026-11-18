@@ -10,7 +10,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { Text } from './LocalizedText';
 import { Button, Choices, Field, message, notify } from './components';
-import { BirthDateField } from './BirthDateField';
 import { MotionPressable } from './MotionPressable';
 import { VoltAppearanceSelector } from './volt';
 import { fonts, radii } from './theme';
@@ -283,13 +282,12 @@ export function EditProfileSheet({ close, onSaved }: { close: Close; onSaved: ()
   const p = usePalette();
   const { profile, refresh } = useApp();
   const [name, setName] = useState(profile?.name ?? '');
-  const [birth, setBirth] = useState(profile?.birth_date ?? '');
   const [experience, setExperience] = useState(profile?.experience ?? 'Beginner');
   const [busy, setBusy] = useState(false);
   async function save() {
     if (!profile || busy) return;
     try {
-      const values = validateProfileValues({ name, birth_date: birth, height_cm: profile.height_cm, start_weight: profile.start_weight, target_weight: profile.target_weight });
+      const values = validateProfileValues({ name, birth_date: profile.birth_date, height_cm: profile.height_cm, start_weight: profile.start_weight, target_weight: profile.target_weight });
       setBusy(true);
       await repo.saveProfile({ ...profile, ...values, experience });
       await syncAutoTargets(); // Age feeds the estimate.
@@ -299,7 +297,7 @@ export function EditProfileSheet({ close, onSaved }: { close: Close; onSaved: ()
   }
   return <View style={{ gap: 8 }}>
     <Field label="Display name" value={name} onChangeText={setName}/>
-    <BirthDateField value={birth} onChangeText={setBirth}/>
+    <Text style={{ color: p.muted, fontSize: 12 }}>Date of birth: {profile?.birth_date ?? 'Not recorded'}. To correct it, contact privacy@cubyfit.app.</Text>
     <Choices label="Experience" options={['Beginner', 'Intermediate', 'Advanced']} value={experience} onChange={setExperience}/>
     <View style={{ marginTop: 6 }}><Button title={busy ? 'Saving…' : 'Save profile'} disabled={busy} onPress={save}/></View>
     <Pressable accessibilityRole="button" onPress={() => close(() => router.push('/account'))} style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>

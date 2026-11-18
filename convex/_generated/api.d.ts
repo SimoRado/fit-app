@@ -10,6 +10,7 @@
 
 import type * as accountDeletion from "../accountDeletion.js";
 import type * as accountDeletionActions from "../accountDeletionActions.js";
+import type * as eligibility from "../eligibility.js";
 import type * as habits from "../habits.js";
 import type * as health from "../health.js";
 import type * as identity from "../identity.js";
@@ -29,6 +30,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   accountDeletion: typeof accountDeletion;
   accountDeletionActions: typeof accountDeletionActions;
+  eligibility: typeof eligibility;
   habits: typeof habits;
   health: typeof health;
   identity: typeof identity;

@@ -6,6 +6,7 @@ import { api } from '../convex/_generated/api';
 import { historySnapshotWins } from '../convex/syncContract';
 import { HABIT_HISTORY_CLOUD_BACKUP, heldSyncKinds, syncTables } from '../src/data/syncSchema';
 import { upsertOrder } from '../src/data/syncOrder';
+import { adultAgreement } from './eligibilityFixture';
 
 const modules = import.meta.glob('../convex/**/*.{ts,js}');
 const op = (n: number) => n.toString(16).padStart(32, '0');
@@ -16,6 +17,7 @@ const day = (patch: Record<string, unknown> = {}) => ({ id: 'profile-1:2026-11-0
 async function user() {
   const t = convexTest(schema, modules);
   const alice = t.withIdentity({ subject: 'user_A', issuer: 'https://clerk.example' });
+  await alice.mutation(api.eligibility.accept, adultAgreement(profile.birth_date));
   await alice.mutation(api.sync.apply, { kind: 'profile', clientId: profile.id, payload: JSON.stringify(profile), expectedRevision: 0, operationId: op(1) });
   return { t, alice };
 }
@@ -39,6 +41,7 @@ describe('habit_days cloud contract (source; deploy pending approval)', () => {
   it('requires the profile to be synchronized first and isolates accounts', async () => {
     const t = convexTest(schema, modules);
     const bob = t.withIdentity({ subject: 'user_B', issuer: 'https://clerk.example' });
+    await bob.mutation(api.eligibility.accept, adultAgreement(profile.birth_date));
     await expect(push(bob, day(), 0, 7)).rejects.toThrow('Parent record is not synchronized');
   });
 

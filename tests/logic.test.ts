@@ -56,8 +56,8 @@ describe('period ranges and edge cases',()=>{
     const valid={name:' Alex ',birth_date:'1990-01-01',height_cm:175,start_weight:80,target_weight:75};
     expect(validateProfileValues(valid,'2026-11-02').name).toBe('Alex');
     expect(()=>validateProfileValues({...valid,name:'   '},'2026-11-02')).toThrow();
-    expect(()=>validateProfileValues({...valid,birth_date:'2026-11-02'},'2026-11-02')).toThrow('0–120');
-    expect(()=>validateProfileValues({...valid,birth_date:'1800-01-01'},'2026-11-02')).toThrow('0–120');
+    expect(()=>validateProfileValues({...valid,birth_date:'2026-11-02'},'2026-11-02')).toThrow('18 and older');
+    expect(validateProfileValues({...valid,birth_date:'1900-01-01'},'2026-11-02').birth_date).toBe('1900-01-01');
     expect(()=>validateProfileValues({...valid,height_cm:NaN},'2026-11-02')).toThrow();
     expect(()=>validateProfileValues({...valid,start_weight:501},'2026-11-02')).toThrow();
     expect(()=>validateProfileValues({...valid,target_weight:19},'2026-11-02')).toThrow();

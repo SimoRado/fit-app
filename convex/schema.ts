@@ -5,6 +5,8 @@ const owned = { owner: v.string(), clientId: v.string(), updatedAt: v.number() }
 const indexed = <T extends PropertyValidators>(fields: T) => defineTable(fields).index('by_owner', ['owner']).index('by_owner_client', ['owner', 'clientId']);
 
 export default defineSchema({
+  eligibility: defineTable({ owner: v.string(), birthDate: v.string(), timeZone: v.string(), termsVersion: v.string(), privacyVersion: v.string(), acceptedAt: v.number() }).index('by_owner', ['owner']),
+  ageRejections: defineTable({ owner: v.string(), rejectedAt: v.number() }).index('by_owner', ['owner']),
   profiles: indexed({ ...owned, name: v.string(), birthDate: v.string(), heightCm: v.number(), startWeight: v.number(), targetWeight: v.optional(v.number()), experience: v.string(), fitnessGoal: v.string(), growthGoals: v.string(), language: v.string(), completedAt: v.string() }),
   habits: indexed({ ...owned, name: v.string(), description: v.string(), category: v.string(), icon: v.string(), frequency: v.union(v.literal('daily'), v.literal('days'), v.literal('quota')), days: v.array(v.number()), weeklyTarget: v.number(), startDate: v.string(), archived: v.boolean(), reminderTime: v.optional(v.string()), createdAt: v.string() }),
   habitCompletions: indexed({ ...owned, habitClientId: v.string(), day: v.string(), createdAt: v.string() }).index('by_owner_habit', ['owner', 'habitClientId']),

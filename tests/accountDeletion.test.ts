@@ -5,6 +5,7 @@ import { convexTest } from 'convex-test';
 import schema from '../convex/schema';
 import { api, internal } from '../convex/_generated/api';
 import { deleteClerkUser, deleteRevenueCatCustomer, recentFactor } from '../convex/accountDeletionActions';
+import { adultAgreement } from './eligibilityFixture';
 
 const modules = import.meta.glob('../convex/**/*.{ts,js}');
 const entry = { clientId: 'weight-1', day: '2026-11-04', kg: 80, note: '', createdAt: '2026-11-04T00:00:00.000Z' };
@@ -22,6 +23,8 @@ describe('account deletion authorization and cleanup', () => {
     const t = convexTest(schema, modules);
     const alice = t.withIdentity({ subject: 'user_A', issuer: 'https://clerk.example' });
     const bob = t.withIdentity({ subject: 'user_B', issuer: 'https://clerk.example' });
+    await alice.mutation(api.eligibility.accept, adultAgreement());
+    await bob.mutation(api.eligibility.accept, adultAgreement());
     await alice.mutation(api.weights.save, entry);
     await bob.mutation(api.weights.save, entry);
     const owner = await t.run(async ctx => (await ctx.db.query('weights').first())!.owner);
@@ -42,6 +45,7 @@ describe('account deletion authorization and cleanup', () => {
     expect(await t.run(async ctx => ctx.db.query('weights').withIndex('by_owner', q => q.eq('owner', owner)).collect())).toEqual([]);
     expect(await t.run(async ctx => ctx.db.query('syncRecords').withIndex('by_owner', q => q.eq('owner', owner)).collect())).toEqual([]);
     expect(await t.run(async ctx => ctx.db.query('syncOperations').withIndex('by_owner', q => q.eq('owner', owner)).collect())).toEqual([]);
+    expect(await t.run(async ctx => ctx.db.query('eligibility').withIndex('by_owner', q => q.eq('owner', owner)).collect())).toEqual([]);
     expect(await bob.query(api.weights.history, {})).toHaveLength(1);
     expect((await t.query(api.accountDeletion.status, { receipt }))?.stage).toBe('revenuecat_pending');
     expect(await t.query(api.accountDeletion.status, { receipt: 'x'.repeat(72) })).toBeNull();

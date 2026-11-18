@@ -20,6 +20,7 @@ export type AdsAdapter = {
   gatherConsent: () => Promise<ConsentResult>;
   cachedConsent: () => Promise<ConsentResult>;
   privacyOptions: () => Promise<ConsentResult>;
+  resetConsentForTesting?: () => void;
   initialize: () => Promise<void>;
   createInterstitial: (unitId: string) => InterstitialHandle;
 };
@@ -61,9 +62,15 @@ export type AdDiagnostics = AdSnapshot & {
   events: AdDiagnosticEvent[];
 };
 
+export function privacyOptionsAvailable(snapshot: AdSnapshot): boolean {
+  return snapshot.nativeAvailable === true && snapshot.privacyOptionsRequired &&
+    (snapshot.consentStatus === 'permitted' || snapshot.consentStatus === 'denied');
+}
+
 export type InterstitialManagerOptions = {
   internalTestingEnabled?: boolean;
   testUnitId?: string;
+  umpDebugTestDevice?: boolean;
 };
 
 const FIVE_MINUTES = 5 * 60_000;
@@ -112,7 +119,10 @@ export class InterstitialManager {
   private context: AdContext = { eligibility: 'unresolved', safeScreen: false, foreground: true };
   private adapter: AdsAdapter | null = null;
   private initPromise: Promise<void> | null = null;
+  private prepared = false;
   private sdkInitPromise: Promise<void> | null = null;
+  private consentRefreshPromise: Promise<void> | null = null;
+  private privacyOptionsOpen = false;
   private initialized = false;
   private consentAllowed = false;
   private consentFlowEndedAt = 0;
@@ -215,6 +225,7 @@ export class InterstitialManager {
       if (context.eligibility === 'premium' && previous.eligibility !== 'premium') this.record('ad suppressed', 'Premium entitlement is active');
       else if (context.eligibility === 'unresolved' && previous.eligibility !== 'unresolved') this.record('ad suppressed', 'subscription eligibility is unresolved');
       this.clearRetry();
+      if (!context.foreground) this.consentAllowed = false;
       if (!this.showing) this.releaseAd();
       this.publish({ ...this.snapshot, reason: this.automaticSuppressionReason() });
       return;
@@ -262,7 +273,7 @@ export class InterstitialManager {
 
   private async prepare() {
     if (this.initPromise) return this.initPromise;
-    this.initPromise = this.prepareOnce();
+    this.initPromise = this.prepareOnce().finally(() => { this.prepared = true; });
     await this.initPromise;
   }
 
@@ -275,12 +286,14 @@ export class InterstitialManager {
       await this.readCap();
       let consent: ConsentResult;
       let refreshFailed = false;
+      let refreshError: string | null = null;
       this.publish({ ...this.snapshot, consentStatus: 'checking', reason: 'checking consent' });
       this.record('consent requested');
       try { consent = await this.adapter.gatherConsent(); }
       catch (error) {
         refreshFailed = true;
         const detail = sanitizedConsentError(error);
+        refreshError = detail;
         this.publish({ ...this.snapshot, consentError: detail });
         this.record('consent refresh failed', detail, true);
         consent = await this.adapter.cachedConsent();
@@ -291,14 +304,15 @@ export class InterstitialManager {
         privacyOptionsRequired: consent.privacyOptionsRequired,
         consentInfoStatus: consent.status ?? 'UNKNOWN',
         consentFormAvailable: consent.consentFormAvailable ?? null,
-        consentError: refreshFailed ? 'UMP information refresh failed; cached status used' : null,
-        canRequestAds: consent.canRequestAds,
+        consentError: refreshError,
+        canRequestAds: !refreshFailed && consent.canRequestAds,
         consentStatus: refreshFailed ? 'unavailable' : consent.canRequestAds ? 'permitted' : 'denied',
         reason: refreshFailed ? 'UMP refresh failed; ad requests disabled' : consent.canRequestAds ? 'consent permitted' : consent.status === 'REQUIRED' && consent.consentFormAvailable === false ? 'consent is required but no form is available; check UMP dashboard messages' : 'consent disallows requests',
       });
       this.record('consent status updated', `status ${consent.status ?? 'UNKNOWN'}; form ${consent.consentFormAvailable === undefined ? 'unknown' : consent.consentFormAvailable ? 'available' : 'unavailable'}; requests ${consent.canRequestAds ? 'permitted' : 'not permitted'}${refreshFailed ? '; refresh failed, requests disabled' : ''}`);
-      this.consentAllowed = consent.canRequestAds;
+      this.consentAllowed = !refreshFailed && consent.canRequestAds;
     } catch {
+      this.consentAllowed = false;
       this.publish({ ...this.snapshot, consentStatus: 'unavailable', consentError: 'UMP consent refresh failed', canRequestAds: false, reason: 'consent unavailable' });
       this.record('consent unavailable', 'ad requests disabled until UMP can be checked', true);
     }
@@ -523,7 +537,46 @@ export class InterstitialManager {
   }
 
   async refreshDiagnostics() {
+    await this.refreshConsent(true);
+  }
+
+  canResetTestConsent() {
+    return this.options.internalTestingEnabled === true &&
+      this.options.umpDebugTestDevice === true &&
+      this.unitId === ANDROID_TEST_INTERSTITIAL &&
+      this.adapter?.resetConsentForTesting !== undefined;
+  }
+
+  async resetTestConsent() {
+    if (!this.canResetTestConsent() || !this.adapter) return false;
+    this.consentAllowed = false;
+    this.clearRetry();
+    if (!this.showing) this.releaseAd();
+    this.adapter.resetConsentForTesting?.();
+    this.publish({ ...this.snapshot, privacyOptionsRequired: false, consentStatus: 'unknown', consentInfoStatus: 'UNKNOWN', canRequestAds: false, consentError: null, reason: 'UMP test consent reset' });
+    this.record('UMP test consent reset');
+    await this.refreshConsent(true);
+    return true;
+  }
+
+  async refreshConsent(force = false) {
+    if (this.consentRefreshPromise) return this.consentRefreshPromise;
+    if (!this.prepared) {
+      await this.prepare();
+      return;
+    }
+    if (!force && this.snapshot.consentStatus === 'checking') return;
+    this.consentAllowed = false;
+    this.clearRetry();
+    if (!this.showing) this.releaseAd();
+    this.publish({ ...this.snapshot, consentStatus: 'checking', canRequestAds: false, reason: 'refreshing consent information' });
+    this.consentRefreshPromise = this.refreshConsentOnce().finally(() => { this.consentRefreshPromise = null; });
+    return this.consentRefreshPromise;
+  }
+
+  private async refreshConsentOnce() {
     try {
+      await this.prepare();
       if (!this.adapter) {
         this.adapter = await this.getAdapter();
         this.publish({ ...this.snapshot, nativeAvailable: Boolean(this.adapter) });
@@ -544,10 +597,10 @@ export class InterstitialManager {
         refreshError = sanitizedConsentError(error);
         consent = await this.adapter.cachedConsent();
       }
-      this.consentAllowed = consent.canRequestAds;
+      this.consentAllowed = !refreshError && consent.canRequestAds;
       this.publish({
         ...this.snapshot,
-        canRequestAds: consent.canRequestAds,
+        canRequestAds: !refreshError && consent.canRequestAds,
         privacyOptionsRequired: consent.privacyOptionsRequired,
         consentInfoStatus: consent.status ?? 'UNKNOWN',
         consentFormAvailable: consent.consentFormAvailable ?? null,
@@ -557,7 +610,10 @@ export class InterstitialManager {
       });
       const detail = `status ${consent.status ?? 'UNKNOWN'}; form ${consent.consentFormAvailable === undefined ? 'unknown' : consent.consentFormAvailable ? 'available' : 'unavailable'}; privacy options ${consent.privacyOptionsRequired ? 'required' : 'not required'}; requests ${consent.canRequestAds ? 'permitted' : 'not permitted'}${refreshError ? '; refresh failed, cached state used' : ''}`;
       this.record('consent status refreshed', `${detail}${refreshError ? `; ${refreshError}; ad requests disabled` : ''}`, Boolean(refreshError));
+      await this.initializeIfEligible();
+      this.maybeLoad();
     } catch {
+      this.consentAllowed = false;
       this.publish({ ...this.snapshot, consentStatus: 'unavailable', consentError: 'UMP refresh and cached status lookup failed', canRequestAds: false, reason: 'consent unavailable' });
       this.record('diagnostics refresh failed', 'UMP refresh and cached status lookup failed', true);
     }
@@ -586,7 +642,8 @@ export class InterstitialManager {
   }
 
   async showPrivacyOptions() {
-    if (!this.adapter || !this.snapshot.privacyOptionsRequired) return false;
+    if (!this.adapter || !this.snapshot.privacyOptionsRequired || this.privacyOptionsOpen || this.snapshot.consentStatus === 'checking') return false;
+    this.privacyOptionsOpen = true;
     this.consentAllowed = false;
     this.clearRetry();
     if (!this.showing) this.releaseAd();
@@ -611,9 +668,12 @@ export class InterstitialManager {
       this.maybeLoad();
       return true;
     } catch {
+      this.consentAllowed = false;
       this.publish({ ...this.snapshot, consentStatus: 'unavailable', canRequestAds: false, reason: 'privacy options unavailable' });
       this.record('privacy options unavailable', 'consent status could not be updated', true);
       return false;
+    } finally {
+      this.privacyOptionsOpen = false;
     }
   }
 

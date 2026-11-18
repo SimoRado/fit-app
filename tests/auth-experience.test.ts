@@ -12,9 +12,10 @@ describe('birthday entry and account profile validation', () => {
     expect(updateDatePart('2004-02-', 'day', '29')).toBe('2004-02-29');
     expect(updateDatePart('--', 'year', '2004-02-29')).toBe('2004-02-29');
   });
-  it('accepts leap day and rejects impossible, future and out-of-range birthdays', () => {
+  it('accepts adults including dates over 120 years ago, and rejects impossible and future birthdays', () => {
     expect(validateProfileValues(profile('2004-02-29'), '2026-11-05').birth_date).toBe('2004-02-29');
-    for (const birth of ['2003-02-29', '2004-13-01', '2027-01-01', '1900-01-01']) {
+    expect(validateProfileValues(profile('1900-01-01'), '2026-11-05').birth_date).toBe('1900-01-01');
+    for (const birth of ['2003-02-29', '2004-13-01', '2027-01-01']) {
       expect(() => validateProfileValues(profile(birth), '2026-11-05')).toThrow();
     }
   });

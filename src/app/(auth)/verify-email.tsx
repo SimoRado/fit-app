@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { Pressable } from 'react-native';
 import { useSignUp } from '@clerk/expo';
 import { AuthAction, AuthError, AuthField, AuthLink, AuthPage, clerkMessage } from '../../ui/auth';
 import { OtpField } from '../../ui/OtpField';
@@ -8,7 +7,7 @@ import { styles } from '../../ui/components';
 import { authDiagnostic } from '../../core/runtime';
 import { isCompleteEmailCode } from '../../core/emailCode';
 import { canFinalizeSignUp, signupRequirements } from '../../core/signupRequirements';
-import { colors } from '../../ui/theme';
+import { SignupLegalChoice } from '../../ui/LegalAgreements';
 
 export default function VerifyEmail() {
   const { signUp } = useSignUp();
@@ -75,7 +74,7 @@ export default function VerifyEmail() {
       {requirements.firstName && <AuthField label="First name" value={firstName} onChangeText={setFirstName}/>}
       {requirements.lastName && <AuthField label="Last name" value={lastName} onChangeText={setLastName}/>}
       {requirements.username && <AuthField label="Username" value={username} onChangeText={setUsername}/>}
-      {requirements.legalAccepted && <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: legalAccepted }} onPress={() => setLegalAccepted(value => !value)} style={{ minHeight: 48, justifyContent: 'center' }}><Text style={{ color: colors.text }}>{legalAccepted ? '☑' : '☐'} I accept the required terms</Text></Pressable>}
+      {requirements.legalAccepted && <SignupLegalChoice checked={legalAccepted} onChange={setLegalAccepted}/>}
       {requirements.unsupported.length > 0 && <Text style={styles.muted}>Additional required fields: {requirements.unsupported.join(', ')}</Text>}
       {requirements.unverified.length > 0 && <Text style={styles.muted}>Fields still awaiting verification: {requirements.unverified.join(', ')}</Text>}
       <AuthError message={error}/>

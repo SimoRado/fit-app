@@ -1,0 +1,8 @@
+User-Agent: *
+Allow: /
+Disallow: /privacy
+Disallow: /terms
+Disallow: /delete-account
+Disallow: /contact
+
+Sitemap: /sitemap.xml

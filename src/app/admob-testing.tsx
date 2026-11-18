@@ -188,6 +188,12 @@ export default function AdMobTestingScreen() {
     <SectionHeader title="Diagnostics"/>
     <Card>
       <Button title="Refresh Diagnostics" kind="ghost" disabled={working} onPress={refreshDiagnostics}/>
+      {interstitialManager.canResetTestConsent() && <Button title="Reset UMP test consent" kind="ghost" disabled={working} onPress={async () => {
+        setWorking(true);
+        try { await interstitialManager.resetTestConsent(); }
+        catch (error) { message(error); }
+        finally { setWorking(false); }
+      }}/>}
       <Button title="Copy Diagnostic Report" kind="ghost" onPress={copyReport}/>
       <Button title="Clear Diagnostic History" kind="ghost" onPress={() => interstitialManager.clearDiagnosticHistory()}/>
       {diagnostics.events.length === 0

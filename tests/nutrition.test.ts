@@ -11,6 +11,7 @@ import { migrations } from '../src/data/schema';
 import { cloudUpsertSql } from '../src/data/syncSql';
 import { orderOutbox, type OutboxRow } from '../src/data/syncOrder';
 import { calorieBalance, nutritionWeek, parseNumber, portionNutrients, sumNutrients, validateFood, weekStats } from '../src/core/nutrition';
+import { adultAgreement } from './eligibilityFixture';
 
 const modules = import.meta.glob('../convex/**/*.{ts,js}');
 const stamp = '2026-11-06T12:00:00.000Z';
@@ -112,6 +113,8 @@ describe('nutrition Convex ownership', () => {
     await expect(t.mutation(api.sync.apply, args)).rejects.toThrow('Authentication required');
     const a = t.withIdentity({ subject: 'nutrition_A', issuer: 'https://clerk.example' });
     const b = t.withIdentity({ subject: 'nutrition_B', issuer: 'https://clerk.example' });
+    await a.mutation(api.eligibility.accept, adultAgreement(profile.birth_date));
+    await b.mutation(api.eligibility.accept, adultAgreement(profile.birth_date));
     await a.mutation(api.sync.apply, args);
     const foodArgs = { kind: 'custom_foods' as const, clientId: food.id, payload: JSON.stringify(food), expectedRevision: 0, operationId: op(101) };
     await expect(b.mutation(api.sync.apply, foodArgs)).rejects.toThrow('Parent record is not synchronized');

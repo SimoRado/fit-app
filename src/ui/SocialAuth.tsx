@@ -17,6 +17,7 @@ import { canStartGoogleOAuth, isNativeRuntime } from '../core/runtimeClassificat
 import { googleRedirect } from '../core/googleRedirect';
 import { oauthScheme } from '../core/appVariant';
 import { activateClerkSession } from '../core/googleSession';
+import { SignupLegalChoice } from './LegalAgreements';
 import { appleAuthMode, appleAuthUnavailableMessage, appleAvailabilityReason, appleButtonPresentation } from '../core/appleAuth';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -30,7 +31,7 @@ function SocialButton({ provider, enabled, busy, onPress }: { provider: 'google'
   </Pressable>;
 }
 
-export function SocialAuth() {
+export function SocialAuth({ legalAccepted: externalLegal, onLegalChange }: { legalAccepted?: boolean; onLegalChange?: (checked: boolean) => void } = {}) {
   useVoltTheme();
   const { startSSOFlow } = useSSO();
   const { startAppleAuthenticationFlow } = useSignInWithApple();
@@ -38,6 +39,9 @@ export function SocialAuth() {
   const [appleAvailabilityChecked, setAppleAvailabilityChecked] = useState(false);
   const [busy, setBusy] = useState<'google' | 'apple' | null>(null);
   const [error, setError] = useState('');
+  const [internalLegal, setInternalLegal] = useState(false);
+  const legalAccepted = externalLegal ?? internalLegal;
+  const setLegalAccepted = onLegalChange ?? setInternalLegal;
   const inFlight = useRef(false);
   const runtime = runtimeSignals();
   const nativeBuild = isNativeRuntime(runtime.kind);
@@ -81,6 +85,7 @@ export function SocialAuth() {
     const logCategory = provider === 'google' ? 'GOOGLE' : 'APPLE';
     if (provider === 'google') authDiagnostic('button press', { runtime: runtime.kind, busy: inFlight.current }, logCategory);
     if (inFlight.current) return;
+    if (!legalAccepted) { setError('Agree to the Terms of Use before continuing.'); return; }
     inFlight.current = true; setBusy(provider); setError('');
     let stage: 'initiation' | 'browser' | 'activation' = 'initiation';
     try {
@@ -132,9 +137,10 @@ export function SocialAuth() {
     } finally { inFlight.current = false; setBusy(null); }
   }
   return <View style={{ gap: 10 }}>
-    {(Platform.OS === 'android' || Platform.OS === 'ios') && <SocialButton provider="google" enabled={canStartGoogleOAuth(runtime.kind, busy !== null, clerkConfigured)} busy={busy === 'google'} onPress={() => void start('google')}/>}
-    {applePresentation === 'browser' && <SocialButton provider="apple" enabled={busy === null} busy={busy === 'apple'} onPress={() => void start('apple')}/>}
-    {applePresentation === 'native' && <AppleAuthentication.AppleAuthenticationButton buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE} buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK} cornerRadius={28} style={{ height: 56, width: '100%' }} onPress={() => void start('apple')}/>}
+    <SignupLegalChoice checked={legalAccepted} onChange={setLegalAccepted}/>
+    {(Platform.OS === 'android' || Platform.OS === 'ios') && <SocialButton provider="google" enabled={legalAccepted && canStartGoogleOAuth(runtime.kind, busy !== null, clerkConfigured)} busy={busy === 'google'} onPress={() => void start('google')}/>}
+    {applePresentation === 'browser' && <SocialButton provider="apple" enabled={legalAccepted && busy === null} busy={busy === 'apple'} onPress={() => void start('apple')}/>}
+    {applePresentation === 'native' && <AppleAuthentication.AppleAuthenticationButton buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE} buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK} cornerRadius={28} style={{ height: 56, width: '100%', opacity: legalAccepted ? 1 : .5 }} onPress={() => void start('apple')}/>}
     {applePresentation === 'unavailable' && <SocialButton provider="apple" enabled={false} busy={false} onPress={() => void start('apple')}/>}
     {appleUnavailableMessage && <Text style={{ color: colors.muted, fontSize: 12 }}>{appleUnavailableMessage}</Text>}
     {!clerkConfigured && <Text style={{ color: colors.muted, fontSize: 12 }}>Social sign-in is not configured in this build. Email sign-in remains available.</Text>}

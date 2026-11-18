@@ -20,7 +20,7 @@ describe('Clerk Apple authentication readiness', () => {
     expect(socialAuth).toContain("applePresentation === 'native' && <AppleAuthentication.AppleAuthenticationButton");
     expect(socialAuth).toContain("applePresentation === 'unavailable' && <SocialButton provider=\"apple\" enabled={false}");
     for (const screen of ['sign-in.tsx', 'sign-up.tsx']) {
-      expect(readFileSync(join(process.cwd(), 'src/app/(auth)', screen), 'utf8')).toContain('<SocialAuth/>');
+      expect(readFileSync(join(process.cwd(), 'src/app/(auth)', screen), 'utf8')).toContain('<SocialAuth');
     }
   });
   it('uses native Apple auth only on configured iOS native builds', () => {

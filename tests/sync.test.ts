@@ -12,6 +12,7 @@ import { cloudUpsertSql } from '../src/data/syncSql';
 import schema from '../convex/schema';
 import { syncRecordFields } from '../convex/syncContract';
 import { api } from '../convex/_generated/api';
+import { adultAgreement } from './eligibilityFixture';
 
 const modules = import.meta.glob('../convex/**/*.{ts,js}');
 const profile = { id: 'profile-1', name: 'A', birth_date: '1995-01-01', height_cm: 170, start_weight: 75, target_weight: null, experience: 'Beginner', fitness_goal: 'Health', growth_goals: '', language: 'en', completed_at: '2026-11-05T00:00:00.000Z' };
@@ -155,6 +156,7 @@ describe('authenticated cloud sync', () => {
     local.close();
     const t = convexTest(schema, modules);
     const user = t.withIdentity({ subject: 'user_A', issuer: 'https://clerk.example' });
+    await user.mutation(api.eligibility.accept, adultAgreement(profile.birth_date));
     for (const [index, kind] of upsertOrder.entries()) {
       const record = records.get(kind)!;
       expect(await user.mutation(api.sync.apply, { kind, clientId: record.id, payload: record.payload, expectedRevision: 0, operationId: op(100 + index) }), kind).toMatchObject({ status: 'applied', revision: 1 });
@@ -170,6 +172,7 @@ describe('authenticated cloud sync', () => {
   it('accepts current workout session fields, catalog food IDs and reminder times', async () => {
     const t = convexTest(schema, modules);
     const user = t.withIdentity({ subject: 'user_A', issuer: 'https://clerk.example' });
+    await user.mutation(api.eligibility.accept, adultAgreement(profile.birth_date));
     await user.mutation(api.sync.apply, { kind: 'profile', clientId: profile.id, payload: JSON.stringify(profile), expectedRevision: 0, operationId: op(21) });
     const workout = { id: 'workout-1', owner_id: profile.id, name: 'Test', day: '2026-11-15', started_at: '2026-11-15T12:00:00.000Z', duration_min: null, notes: '', completed: 0, created_at: '2026-11-15T12:00:00.000Z', session_status: 'running', elapsed_seconds: 60, running_since_ms: 1794744000000, paused_since_ms: null, paused_seconds: 0, finished_at_ms: null };
     expect(await user.mutation(api.sync.apply, { kind: 'workouts', clientId: workout.id, payload: JSON.stringify(workout), expectedRevision: 0, operationId: op(22) })).toMatchObject({ status: 'applied' });
@@ -185,6 +188,8 @@ describe('authenticated cloud sync', () => {
     await expect(t.query(api.sync.page, { paginationOpts: { numItems: 10, cursor: null } })).rejects.toThrow('Authentication required');
     const alice = t.withIdentity({ subject: 'user_A', issuer: 'https://clerk.example' });
     const bob = t.withIdentity({ subject: 'user_B', issuer: 'https://clerk.example' });
+    await alice.mutation(api.eligibility.accept, adultAgreement(profile.birth_date));
+    await bob.mutation(api.eligibility.accept, adultAgreement(profile.birth_date));
     await alice.mutation(api.sync.apply, args);
     expect((await bob.query(api.sync.page, { paginationOpts: { numItems: 10, cursor: null } })).page).toHaveLength(0);
     await expect(bob.mutation(api.sync.apply, { ...args, kind: 'habits', clientId: habit.id, payload: JSON.stringify(habit), operationId: op(2) })).rejects.toThrow('Parent record is not synchronized');
@@ -193,6 +198,7 @@ describe('authenticated cloud sync', () => {
   it('retries idempotently, detects stale edits and protects deletion conflicts', async () => {
     const t = convexTest(schema, modules);
     const user = t.withIdentity({ subject: 'user_A', issuer: 'https://clerk.example' });
+    await user.mutation(api.eligibility.accept, adultAgreement(profile.birth_date));
     const args = { kind: 'profile' as const, clientId: profile.id, payload: JSON.stringify(profile), expectedRevision: 0, operationId: op(3) };
     expect(await user.mutation(api.sync.apply, args)).toEqual({ status: 'applied', revision: 1 });
     expect(await user.mutation(api.sync.apply, args)).toEqual({ status: 'applied', revision: 1 });
@@ -205,6 +211,7 @@ describe('authenticated cloud sync', () => {
   it('deduplicates completion events by parent and day', async () => {
     const t = convexTest(schema, modules);
     const user = t.withIdentity({ subject: 'user_A', issuer: 'https://clerk.example' });
+    await user.mutation(api.eligibility.accept, adultAgreement(profile.birth_date));
     await user.mutation(api.sync.apply, { kind: 'profile', clientId: profile.id, payload: JSON.stringify(profile), expectedRevision: 0, operationId: op(7) });
     await user.mutation(api.sync.apply, { kind: 'habits', clientId: habit.id, payload: JSON.stringify(habit), expectedRevision: 0, operationId: op(8) });
     const event = { id: 'device-a', habit_id: habit.id, day: '2026-11-05', created_at: '2026-11-05T00:00:00.000Z' };
@@ -228,6 +235,8 @@ describe('authenticated cloud sync', () => {
     const t = convexTest(schema, modules);
     const alice = t.withIdentity({ subject: 'user_A', issuer: 'https://clerk.example' });
     const bob = t.withIdentity({ subject: 'user_B', issuer: 'https://clerk.example' });
+    await alice.mutation(api.eligibility.accept, adultAgreement(profile.birth_date));
+    await bob.mutation(api.eligibility.accept, adultAgreement(profile.birth_date));
     await alice.mutation(api.sync.apply, { kind: 'profile', clientId: profile.id, payload: JSON.stringify(profile), expectedRevision: 0, operationId: op(11) });
     await alice.mutation(api.sync.apply, { kind: 'habits', clientId: habit.id, payload: JSON.stringify(habit), expectedRevision: 0, operationId: op(12) });
     await expect(bob.mutation(api.sync.apply, { kind: 'habit_progress', clientId: progress.id, payload: JSON.stringify(progress), expectedRevision: 0, operationId: op(13) })).rejects.toThrow('Parent record is not synchronized');

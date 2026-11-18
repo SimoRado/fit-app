@@ -3,11 +3,11 @@ import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { ClerkProvider, useAuth } from '@clerk/expo';
 import { tokenCache } from '@clerk/expo/token-cache';
 import { ConvexProviderWithClerk } from 'convex/react-clerk';
-import { ConvexReactClient } from 'convex/react';
+import { ConvexReactClient, useConvexAuth, useQuery } from 'convex/react';
 import { Stack } from 'expo-router';
 import * as Sentry from '@sentry/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { AppProvider } from '../state/app';
+import { AppProvider, useApp } from '../state/app';
 import { removeLocalAccountData, setLocalAccount } from '../data/db';
 import { setActiveLanguage } from '../core/i18n';
 import { AppFonts } from '../ui/fonts';
@@ -22,6 +22,9 @@ import { clerkGateState } from '../core/googleSession';
 import { api } from '../../convex/_generated/api';
 import { pendingDeletions, forgetDeletion } from '../data/pendingDeletion';
 import { clearMonitoringUser, reportFailure } from '../core/monitoring';
+import { accessDestination } from '../core/accessGate';
+import { dayKey } from '../core/date';
+import { TERMS_VERSION } from '../../shared/legalVersions';
 
 function RenderError({ retry }: { error: Error; retry: () => Promise<void> }) {
   const { palette } = useVoltTheme();
@@ -60,14 +63,27 @@ function LocalAccount({ userId, children }: { userId: string; children: React.Re
 
 function AuthenticatedStack({ signedIn }: { signedIn: boolean }) {
   const { palette } = useVoltTheme();
+  const { ready, profile, legalAccepted, ageRejected } = useApp();
+  const { isAuthenticated } = useConvexAuth();
+  const remoteEligibility = useQuery(api.eligibility.current, isAuthenticated ? {} : 'skip');
+  if (!ready) return <Loading/>;
+  if (!isAuthenticated || remoteEligibility === undefined) return <Loading/>;
+  const destination = accessDestination({ birthDate: profile?.birth_date, hasProfile: Boolean(profile), ageRejected, legalAccepted, serverRecorded: remoteEligibility.acceptedAt !== null, serverAdult: remoteEligibility.adult, serverTermsAccepted: remoteEligibility.termsVersion === TERMS_VERSION, serverRejected: remoteEligibility.rejected, today: dayKey() });
+  const hold = destination === '/age-hold';
+  const needsAgreement = destination === '/legal-agreements';
+  const appAllowed = destination === '/(tabs)';
   return <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: palette.bg } }}>
     <Stack.Protected guard={false}><Stack.Screen name="(auth)"/></Stack.Protected>
-    <Stack.Protected guard={signedIn} redirectTo="/(auth)/welcome">
-      <Stack.Screen name="index"/><Stack.Screen name="(tabs)"/><Stack.Screen name="onboarding"/>
+    <Stack.Protected guard={signedIn}><Stack.Screen name="index"/><Stack.Screen name="cloud-sync"/><Stack.Screen name="delete-account"/></Stack.Protected>
+    <Stack.Protected guard={destination === '/onboarding'} redirectTo={destination}><Stack.Screen name="onboarding"/></Stack.Protected>
+    <Stack.Protected guard={hold} redirectTo={destination}><Stack.Screen name="age-hold"/></Stack.Protected>
+    <Stack.Protected guard={needsAgreement} redirectTo={destination}><Stack.Screen name="legal-agreements"/></Stack.Protected>
+    <Stack.Protected guard={appAllowed} redirectTo={destination}>
+      <Stack.Screen name="(tabs)"/>
       <Stack.Screen name="habit-form"/><Stack.Screen name="habit-history"/><Stack.Screen name="workout-form"/>
       <Stack.Screen name="routine-form"/><Stack.Screen name="weight"/><Stack.Screen name="weight-form"/>
       <Stack.Screen name="measurement-form"/><Stack.Screen name="mission-form"/><Stack.Screen name="missions"/>
-      <Stack.Screen name="motivation"/><Stack.Screen name="reminders"/><Stack.Screen name="account"/><Stack.Screen name="premium-test"/><Stack.Screen name="paywall" options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}/><Stack.Screen name="cloud-sync"/><Stack.Screen name="delete-account"/><Stack.Screen name="admob-testing"/>
+      <Stack.Screen name="motivation"/><Stack.Screen name="reminders"/><Stack.Screen name="account"/><Stack.Screen name="premium-test"/><Stack.Screen name="paywall" options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}/><Stack.Screen name="admob-testing"/>
     </Stack.Protected>
   </Stack>;
 }
@@ -77,7 +93,7 @@ function AuthStack() {
   return <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: palette.bg } }}>
     <Stack.Protected guard><Stack.Screen name="(auth)"/></Stack.Protected>
     <Stack.Protected guard={false} redirectTo="/(auth)/welcome">
-      <Stack.Screen name="index"/><Stack.Screen name="(tabs)"/><Stack.Screen name="onboarding"/>
+      <Stack.Screen name="index"/><Stack.Screen name="(tabs)"/><Stack.Screen name="onboarding"/><Stack.Screen name="age-hold"/><Stack.Screen name="legal-agreements"/>
       <Stack.Screen name="habit-form"/><Stack.Screen name="habit-history"/><Stack.Screen name="workout-form"/>
       <Stack.Screen name="routine-form"/><Stack.Screen name="weight"/><Stack.Screen name="weight-form"/>
       <Stack.Screen name="measurement-form"/><Stack.Screen name="mission-form"/><Stack.Screen name="missions"/>
@@ -124,7 +140,7 @@ function Navigator() {
 }
 
 export default function Root() {
-  return <SafeAreaProvider><VoltThemeProvider><AppFonts><MotionProvider><ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
+  return <SafeAreaProvider><VoltThemeProvider><AppFonts><MotionProvider><ClerkProvider publishableKey={publishableKey!} tokenCache={tokenCache}>
     <ConvexProviderWithClerk client={convex} useAuth={useAuth}><SubscriptionProvider><Navigator/></SubscriptionProvider></ConvexProviderWithClerk>
   </ClerkProvider></MotionProvider></AppFonts></VoltThemeProvider></SafeAreaProvider>;
 }

@@ -3,7 +3,8 @@ import { classifyExpoRuntime } from '../src/core/runtimeClassification';
 import { adEligibility } from '../src/services/adEligibility';
 import { canUseAdMobNative } from '../src/services/adRuntime';
 import { androidInterstitialUnit, ANDROID_TEST_INTERSTITIAL } from '../src/services/adUnit';
-import { InterstitialManager, nextAllowedAt, type AdEvent, type AdsAdapter, type ConsentResult, type InterstitialHandle } from '../src/services/interstitialManager';
+import { InterstitialManager, nextAllowedAt, privacyOptionsAvailable, type AdEvent, type AdsAdapter, type ConsentResult, type InterstitialHandle } from '../src/services/interstitialManager';
+import { adultAdEligible } from '../src/services/adAgeEligibility';
 
 const MINUTE = 60_000;
 const permitted: ConsentResult = { canRequestAds: true, privacyOptionsRequired: false };
@@ -53,6 +54,23 @@ beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(0); });
 afterEach(() => vi.useRealTimers());
 
 describe('AdMob runtime and entitlement gates', () => {
+  it('suppresses ads for invalid, unknown and under-18 birth dates', () => {
+    const today = new Date('2026-11-18T12:00:00Z');
+    expect(adultAdEligible(undefined, today)).toBe(false);
+    expect(adultAdEligible('not-a-date', today)).toBe(false);
+    expect(adultAdEligible('2008-11-19', today)).toBe(false);
+    expect(adultAdEligible('2008-11-18', today)).toBe(true);
+    expect(adultAdEligible('2000-02-30', today)).toBe(false);
+  });
+  it('shows privacy options only when UMP requires them and consent state is usable', () => {
+    const h = harness();
+    const base = h.manager.getSnapshot();
+    expect(privacyOptionsAvailable(base)).toBe(false);
+    expect(privacyOptionsAvailable({ ...base, nativeAvailable: true, privacyOptionsRequired: true, consentStatus: 'checking' })).toBe(false);
+    expect(privacyOptionsAvailable({ ...base, nativeAvailable: true, privacyOptionsRequired: true, consentStatus: 'unavailable' })).toBe(false);
+    expect(privacyOptionsAvailable({ ...base, nativeAvailable: true, privacyOptionsRequired: true, consentStatus: 'denied' })).toBe(true);
+    expect(privacyOptionsAvailable({ ...base, nativeAvailable: true, privacyOptionsRequired: true, consentStatus: 'permitted' })).toBe(true);
+  });
   it('uses official test inventory in development and internal previews', () => {
     const live = 'ca-app-pub-1234567890/1234567890';
     expect(androidInterstitialUnit(live, true, true, true)).toBe(ANDROID_TEST_INTERSTITIAL);
@@ -167,6 +185,45 @@ describe('central interstitial manager', () => {
     expect(h.ads).toHaveLength(0);
     expect(await h.manager.showPrivacyOptions()).toBe(true);
     expect(h.initialize).toHaveBeenCalledOnce();
+    expect(h.ads).toHaveLength(1);
+  });
+
+  it('releases a loaded ad when privacy choices are withdrawn and does not reload it', async () => {
+    const h = harness({ consent: { canRequestAds: true, privacyOptionsRequired: true } });
+    h.manager.setContext(freeScreen);
+    await h.advance(6 * MINUTE);
+    h.ads[0].emit('loaded');
+    vi.mocked(h.adapter.privacyOptions).mockResolvedValueOnce({ canRequestAds: false, privacyOptionsRequired: true });
+    expect(await h.manager.showPrivacyOptions()).toBe(true);
+    expect(h.ads[0].destroyed).toBe(true);
+    expect(h.manager.getSnapshot()).toMatchObject({ consentStatus: 'denied', canRequestAds: false, ready: false });
+    await h.advance(MINUTE);
+    expect(h.ads).toHaveLength(1);
+  });
+
+  it('fails closed on a later UMP refresh failure even if cached consent allowed ads', async () => {
+    const h = harness({ consent: { canRequestAds: true, privacyOptionsRequired: true } });
+    h.manager.setContext(freeScreen);
+    await h.advance(6 * MINUTE);
+    h.ads[0].emit('loaded');
+    vi.mocked(h.adapter.gatherConsent).mockRejectedValueOnce(Error('offline'));
+    vi.mocked(h.adapter.cachedConsent).mockResolvedValueOnce({ canRequestAds: true, privacyOptionsRequired: true });
+    await h.manager.refreshConsent();
+    expect(h.ads[0].destroyed).toBe(true);
+    expect(h.manager.getSnapshot()).toMatchObject({ consentStatus: 'unavailable', canRequestAds: false, ready: false });
+    expect(h.ads).toHaveLength(1);
+  });
+
+  it('refreshes UMP on return and removes loaded ads when requests become disallowed', async () => {
+    const h = harness({ consent: { canRequestAds: true, privacyOptionsRequired: true } });
+    h.manager.setContext(freeScreen);
+    await h.advance(6 * MINUTE);
+    h.ads[0].emit('loaded');
+    vi.mocked(h.adapter.gatherConsent).mockResolvedValueOnce({ canRequestAds: false, privacyOptionsRequired: true });
+    await Promise.all([h.manager.refreshConsent(), h.manager.refreshConsent()]);
+    expect(h.adapter.gatherConsent).toHaveBeenCalledTimes(2); // Launch plus one deduplicated refresh.
+    expect(h.ads[0].destroyed).toBe(true);
+    expect(h.manager.getSnapshot()).toMatchObject({ consentStatus: 'denied', canRequestAds: false });
     expect(h.ads).toHaveLength(1);
   });
 

@@ -12,8 +12,10 @@ import { PasswordRequirements } from '../../ui/PasswordRequirements';
 export default function SignUp() {
   const { signUp } = useSignUp();
   const [email, setEmail] = useState(''), [password, setPassword] = useState(''), [error, setError] = useState(''), [busy, setBusy] = useState(false);
+  const [legalAccepted, setLegalAccepted] = useState(false);
   async function submit() {
     if (busy) return;
+    if (!legalAccepted) { setError('Agree to the Terms of Use before creating an account.'); return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { setError('Enter a valid email address.'); return; }
     const passwordIssue = passwordPolicyMessage(password);
     if (passwordIssue) { setError(passwordIssue); return; }
@@ -29,12 +31,12 @@ export default function SignUp() {
       router.push('/(auth)/verify-email');
     } catch (cause) { authDiagnostic('signup request failed', { stage: 'initiation' }, 'EMAIL'); setError(clerkMessage(cause)); } finally { setBusy(false); }
   }
-  return <AuthPage title="Create your account" detail="Your fitness profile comes after email verification.">
-    <SocialAuth/><Text style={[styles.muted, { textAlign: 'center' }]}>OR USE EMAIL</Text>
+  return <AuthPage title="Create your account" detail="For adults 18 and older. Your fitness profile comes after email verification.">
+    <SocialAuth legalAccepted={legalAccepted} onLegalChange={setLegalAccepted}/><Text style={[styles.muted, { textAlign: 'center' }]}>OR USE EMAIL</Text>
     <AuthField label="Email address" value={email} onChangeText={setEmail} email/>
     <AuthField label="Password" value={password} onChangeText={setPassword} secure/>
     <PasswordRequirements password={password}/>
-    <AuthError message={error}/><AuthAction title={busy ? 'Creating…' : 'Continue'} onPress={submit} disabled={busy}/>
+    <AuthError message={error}/><AuthAction title={busy ? 'Creating…' : 'Continue'} onPress={submit} disabled={busy || !legalAccepted}/>
     <AuthLink href="/(auth)/sign-in" title="Already have an account? Sign in"/>
   </AuthPage>;
 }

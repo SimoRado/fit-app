@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useSyncExternalStore } from 'react';
 import { Alert } from 'react-native';
 import { router } from 'expo-router';
 import { Button, Card, Page, confirm, message, styles } from '../ui/components';
@@ -8,11 +8,14 @@ import { Text } from '../ui/LocalizedText';
 import { useApp } from '../state/app';
 import { useSync } from '../state/sync';
 import { adoptGuestData, ensureNoPendingBeforeLocalDelete, localRecordCount } from '../data/syncLocal';
+import { interstitialManager } from '../services/adMob';
+import { privacyOptionsAvailable } from '../services/interstitialManager';
 
 export default function CloudSync() {
   const sync = useSync();
   const { profile, refresh } = useApp();
   const [count, setCount] = useState<number | null>(null);
+  const ads = useSyncExternalStore(interstitialManager.subscribe, interstitialManager.getSnapshot, interstitialManager.getSnapshot);
   useEffect(() => { localRecordCount().then(setCount).catch(() => setCount(null)); }, [profile]);
   function importGuest() {
     Alert.alert('Import preserved guest history?', 'Only continue if the guest records on this device are yours. They will be copied into this signed-in account and the original guest file will remain. Cloud upload will not start from this import.', [
@@ -43,6 +46,13 @@ export default function CloudSync() {
     </Card>
     <Card><Text style={styles.label}>Manage Local Data</Text><Text style={styles.muted}>This account has a separate SQLite file. The original guest file and other signed-in accounts remain separate. Local deletion is blocked while unsynced changes or conflicts remain. Deleting local records does not delete the cloud copy.</Text>
       {!!profile && <Button title="Delete this account’s local data" kind="danger" onPress={clearLocal}/>}</Card>
+    {privacyOptionsAvailable(ads) && <Card>
+      <Text style={styles.label}>Advertising privacy choices</Text>
+      <Text style={styles.muted}>Review or change your advertising preferences.</Text>
+      <Button title="Advertising privacy choices" kind="ghost" onPress={async () => {
+        if (!await interstitialManager.showPrivacyOptions()) message(new Error('Advertising privacy choices are temporarily unavailable. Please try again when connected.'));
+      }}/>
+    </Card>}
     {!profile && sync.choice !== 'enabled' && <Button title="Import preserved guest history" kind="ghost" onPress={importGuest}/>}
     <Card><Text style={styles.label}>Delete Account</Text><Text style={styles.muted}>Permanently remove this account and its personal data. Subscription cancellation is handled separately by your app store.</Text><Button title="Delete Account" kind="danger" onPress={() => router.push('/delete-account')}/></Card>
     <Button title={profile ? 'Open Fitapp' : 'Continue to fitness onboarding'} kind="ghost" onPress={() => router.replace(profile ? '/(tabs)' : '/onboarding')}/>

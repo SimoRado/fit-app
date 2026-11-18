@@ -1,11 +1,26 @@
 import type { MutationCtx, QueryCtx } from './_generated/server';
+import { adultOnDay } from '../shared/ageEligibility';
+import { TERMS_VERSION } from '../shared/legalVersions';
 
-export async function requireOwner(ctx: Pick<QueryCtx | MutationCtx, 'auth' | 'db'>): Promise<string> {
+export async function requireAuthenticatedOwner(ctx: Pick<QueryCtx | MutationCtx, 'auth' | 'db'>): Promise<string> {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) throw new Error('Authentication required');
   const deletion = await ctx.db.query('deletionJobs').withIndex('by_owner', q => q.eq('owner', identity.tokenIdentifier)).first();
   if (deletion) throw new Error('Account deletion in progress');
   return identity.tokenIdentifier;
+}
+
+export function dayInZone(timeZone: string, now = new Date()): string {
+  const fields = new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now);
+  const part = (type: string) => fields.find(field => field.type === type)?.value ?? '';
+  return `${part('year')}-${part('month')}-${part('day')}`;
+}
+
+export async function requireOwner(ctx: Pick<QueryCtx | MutationCtx, 'auth' | 'db'>): Promise<string> {
+  const owner = await requireAuthenticatedOwner(ctx);
+  const eligibility = await ctx.db.query('eligibility').withIndex('by_owner', q => q.eq('owner', owner)).first();
+  if (!eligibility || eligibility.termsVersion !== TERMS_VERSION || !adultOnDay(eligibility.birthDate, dayInZone(eligibility.timeZone))) throw new Error('Adult eligibility and Terms acceptance required');
+  return owner;
 }
 
 export function text(value: string, field: string, max: number, required = false) {

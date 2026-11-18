@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ANDROID_TEST_INTERSTITIAL } from '../src/services/adUnit';
 import { buildAdDiagnosticReport } from '../src/services/adDiagnosticReport';
-import { canExposeAdMobTesting, canUseManualTestInterstitial } from '../src/services/adTestingPolicy';
+import { canExposeAdMobTesting, canUseManualTestInterstitial, umpDebugEeaDeviceId } from '../src/services/adTestingPolicy';
 import { InterstitialManager, type AdEvent, type AdsAdapter, type ConsentResult, type InterstitialHandle } from '../src/services/interstitialManager';
 
 const permitted: ConsentResult = { canRequestAds: true, privacyOptionsRequired: false };
@@ -24,6 +24,7 @@ class FakeInterstitial implements InterstitialHandle {
 
 function setup(options: {
   internal?: boolean;
+  debugConsent?: boolean;
   unit?: string;
   consent?: ConsentResult;
   initialShown?: number[];
@@ -36,13 +37,14 @@ function setup(options: {
     gatherConsent: vi.fn(async () => options.consent ?? permitted),
     cachedConsent: vi.fn(async () => options.consent ?? permitted),
     privacyOptions: vi.fn(async () => options.consent ?? permitted),
+    resetConsentForTesting: vi.fn(),
     initialize: vi.fn(async () => undefined),
     createInterstitial: unit => { requests.push(unit); const ad = new FakeInterstitial(); ads.push(ad); return ad; },
   };
   const manager = new InterstitialManager({
     getItem: async key => values.get(key) ?? null,
     setItem: writes,
-  }, async () => adapter, options.unit ?? ANDROID_TEST_INTERSTITIAL, () => Date.now(), 0, undefined, { internalTestingEnabled: options.internal ?? false });
+  }, async () => adapter, options.unit ?? ANDROID_TEST_INTERSTITIAL, () => Date.now(), 0, undefined, { internalTestingEnabled: options.internal ?? false, umpDebugTestDevice: options.debugConsent ?? false });
   return { manager, requests, ads, adapter, values, writes };
 }
 
@@ -50,6 +52,29 @@ beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(10 * 60_000); });
 afterEach(() => vi.useRealTimers());
 
 describe('AdMob internal testing policy', () => {
+  it('resets only UMP test consent in an authorized debug test-unit session', async () => {
+    const disabled = setup({ internal: true });
+    await disabled.manager.refreshDiagnostics();
+    expect(disabled.manager.canResetTestConsent()).toBe(false);
+    expect(await disabled.manager.resetTestConsent()).toBe(false);
+    expect(disabled.adapter.resetConsentForTesting).not.toHaveBeenCalled();
+
+    const enabled = setup({ internal: true, debugConsent: true });
+    await enabled.manager.refreshDiagnostics();
+    expect(enabled.manager.canResetTestConsent()).toBe(true);
+    expect(await enabled.manager.resetTestConsent()).toBe(true);
+    expect(enabled.adapter.resetConsentForTesting).toHaveBeenCalledOnce();
+    expect(enabled.adapter.gatherConsent).toHaveBeenCalledTimes(2);
+  });
+  it('allows EEA simulation only in a debug test-unit build with an explicit device hash', () => {
+    const deviceId = 'A'.repeat(32);
+    const valid = { debugBuild: true, testingEnabled: true, activeUnit: ANDROID_TEST_INTERSTITIAL, enabled: 'true', deviceId };
+    expect(umpDebugEeaDeviceId(valid)).toBe(deviceId);
+    expect(umpDebugEeaDeviceId({ ...valid, debugBuild: false })).toBeUndefined();
+    expect(umpDebugEeaDeviceId({ ...valid, testingEnabled: false })).toBeUndefined();
+    expect(umpDebugEeaDeviceId({ ...valid, activeUnit: 'ca-app-pub-999/111' })).toBeUndefined();
+    expect(umpDebugEeaDeviceId({ ...valid, deviceId: 'bad' })).toBeUndefined();
+  });
   it('shows diagnostics only in debug or explicitly internal builds and always hides them for production', () => {
     expect(canExposeAdMobTesting({ debugBuild: true, internalBuild: false, productionAdsEnabled: 'false', productionBuild: false })).toBe(true);
     expect(canExposeAdMobTesting({ debugBuild: false, internalBuild: true, productionAdsEnabled: 'false', productionBuild: false })).toBe(true);
@@ -115,7 +140,7 @@ describe('AdMob internal testing policy', () => {
     h.adapter.gatherConsent = vi.fn(async () => { throw new Error('UMP form refresh failed'); });
     await h.manager.refreshDiagnostics();
     expect(h.manager.getSnapshot()).toMatchObject({
-      canRequestAds: true,
+      canRequestAds: false,
       consentStatus: 'unavailable',
       consentError: 'UMP consent refresh failed: UMP form refresh failed',
     });

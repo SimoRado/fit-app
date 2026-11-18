@@ -4,6 +4,7 @@ import { convexTest } from 'convex-test';
 import schema from '../convex/schema';
 import { api } from '../convex/_generated/api';
 import { visibleCustomerInfo } from '../src/services/subscriptionLogic';
+import { adultAgreement } from './eligibilityFixture';
 
 const modules = import.meta.glob('../convex/**/*.{ts,js}');
 const date = '2026-11-04';
@@ -33,6 +34,8 @@ describe('public Convex function security', () => {
     const t = setup();
     const a = t.withIdentity({ subject: 'user_A', issuer: 'https://clerk.example' });
     const b = t.withIdentity({ subject: 'user_B', issuer: 'https://clerk.example' });
+    await a.mutation(api.eligibility.accept, adultAgreement(profile.birthDate));
+    await b.mutation(api.eligibility.accept, adultAgreement(profile.birthDate));
     await a.mutation(api.profile.save, profile);
     await a.mutation(api.habits.save, habit);
     await a.mutation(api.habits.setCompletion, { habitClientId: habit.clientId, day: date, completed: true });
@@ -48,6 +51,7 @@ describe('public Convex function security', () => {
   it('rejects malformed and out-of-range writes without changing prior records', async () => {
     const t = setup();
     const a = t.withIdentity({ subject: 'user_A', issuer: 'https://clerk.example' });
+    await a.mutation(api.eligibility.accept, adultAgreement(profile.birthDate));
     await expect(a.mutation(api.weights.save, { ...weight, kg: -1 })).rejects.toThrow('Invalid weight');
     await expect(a.mutation(api.weights.save, { ...weight, day: '2026-02-30' })).rejects.toThrow('Invalid date');
     await expect(a.mutation(api.weights.save, { ...weight, note: 'x'.repeat(2001) })).rejects.toThrow('Invalid note');
@@ -63,6 +67,7 @@ describe('public Convex function security', () => {
 
   it('blocks a second profile client ID for the same authenticated owner', async () => {
     const t = setup(); const a = t.withIdentity({ subject: 'user_A', issuer: 'https://clerk.example' });
+    await a.mutation(api.eligibility.accept, adultAgreement(profile.birthDate));
     await a.mutation(api.profile.save, profile);
     await expect(a.mutation(api.profile.save, { ...profile, clientId: 'other' })).rejects.toThrow('Profile already exists');
     expect(await a.query(api.records.list, { table: 'profiles' })).toHaveLength(1);
@@ -71,6 +76,7 @@ describe('public Convex function security', () => {
   it('bounds the unused legacy record list while preserving smaller reads', async () => {
     const t = setup();
     const a = t.withIdentity({ subject: 'user_A', issuer: 'https://clerk.example' });
+    await a.mutation(api.eligibility.accept, adultAgreement(profile.birthDate));
     await a.mutation(api.weights.save, weight);
     expect(await a.query(api.records.list, { table: 'weights' })).toHaveLength(1);
     await t.run(async ctx => {

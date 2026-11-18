@@ -1,6 +1,7 @@
 import { mutation, query } from './_generated/server';
 import { v } from 'convex/values';
-import { clientId, day, finite, requireOwner, text, timestamp } from './security';
+import { clientId, day, dayInZone, finite, requireOwner, text, timestamp } from './security';
+import { ageOnDay } from '../shared/ageEligibility';
 
 export const current = query({ args: {}, handler: async ctx => {
   const user = await requireOwner(ctx);
@@ -12,10 +13,11 @@ export const save = mutation({ args: {
 }, handler: async (ctx, args) => {
   const user = await requireOwner(ctx);
   clientId(args.clientId); text(args.name, 'name', 120, true); day(args.birthDate, 'birth date');
-  const birth = new Date(`${args.birthDate}T00:00:00.000Z`);
-  const now = new Date();
-  const age = now.getUTCFullYear() - birth.getUTCFullYear() - (now.getUTCMonth() < birth.getUTCMonth() || (now.getUTCMonth() === birth.getUTCMonth() && now.getUTCDate() < birth.getUTCDate()) ? 1 : 0);
-  if (birth >= now || age > 120) throw new Error('Invalid birth date');
+  const eligibility = await ctx.db.query('eligibility').withIndex('by_owner', q => q.eq('owner', user)).first();
+  const age = ageOnDay(args.birthDate, dayInZone(eligibility?.timeZone ?? 'UTC'));
+  if (age === null) throw new Error('Invalid birth date');
+  if (age < 18) throw new Error('Cubyfit is for adults aged 18 and older');
+  if (!eligibility || eligibility.birthDate !== args.birthDate) throw new Error('Birth date correction requires support');
   finite(args.heightCm, 'height', 50, 300); finite(args.startWeight, 'start weight', 1, 1000);
   if (args.targetWeight !== undefined) finite(args.targetWeight, 'target weight', 1, 1000);
   text(args.experience, 'experience', 40, true); text(args.fitnessGoal, 'fitness goal', 500, true);

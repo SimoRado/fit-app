@@ -111,6 +111,10 @@ export const apply = mutation({ args: { kind, clientId: v.string(), payload: v.u
     return { status: 'applied' as const, revision: prior.revision };
   }
   const row = args.payload === null ? null : parseRow(args.kind, args.clientId, args.payload);
+  if (row && args.kind === 'profile') {
+    const eligibility = await ctx.db.query('eligibility').withIndex('by_owner', q => q.eq('owner', owner)).first();
+    if (!eligibility || row.birth_date !== eligibility.birthDate) throw Error('Birth date correction requires support');
+  }
   if (row) {
     const relation = parent[args.kind];
     if (relation) {

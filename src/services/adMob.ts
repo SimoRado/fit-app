@@ -3,7 +3,7 @@ import Storage from 'expo-sqlite/kv-store';
 import { loadAdMobNative } from './adMobNative';
 import { InterstitialManager } from './interstitialManager';
 import { androidInterstitialUnit } from './adUnit';
-import { canExposeAdMobTesting } from './adTestingPolicy';
+import { canExposeAdMobTesting, umpDebugEeaDeviceId } from './adTestingPolicy';
 
 export const admobTestingEnabled = canExposeAdMobTesting({
   debugBuild: __DEV__,
@@ -22,12 +22,23 @@ const unitId = androidInterstitialUnit(
   Constants.expoConfig?.extra?.admob?.productionBuild === true,
 );
 
+// JS-only UMP debug geography for an explicitly allowlisted device in the
+// Cubyfit Dev build. Release bundles never pass these options to UMP.
+const debugDeviceId = process.env.EXPO_PUBLIC_UMP_TEST_DEVICE_ID;
+const debugEeaTestDeviceId = umpDebugEeaDeviceId({
+  debugBuild: __DEV__,
+  testingEnabled: admobTestingEnabled,
+  activeUnit: unitId,
+  enabled: process.env.EXPO_PUBLIC_UMP_DEBUG_EEA,
+  deviceId: debugDeviceId,
+});
+
 export const interstitialManager = new InterstitialManager(
   Storage,
-  unitId ? loadAdMobNative : async () => null,
+  unitId ? () => loadAdMobNative(debugEeaTestDeviceId) : async () => null,
   unitId ?? '',
   Date.now,
   Date.now(),
   event => { if (__DEV__) console.info('[Cubyfit ads]', event); },
-  { internalTestingEnabled: admobTestingEnabled },
+  { internalTestingEnabled: admobTestingEnabled, umpDebugTestDevice: Boolean(debugEeaTestDeviceId) },
 );
