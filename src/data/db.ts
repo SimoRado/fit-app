@@ -4,7 +4,7 @@ import { addDays, dayKey, uid } from '../core/date';
 import { nextAmount } from '../core/habitProgress';
 import { startWorkoutTimer } from '../core/workoutTimer';
 import { exerciseSeeds, migrations } from './schema';
-import { trainingWorkoutsQuery } from './queries';
+import { routineExerciseListQuery, trainingWorkoutsQuery, workoutExerciseListQuery } from './queries';
 import { localDatabaseName } from './account';
 import { exerciseSearchQuery, importExerciseCatalog, normalizeExerciseText, type ExerciseDetail } from './exerciseCatalog';
 import { deleteRoutine, insertRoutineSessionExercises, loadRoutineDraft, saveRoutineDraft } from './routineStore';
@@ -338,6 +338,10 @@ export const repo = {
   measurements: () => all<Measurement>('measurements', 'ORDER BY day DESC'),
   saveMeasurement: (m: Measurement) => put('measurements', m),
   exercises: async () => { await ensureExerciseCatalog(); return all<Exercise>('exercises', 'ORDER BY custom, name'); },
+  /** Only exercises used by a routine (Train screen names), in `exercises()` order — not the whole catalog. */
+  routineExerciseList: async () => { await ensureExerciseCatalog(); return (await db()).getAllAsync<Exercise>(routineExerciseListQuery); },
+  /** Only exercises logged in a workout (Progress records), in `exercises()` order — not the whole catalog. */
+  workoutExerciseList: async () => { await ensureExerciseCatalog(); return (await db()).getAllAsync<Exercise>(workoutExerciseListQuery); },
   searchExercises: async (search = '', muscle = '', equipment = '', category = '', limit = 60) => {
     await ensureExerciseCatalog();
     const d = await db();

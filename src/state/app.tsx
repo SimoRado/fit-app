@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { AppState } from 'react-native';
 import { repo } from '../data/db';
 import { Language, Profile } from '../core/types';
@@ -11,8 +11,10 @@ import { parseMeasurementSystem, type MeasurementSystem } from '../core/foodUnit
 import { TERMS_VERSION } from '../../shared/legalVersions';
 /** Preference key for the Personalization style choice ('profile' | 'volt' | 'lotus'). Synced with other preferences. */
 export const STYLE_MODE_KEY = 'style_mode';
-type State = { ready: boolean; profile: Profile | null; legalAccepted: boolean; ageRejected: boolean; language: Language; setLanguage: (language: Language) => void; appearance: Appearance; setAppearance: (appearance: Appearance) => Promise<void>; styleMode: StyleMode; style: Style; setStyleMode: (mode: StyleMode) => Promise<void>; sex: Sex | null; setSex: (sex: Sex) => Promise<void>; measurementSystem: MeasurementSystem; setMeasurementSystem: (system: MeasurementSystem) => Promise<void>; revision: number; refresh: () => Promise<void>; changed: () => void };
-const Context = createContext<State>({ ready: false, profile: null, legalAccepted: false, ageRejected: false, language: 'en', setLanguage: () => {}, appearance: 'shore', setAppearance: async () => {}, styleMode: 'profile', style: 'volt', setStyleMode: async () => {}, sex: null, setSex: async () => {}, measurementSystem: 'metric', setMeasurementSystem: async () => {}, revision: 0, refresh: async () => {}, changed: () => {} });
+type State = { ready: boolean; profile: Profile | null; legalAccepted: boolean; ageRejected: boolean; language: Language; setLanguage: (language: Language) => void; measurementSystem: MeasurementSystem; setMeasurementSystem: (system: MeasurementSystem) => Promise<void>; revision: number; refresh: () => Promise<void>; changed: () => void };
+type PersonalizationState = { appearance: Appearance; setAppearance: (appearance: Appearance) => Promise<void>; styleMode: StyleMode; style: Style; setStyleMode: (mode: StyleMode) => Promise<void>; sex: Sex | null; setSex: (sex: Sex) => Promise<void> };
+const Context = createContext<State>({ ready: false, profile: null, legalAccepted: false, ageRejected: false, language: 'en', setLanguage: () => {}, measurementSystem: 'metric', setMeasurementSystem: async () => {}, revision: 0, refresh: async () => {}, changed: () => {} });
+const PersonalizationContext = createContext<PersonalizationState>({ appearance: 'shore', setAppearance: async () => {}, styleMode: 'profile', style: 'volt', setStyleMode: async () => {}, sex: null, setSex: async () => {} });
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false), [profile, setProfile] = useState<Profile | null>(null), [language, setLanguage] = useState<Language>('en'), [revision, setRevision] = useState(0);
   const [measurementSystem, applyMeasurementSystem] = useState<MeasurementSystem>('metric');
@@ -67,6 +69,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const reconcileHistory = useCallback(() => { repo.reconcileHabitHistory().then(written => { if (written) setRevision(x => x + 1); }).catch(() => console.warn('History update failed')); }, []);
   useEffect(() => { if (ready && profile) { reconcileReminders().catch(() => console.warn('Reminder update failed')); reconcileHistory(); } }, [ready, profile, reconcileHistory]);
   useEffect(() => { if (!ready || !profile) return; const listener = AppState.addEventListener('change', state => { if (state === 'active') { reconcileReminders().catch(() => console.warn('Reminder update failed')); reconcileHistory(); } }); return () => listener.remove(); }, [ready, profile, reconcileHistory]);
-  return <Context.Provider value={{ ready, profile, legalAccepted, ageRejected, language, setLanguage, appearance, setAppearance, styleMode, style, setStyleMode, sex, setSex, measurementSystem, setMeasurementSystem, revision, refresh, changed: () => setRevision(x => x + 1) }}>{children}</Context.Provider>;
+  // Theme changes used to recreate the broad app context, invalidating every screen that reads
+  // profile, language, or revision. Keep visual preferences in a narrow context instead.
+  const changed = useCallback(() => setRevision(x => x + 1), []);
+  const state = useMemo<State>(() => ({ ready, profile, legalAccepted, ageRejected, language, setLanguage, measurementSystem, setMeasurementSystem, revision, refresh, changed }), [ready, profile, legalAccepted, ageRejected, language, measurementSystem, setMeasurementSystem, revision, refresh, changed]);
+  const personalization = useMemo<PersonalizationState>(() => ({ appearance, setAppearance, styleMode, style, setStyleMode, sex, setSex }), [appearance, setAppearance, styleMode, style, setStyleMode, sex, setSex]);
+  return <PersonalizationContext.Provider value={personalization}><Context.Provider value={state}>{children}</Context.Provider></PersonalizationContext.Provider>;
 }
 export const useApp = () => useContext(Context);
+export const usePersonalization = () => useContext(PersonalizationContext);

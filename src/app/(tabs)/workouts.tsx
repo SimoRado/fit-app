@@ -13,6 +13,8 @@ import { Exercise, Routine, RoutineExercise, Workout } from '../../core/types';
 import { repo } from '../../data/db';
 import { useApp } from '../../state/app';
 import { useScreenRevision } from '../../state/useScreenRevision';
+import { useLoadState } from '../../state/useLoadState';
+import { LoadError, SkeletonBlock, SkeletonCard, SkeletonRow, SkeletonScreen } from '../../ui/Skeleton';
 import { Button, Page, message, confirm } from '../../ui/components';
 import { fonts, brand } from '../../ui/theme';
 import { WorkoutInProgressCard } from '../../ui/WorkoutInProgressCard';
@@ -35,6 +37,23 @@ const lastDoneLabel = (day: string | undefined, today: string) => {
   return ago <= 0 ? 'Done today' : ago === 1 ? 'Last done yesterday' : ago < 14 ? `Last done ${ago} days ago` : `Last done ${Math.round(ago / 7)} weeks ago`;
 };
 
+/** Placeholder for the routine gallery, exercise preview, actions and history. */
+function TrainSkeleton({ cardWidth }: { cardWidth: number }) {
+  return <SkeletonScreen label="Loading your training">
+    <SkeletonBlock width={112} height={15} radius={8} style={{ marginTop: 6 }}/>
+    <View style={{ flexDirection: 'row', gap: 12, marginRight: -18, overflow: 'hidden' }}>
+      {[0, 1].map(index => <SkeletonCard key={index} tone="soft" style={{ width: cardWidth, height: 178, justifyContent: 'flex-end', gap: 8 }}>
+        <SkeletonBlock width="40%" height={10} radius={5}/><SkeletonBlock width="64%" height={18} radius={9}/><SkeletonBlock width="46%" height={10} radius={5}/>
+      </SkeletonCard>)}
+    </View>
+    <SkeletonBlock width={150} height={15} radius={8} style={{ marginTop: 6 }}/>
+    <View style={{ gap: 8 }}>{[0, 1, 2].map(index => <SkeletonRow key={index}/>)}</View>
+    <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}><SkeletonBlock width={undefined} height={50} radius={25} style={{ flex: 1 }}/><SkeletonBlock width={undefined} height={50} radius={25} style={{ flex: 1 }}/></View>
+    <SkeletonBlock width={80} height={15} radius={8} style={{ marginTop: 6 }}/>
+    <View style={{ flexDirection: 'row', gap: 8 }}>{[0, 1, 2].map(index => <SkeletonBlock key={index} width={undefined} height={64} radius={18} style={{ flex: 1 }}/>)}</View>
+  </SkeletonScreen>;
+}
+
 /** Volt Train (prototype `tr12`): routine gallery, exercise preview, history and actions. */
 export default function Workouts() {
   const { profile, language, changed } = useApp();
@@ -55,14 +74,22 @@ export default function Workouts() {
   const [openWorkout, setOpenWorkout] = useState<OpenWorkout | null>(null);
   const [active, setActive] = useState(0);
   const [routineMenu, setRoutineMenu] = useState<Routine | null>(null);
+  // Loading, "no routines yet" and a failed read are different states: empty states wait for the first read.
+  const load = useLoadState('workouts');
+  const { attempt, succeed, fail } = load;
 
   useEffect(() => {
     if (!profile?.id) return;
-    Promise.all([repo.workouts(), repo.trainingWorkouts(), repo.routines(), repo.routineExercises(), repo.exercises(), repo.restDays(), repo.preferences(), repo.openWorkoutSession(profile.id)])
-      .then(([allWorkouts, completedWorkouts, savedRoutines, routineLinks, allExercises, days, preferences, open]) => {
-        setWorkouts(allWorkouts); setTraining(completedWorkouts); setRoutines(savedRoutines); setLinks(routineLinks); setExercises(allExercises); setRest(days.map(x => x.day)); setWeeklyPlan(parseGymSchedule(preferences.find(item => item.key === gymSchedulePreferenceKey)?.value)); setPreferences(new Map(preferences.map(item => [item.key, item.value]))); setOpenWorkout(open);
-      }).catch(message);
-  }, [revision, profile?.id]);
+    let current = true;
+    // Exercise names: only the exercises used by routines, not the whole catalog.
+    Promise.all([repo.workouts(), repo.trainingWorkouts(), repo.routines(), repo.routineExercises(), repo.routineExerciseList(), repo.restDays(), repo.preferences(), repo.openWorkoutSession(profile.id)])
+      .then(([allWorkouts, completedWorkouts, savedRoutines, routineLinks, routineExercises, days, preferences, open]) => {
+        if (!current) return;
+        setWorkouts(allWorkouts); setTraining(completedWorkouts); setRoutines(savedRoutines); setLinks(routineLinks); setExercises(routineExercises); setRest(days.map(x => x.day)); setWeeklyPlan(parseGymSchedule(preferences.find(item => item.key === gymSchedulePreferenceKey)?.value)); setPreferences(new Map(preferences.map(item => [item.key, item.value]))); setOpenWorkout(open);
+        succeed();
+      }).catch(error => { if (current && !fail()) message(error); });
+    return () => { current = false; };
+  }, [revision, profile?.id, attempt, succeed, fail]);
 
   const stats = workoutStats(training);
   const today = dayKey();
@@ -105,7 +132,8 @@ export default function Workouts() {
     changed();
   }
 
-  return <Page title="Train" eyebrow={`${stats.week} session${stats.week === 1 ? '' : 's'} this week`} headerAction={<CircleButton icon="add" tone="accent" label="Create routine" onPress={() => router.push('/routine-form')}/>}>
+  const loaded = load.status === 'ready';
+  return <Page title="Train" eyebrow={loaded ? `${stats.week} session${stats.week === 1 ? '' : 's'} this week` : ''} headerAction={<CircleButton icon="add" tone="accent" label="Create routine" onPress={() => router.push('/routine-form')}/>}>
     {/* Shared week selector: today and future days only; never navigates before this week. */}
     <WeekCalendar selected={calendarDay} onSelect={setCalendarDay} onDayPress={setPlanningDay} locale={locale} rules={{ minDay: today, startsOn: 1 }}
       marker={day => {
@@ -117,6 +145,9 @@ export default function Workouts() {
       }}/>
     <Text style={{ color: p.muted, fontFamily: fonts.medium, fontSize: 11.5 }}>Tap today or a future day to plan a routine or rest. Weekly plans repeat every week; past days stay as they were.</Text>
 
+    {load.status === 'error' && <LoadError text="Could not load your training data." onRetry={load.retry}/>}
+    {load.status === 'loading' && <TrainSkeleton cardWidth={cardWidth}/>}
+    {loaded && <>
     {/* Today's plan (`.nx` style): start the scheduled routine in one tap. */}
     {!openWorkout && (todayRoutine ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, paddingLeft: 12, paddingRight: 10, borderRadius: 22, backgroundColor: p.c8, borderWidth: 1, borderColor: p.c8Line }}>
       <IconBox icon={trainedToday ? 'checkmark' : 'calendar-outline'} size={42} radius={14} background={trainedToday ? p.lime : p.soft1} color={trainedToday ? brand.ink : p.accent}/>
@@ -168,6 +199,7 @@ export default function Workouts() {
       onOpen={() => router.push({ pathname: '/workout-form', params: { id: workout.id } })}
       onDelete={() => confirm('Delete workout?', async () => { await repo.remove('workouts', workout.id); changed(); })}/>)}</View>
       : <EmptyAction text={workouts.length > 0 && openWorkout ? 'Your current workout is shown above.' : 'Finished workouts will appear here.'}/>}
+    </>}
 
     <BottomSheet visible={!!routineMenu} title={routineMenu?.name ?? 'Routine'} onClose={() => setRoutineMenu(null)}>{close => routineMenu && <View style={{ gap: 6 }}>
       <MenuItem icon="play" label="Start workout" onPress={() => close(() => startRoutine(routineMenu))}/>

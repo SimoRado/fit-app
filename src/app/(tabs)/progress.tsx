@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { LayoutChangeEvent, Pressable, View } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -6,15 +6,17 @@ import Animated, { Easing, useAnimatedStyle, useSharedValue, withDelay, withTimi
 import Svg, { Circle, Path } from 'react-native-svg';
 import { Text } from '../../ui/LocalizedText';
 import { addDays, dayKey, daysBetween, fromDay, weekStart } from '../../core/date';
-import { missionProgress, personalRecords } from '../../core/logic';
+import { personalRecords } from '../../core/logic';
 import { bestWeekday, comparePeriods, dayBars, habitBreakdown, periodStats } from '../../core/habitStats';
 import type { HistoryDay } from '../../core/habitHistory';
 import { chartGeometry, dailyWeights, pointsInWindow, windowStart } from '../../core/weightChart';
 import { weightGoal } from '../../core/weightPolicy';
-import { Exercise, Habit, HabitCompletion, Mission, MissionCompletion, WeightEntry, Workout, WorkoutExercise, WorkoutSet } from '../../core/types';
+import { Exercise, Habit, WeightEntry, Workout, WorkoutExercise, WorkoutSet } from '../../core/types';
 import { repo } from '../../data/db';
 import { useApp } from '../../state/app';
 import { useScreenRevision } from '../../state/useScreenRevision';
+import { useLoadState } from '../../state/useLoadState';
+import { LoadError, SkeletonBlock, SkeletonCard, SkeletonRow, SkeletonScreen } from '../../ui/Skeleton';
 import { Page, message } from '../../ui/components';
 import { fonts } from '../../ui/theme';
 import { useReducedMotion } from '../../ui/motion';
@@ -44,9 +46,6 @@ export default function Progress() {
   const revision = useScreenRevision();
   const p = usePalette();
   const [habits, setHabits] = useState<Habit[]>([]);
-  const [completions, setCompletions] = useState<HabitCompletion[]>([]);
-  const [missions, setMissions] = useState<Mission[]>([]);
-  const [manual, setManual] = useState<MissionCompletion[]>([]);
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [weights, setWeights] = useState<WeightEntry[]>([]);
   const [links, setLinks] = useState<WorkoutExercise[]>([]);
@@ -56,6 +55,11 @@ export default function Progress() {
   const [period, setPeriod] = useState<Period>('Week');
   const [offset, setOffset] = useState(0);
   const [focusDay, setFocusDay] = useState<string | null>(null);
+  // Records and habit-history reads each finish once before content replaces the skeleton.
+  const dataLoad = useLoadState();
+  const historyLoad = useLoadState('progress');
+  const { attempt: dataAttempt, succeed: dataReady, fail: dataFailed } = dataLoad;
+  const { attempt: historyAttempt, succeed: historyReady, fail: historyFailed } = historyLoad;
 
   const today = dayKey();
   const locale = localeFor(language);
@@ -65,17 +69,24 @@ export default function Progress() {
   const historyFrom = [prevStart, addDays(today, -89)].sort()[0];
 
   useEffect(() => {
-    Promise.all([repo.habits(), repo.completions(), repo.missions(), repo.manual(), repo.trainingWorkouts(), repo.weights(), repo.workoutExercises(), repo.workoutSets(), repo.exercises()])
-      .then(([h, c, m, mc, w, wt, l, s, e]) => {
-        setHabits(h); setCompletions(c); setMissions(m); setManual(mc); setWorkouts(w);
+    let active = true;
+    // Records only need exercises that were logged in a workout, not the whole catalog.
+    Promise.all([repo.habits(), repo.trainingWorkouts(), repo.weights(), repo.workoutExercises(), repo.workoutSets(), repo.workoutExerciseList()])
+      .then(([h, w, wt, l, s, e]) => {
+        if (!active) return;
+        setHabits(h); setWorkouts(w);
         setWeights(wt); setLinks(l); setSets(s); setExercises(e);
-      }).catch(message);
-  }, [revision]);
+        dataReady();
+      }).catch(error => { if (active && !dataFailed()) message(error); });
+    return () => { active = false; };
+  }, [revision, dataAttempt, dataReady, dataFailed]);
   useEffect(() => {
     let active = true;
-    repo.habitHistory(historyFrom, today, true).then(rows => { if (active) setHistory(rows); }).catch(message);
+    repo.habitHistory(historyFrom, today, true).then(rows => { if (active) { setHistory(rows); historyReady(); } }).catch(error => { if (active && !historyFailed()) message(error); });
     return () => { active = false; };
-  }, [revision, historyFrom, today]);
+  }, [revision, historyFrom, today, historyAttempt, historyReady, historyFailed]);
+  // Recomputed only when workout data changes — not on period, chart or weight-range taps.
+  const records = useMemo(() => personalRecords(exercises, links, sets, workouts), [exercises, links, sets, workouts]);
 
   // Snapshot statistics: habits eligible on each day, fully completed measured habits only.
   const stats = periodStats(history, start, until);
@@ -101,10 +112,12 @@ export default function Progress() {
   const bestDayName = bestDay === null ? null : new Intl.DateTimeFormat(locale, { weekday: 'long' }).format(new Date(2024, 0, 7 + bestDay, 12));
   const habitIds = new Set(habits.map(habit => habit.id));
 
-  const records = personalRecords(exercises, links, sets, workouts);
-  const dailyMissions = missions.filter(mission => mission.active && mission.period === 'daily');
-  const missionDoneToday = dailyMissions.filter(mission => missionProgress(mission, today, { completions, workouts, weights, manual }).done).length;
   const focus = focusDay ? bars.find(bar => bar.key === focusDay) : undefined;
+
+  const status = dataLoad.status === 'error' || historyLoad.status === 'error' ? 'error' : dataLoad.status === 'ready' && historyLoad.status === 'ready' ? 'ready' : 'loading';
+  if (status !== 'ready') return <Page title="Progress" eyebrow="Statistics">
+    {status === 'error' ? <LoadError text="Could not load your progress." onRetry={() => { if (dataLoad.status === 'error') dataLoad.retry(); if (historyLoad.status === 'error') historyLoad.retry(); }}/> : <ProgressSkeleton/>}
+  </Page>;
 
   return <Page title="Progress" eyebrow="Statistics">
     <WeightCard weights={weights} startWeight={profile?.start_weight ?? null} target={profile?.target_weight ?? null} locale={locale}/>
@@ -143,7 +156,6 @@ export default function Progress() {
     <SectionLink title="More"/>
     <View style={{ gap: 8 }}>
       <ListRow icon="scale-outline" title="Weight & measurements" subtitle="History, chart and body measurements" onPress={() => router.push('/weight')} right={<Ionicons name="chevron-forward" size={16} color={p.text}/>}/>
-      <ListRow icon="flag-outline" title="Missions" subtitle={dailyMissions.length ? `${missionDoneToday}/${dailyMissions.length} daily missions done today` : 'Create a daily or weekly mission'} onPress={() => router.push('/missions')} right={<Ionicons name="chevron-forward" size={16} color={p.text}/>}/>
     </View>
 
     <SectionLink title="Records"/>
@@ -153,6 +165,25 @@ export default function Progress() {
       <Text style={{ color: p.text, fontFamily: fonts.displayHeavy, fontSize: 14 }}>{record.metric === 'duration' ? `${record.value} sec` : record.metric === 'reps' ? `${record.value} reps` : record.value ? `${record.value} kg${record.reps ? ` × ${record.reps}` : ''}` : `${record.reps} reps`}</Text>
     </View>)}</View> : <EmptyAction text="Complete a workout to set your first records."/>}
   </Page>;
+}
+
+/** Placeholder for the weight card (with chart area), period tabs, hero number, KPIs, bars and rows. */
+function ProgressSkeleton() {
+  return <SkeletonScreen label="Loading progress">
+    <SkeletonCard tone="soft" style={{ marginTop: 4, paddingTop: 20, paddingHorizontal: 18, paddingBottom: 14, gap: 14 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}><SkeletonBlock width={78} height={17} radius={8}/><SkeletonBlock width={32} height={32} radius={16}/></View>
+      <View style={{ flexDirection: 'row', gap: 8 }}>{[0, 1, 2].map(index => <View key={index} style={{ flex: 1, gap: 8 }}><SkeletonBlock width="70%" height={26} radius={8}/><SkeletonBlock width="50%" height={10} radius={5}/></View>)}</View>
+      <View style={{ flexDirection: 'row', gap: 18, marginTop: 4 }}>{[0, 1, 2].map(index => <SkeletonBlock key={index} width={40} height={12} radius={6}/>)}</View>
+      <SkeletonBlock height={118} radius={14}/>
+    </SkeletonCard>
+    <View style={{ flexDirection: 'row', justifyContent: 'space-around', marginTop: 6 }}>{[0, 1, 2, 3].map(index => <SkeletonBlock key={index} width={48} height={12} radius={6}/>)}</View>
+    <View style={{ alignItems: 'center' }}><SkeletonBlock width={150} height={13} radius={7}/></View>
+    <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 14, marginTop: 6 }}><SkeletonBlock width={110} height={70} radius={14}/><View style={{ flex: 1, gap: 8, paddingBottom: 6 }}><SkeletonBlock width="70%" height={11} radius={6}/><SkeletonBlock width="45%" height={11} radius={6}/></View></View>
+    <View style={{ flexDirection: 'row', gap: 8 }}>{[0, 1, 2].map(index => <SkeletonBlock key={index} width={undefined} height={64} radius={18} style={{ flex: 1 }}/>)}</View>
+    <View style={{ flexDirection: 'row', gap: 8, height: 150, alignItems: 'flex-end', marginTop: 14 }}>{[0.45, 0.7, 0.35, 0.8, 0.55, 0.25, 0.6].map((value, index) => <SkeletonBlock key={index} width={undefined} height={`${value * 100}%`} radius={7} style={{ flex: 1, maxWidth: 30 }}/>)}</View>
+    <SkeletonBlock width={90} height={15} radius={8} style={{ marginTop: 8 }}/>
+    <View style={{ gap: 8 }}>{[0, 1].map(index => <SkeletonRow key={index}/>)}</View>
+  </SkeletonScreen>;
 }
 
 function Hero({ value, delta, deltaLabel, caption, noComparison }: { value: string; delta: number | null; deltaLabel: string; caption: string; noComparison: boolean }) {

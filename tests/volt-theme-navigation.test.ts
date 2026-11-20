@@ -114,15 +114,19 @@ describe('Volt appearance foundation', () => {
     expect(appState).not.toContain('useState<Appearance>');
     expect(provider).toContain('<RouterThemeProvider value={routerTheme}>');
     expect(provider).toContain('<StatusBar animated');
+    expect(provider).toContain('<Profiler id="theme-tree"');
+    expect(appState).toContain('PersonalizationContext.Provider');
+    expect(appState).toContain('useMemo<State>');
   });
 
-  it('uses the provider palette for tab navigation and the reveal mask', () => {
+  it('uses the provider palette for tab navigation and a colour-free tab entrance', () => {
     const tabs = source('src/app/(tabs)/_layout.tsx');
     const reveal = source('src/ui/PageReveal.tsx');
-    expect(tabs).toContain('const { palette } = useVoltTheme()');
+    expect(tabs).toContain('const { palette, appearance } = useVoltTheme()');
     expect(tabs).toContain('backgroundColor: palette.navBackground');
-    expect(reveal).toContain('fill={palette.card}');
-    expect(reveal).not.toContain('fill="#fff"');
+    // The entrance animates opacity/position only, so it can never paint a fixed colour over a theme.
+    expect(reveal).not.toContain('fill=');
+    expect(reveal).not.toMatch(/#[0-9a-f]{3,6}\b/i);
   });
 
   it('keeps every primary tab subscribed to the authenticated appearance state', () => {
@@ -147,9 +151,11 @@ describe('Volt primary navigation', () => {
     for (const route of ['habit-history', 'workout-form', 'routine-form', 'weight', 'missions', 'motivation', 'account']) {
       expect(layout).toContain(`name="${route}"`);
     }
-    expect(home).toContain("router.push('/missions')");
+    expect(home).not.toContain("router.push('/missions')");
     expect(home).toContain("router.push('/weight')");
     expect(home).toContain("router.push('/motivation')");
+    expect(source('src/app/missions.tsx')).toContain('<Redirect href="/(tabs)/progress" />');
+    expect(source('src/app/mission-form.tsx')).toContain('<Redirect href="/(tabs)/progress" />');
     expect(profile).toContain("router.push('/delete-account')");
     expect(source('src/ui/ProfileSheets.tsx')).toContain("router.push('/account')");
   });

@@ -71,9 +71,20 @@ export function weightGoalProgress(start: number, current: number, target: numbe
 }
 export function personalRecords(exercises: Exercise[], links: WorkoutExercise[], sets: WorkoutSet[], workouts: Workout[]) {
   const completedIds = new Set(workouts.filter(workout => workout.completed).map(workout => workout.id));
+  // Group once (links → exercise, completed sets → exercise) instead of scanning every link and
+  // set for every exercise. Same records, same order; linear in exercises + links + sets.
+  const exerciseOfLink = new Map<string, string>();
+  for (const link of links) if (completedIds.has(link.workout_id)) exerciseOfLink.set(link.id, link.exercise_id);
+  const setsByExercise = new Map<string, WorkoutSet[]>();
+  for (const set of sets) {
+    if (!set.completed) continue;
+    const exerciseId = exerciseOfLink.get(set.workout_exercise_id);
+    if (exerciseId === undefined) continue;
+    const group = setsByExercise.get(exerciseId);
+    if (group) group.push(set); else setsByExercise.set(exerciseId, [set]);
+  }
   return exercises.map(exercise => {
-    const linkIds = new Set(links.filter(link => link.exercise_id === exercise.id && completedIds.has(link.workout_id)).map(link => link.id));
-    const relevant = sets.filter(set => set.completed && linkIds.has(set.workout_exercise_id));
+    const relevant = setsByExercise.get(exercise.id) ?? [];
     if (exercise.metric === 'duration') return { name: exercise.name, metric: exercise.metric, value: Math.max(0, ...relevant.map(set => set.duration_sec ?? 0)), reps: null };
     if (exercise.metric === 'reps') return { name: exercise.name, metric: exercise.metric, value: Math.max(0, ...relevant.map(set => set.reps ?? 0)), reps: null };
     const best = relevant.slice().sort((a, b) => (b.weight_kg ?? 0) - (a.weight_kg ?? 0) || (b.reps ?? 0) - (a.reps ?? 0))[0];

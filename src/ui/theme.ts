@@ -67,6 +67,10 @@ export type Palette = {
   chipStops: GradientStops; chipInk: string;
   /** `.sc8b` round quick-action buttons. */
   orbFrom: string; orbTo: string; orbRing: string; orbIcon: string;
+  /** Outer drop shadow / glow under the `.sc8b` orb (the inset ring is drawn from `orbRing`). */
+  orbGlow: string;
+  /** Loading placeholder surface: a soft, low-contrast tint that sits on both `bg` and `c8`. */
+  skeleton: string;
   /** Card drop shadow colour (`rgba(73,16,139,.16)` in Shore). */
   cardShadow: string;
   /** Header glows painted on the page (`.viewport` radial gradients). */
@@ -122,7 +126,7 @@ const palettes: Record<Style, Record<Appearance, Palette>> = {
       candy: solid('#1D2E8F'), candyInk: '#FFFFFF', candyGlow: 'rgba(29,46,143,0.28)', pill: [{ offset: 0, color: '#0B1446' }, { offset: 1, color: '#1D2E8F' }], pillAngle: 165,
       hero: solid('#1D2E8F'), heroShadow: '#0B1446',
       chipStops: solid('#F6FFC2'), chipInk: '#1D2E8F',
-      orbFrom: '#EEF6FF', orbTo: '#EEF6FF', orbRing: 'transparent', orbIcon: '#1D2E8F',
+      orbFrom: '#FFFFFF', orbTo: '#EEF6FF', orbRing: '#9CCBFF', orbIcon: '#1D2E8F', orbGlow: '0px 8px 18px -10px rgba(29,46,143,0.45)', skeleton: '#E4ECF8',
       cardShadow: '#0B1446', glowA: 'transparent', glowB: 'transparent', chartFill: '#1D2E8F',
       bg: '#F5F9FF', card: '#FFFFFF', card2: '#EEF6FF', elevated: '#DDEAFB',
       text: '#0B1446', muted: '#4A5679', subtle: '#5F6A8C',
@@ -147,7 +151,7 @@ const palettes: Record<Style, Record<Appearance, Palette>> = {
       candy: solid('#DFFF1F'), candyInk: '#0B1446', candyGlow: 'rgba(223,255,31,0.25)', pill: [{ offset: 0, color: '#9CCBFF' }, { offset: 1, color: '#DFFF1F' }], pillAngle: 165,
       hero: solid('#1A2A80'), heroShadow: '#000000',
       chipStops: solid('#DFFF1F', 0.14), chipInk: '#DFFF1F',
-      orbFrom: '#141A2E', orbTo: '#141A2E', orbRing: 'transparent', orbIcon: '#9CCBFF',
+      orbFrom: '#1E2642', orbTo: '#0B0E1A', orbRing: '#9CCBFF', orbIcon: '#9CCBFF', orbGlow: '0px 0px 16px -4px rgba(156,203,255,0.3)', skeleton: '#161C30',
       cardShadow: '#000000', glowA: 'transparent', glowB: 'transparent', chartFill: '#9CCBFF',
       bg: '#000000', card: '#0B0E1A', card2: '#141A2E', elevated: '#1E2642',
       text: '#EEF6FF', muted: '#A8B0C8', subtle: '#7E87A3',
@@ -173,7 +177,7 @@ const palettes: Record<Style, Record<Appearance, Palette>> = {
       candy: solid('#DFFF1F'), candyInk: '#0B1446', candyGlow: 'rgba(223,255,31,0.25)', pill: [{ offset: 0, color: '#9CCBFF' }, { offset: 1, color: '#DFFF1F' }], pillAngle: 165,
       hero: solid('#22379F'), heroShadow: '#000000',
       chipStops: solid('#DFFF1F', 0.14), chipInk: '#DFFF1F',
-      orbFrom: '#1A2350', orbTo: '#1A2350', orbRing: 'transparent', orbIcon: '#9CCBFF',
+      orbFrom: '#252F66', orbTo: '#121A3D', orbRing: '#9CCBFF', orbIcon: '#9CCBFF', orbGlow: '0px 0px 16px -4px rgba(156,203,255,0.3)', skeleton: '#1E274E',
       cardShadow: '#000000', glowA: 'transparent', glowB: 'transparent', chartFill: '#9CCBFF',
       bg: '#0A0E26', card: '#121A3D', card2: '#1A2350', elevated: '#252F66',
       text: '#EEF6FF', muted: '#A9B3DA', subtle: '#8691C2',
@@ -218,7 +222,7 @@ const palettes: Record<Style, Record<Appearance, Palette>> = {
       candy: candyLight, pill: candyLight, pillAngle: 135, candyInk: '#FFFFFF', candyGlow: 'rgba(126,48,225,0.34)',
       hero, heroShadow: '#49108B',
       chipStops: [{ offset: 0, color: '#FBE4FB' }, { offset: 1, color: '#EFE3FD' }], chipInk: '#49108B',
-      orbFrom: '#FFFFFF', orbTo: '#F1E6FD', orbRing: '#E26EE5', orbIcon: '#7E30E1',
+      orbFrom: '#FFFFFF', orbTo: '#F1E6FD', orbRing: '#E26EE5', orbIcon: '#7E30E1', orbGlow: '0px 8px 18px -10px rgba(126,48,225,0.5)', skeleton: '#EFE8F8',
       cardShadow: '#49108B',
       glowA: 'rgba(226,110,229,0.16)', glowB: 'rgba(126,48,225,0.09)',
       chartFill: '#9D87D1',
@@ -245,7 +249,7 @@ const palettes: Record<Style, Record<Appearance, Palette>> = {
       candy: candyDark, pill: candyDark, pillAngle: 135, candyInk: '#2A0950', candyGlow: 'rgba(226,110,229,0.36)',
       hero, heroShadow: '#E26EE5',
       chipStops: [{ offset: 0, color: '#E26EE5', opacity: 0.14 }, { offset: 1, color: '#E26EE5', opacity: 0.14 }], chipInk: '#F3B6F5',
-      orbFrom: '#33175A', orbTo: '#1C0B30', orbRing: '#E26EE5', orbIcon: '#F3B6F5',
+      orbFrom: '#33175A', orbTo: '#1C0B30', orbRing: '#E26EE5', orbIcon: '#F3B6F5', orbGlow: '0px 0px 16px -4px rgba(226,110,229,0.45)', skeleton: '#291641',
       cardShadow: '#000000',
       glowA: 'rgba(226,110,229,0.20)', glowB: 'rgba(126,48,225,0.26)',
       chartFill: '#C69BFF',
@@ -274,7 +278,7 @@ const palettes: Record<Style, Record<Appearance, Palette>> = {
       candy: candyDark, pill: candyDark, pillAngle: 135, candyInk: '#2A0950', candyGlow: 'rgba(226,110,229,0.36)',
       hero, heroShadow: '#E26EE5',
       chipStops: [{ offset: 0, color: '#E26EE5', opacity: 0.14 }, { offset: 1, color: '#E26EE5', opacity: 0.14 }], chipInk: '#F3B6F5',
-      orbFrom: '#33175A', orbTo: '#211638', orbRing: '#E26EE5', orbIcon: '#F3B6F5',
+      orbFrom: '#33175A', orbTo: '#211638', orbRing: '#E26EE5', orbIcon: '#F3B6F5', orbGlow: '0px 0px 16px -4px rgba(226,110,229,0.45)', skeleton: '#30214B',
       cardShadow: '#000000',
       glowA: 'rgba(226,110,229,0.20)', glowB: 'rgba(126,48,225,0.26)',
       chartFill: '#B98AF0',

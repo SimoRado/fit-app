@@ -13,6 +13,15 @@ export function perfMark(label: string, startedAt: number, minMs = 0) {
   if (elapsed >= minMs) console.info(`[perf] ${label}: ${Math.round(elapsed)} ms`);
 }
 
+let tabPress: { route: string; at: number } | null = null;
+/** Development only: remembers when a bottom-navigation destination was tapped. */
+export function markTabPress(route: string) { if (isDev()) tabPress = { route, at: perfNow() }; }
+/** Development only: logs `[perf] tab <route> <phase>: N ms` measured from the last tap on that tab. */
+export function markTabPhase(route: string, phase: string) {
+  if (!isDev() || !tabPress || tabPress.route !== route) return;
+  perfMark(`tab ${route} ${phase}`, tabPress.at);
+}
+
 /** Wraps an async operation with a development-only duration marker. */
 export async function timed<T>(label: string, operation: () => Promise<T>, minMs = 0): Promise<T> {
   const startedAt = perfNow();

@@ -14,9 +14,15 @@ import { fonts, brand } from './theme';
 import { usePalette, type VoltIcon } from './voltKit';
 import { useSubscription } from '../state/subscriptions';
 import { subscriptionPackages } from '../services/subscriptionLogic';
+import { paywallHeroKey, type PaywallHeroKey } from '../services/paywallHero';
 import { annualSavingsPercent, buildPlans, ctaLabel, disclosure, planSubtitle, purchaseErrorMessage, storeName, timeline, type Plan, type StorePlatform, type TrialEligibility } from '../services/paywallLogic';
 
-const hero = require('../../assets/paywall/hero.webp');
+const heroImages: Record<PaywallHeroKey, number> = {
+  voltLight: require('../../assets/paywall/paywall-volt-light.png'),
+  voltDark: require('../../assets/paywall/paywall-volt-dark.png'),
+  lotusLight: require('../../assets/paywall/paywall-lotus-light.png'),
+  lotusDark: require('../../assets/paywall/paywall-lotus-dark.png'),
+};
 const HERO_RATIO = 585 / 442;
 const platform: StorePlatform = Platform.OS === 'ios' ? 'ios' : 'android';
 const httpsUrl = (value: string | undefined) => value && /^https:\/\/\S+$/.test(value) ? value : null;
@@ -39,6 +45,7 @@ export function Paywall({ onClose }: { onClose: () => void }) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const subscription = useSubscription();
+  const hero = heroImages[paywallHeroKey(p.style, p.light ? 'light' : 'dark')];
   const [eligibility, setEligibility] = useState<Record<string, TrialEligibility>>({});
   const [selected, setSelected] = useState<'annual' | 'monthly'>('annual');
   const [notice, setNotice] = useState<string | null>(null);

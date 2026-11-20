@@ -12,7 +12,7 @@ import { nutritionTarget } from '../../data/nutrition';
 import { syncAutoTargets } from '../../data/nutritionPlan';
 import { clearAccountReminders } from '../../services/reminders';
 import { admobTestingEnabled } from '../../services/adMob';
-import { useApp } from '../../state/app';
+import { useApp, usePersonalization } from '../../state/app';
 import { useSubscription } from '../../state/subscriptions';
 import { subscriptionPackages } from '../../services/subscriptionLogic';
 import { buildPlans, planSubtitle } from '../../services/paywallLogic';
@@ -59,7 +59,8 @@ export default function ProfileScreen() {
   const p = usePalette();
   const { signOut } = useAuth();
   const subscription = useSubscription();
-  const { profile, revision, changed, appearance, style, language } = useApp();
+  const { profile, revision, changed, language } = useApp();
+  const { appearance, style } = usePersonalization();
   const [summary, setSummary] = useState<Summary>({ weight: null, workouts: 0, habits: 0, streak: 0, kcal: null, notifications: false });
   const [sheet, setSheet] = useState<Sheet | null>(null);
   const [signingOut, setSigningOut] = useState(false);

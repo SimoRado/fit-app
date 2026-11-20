@@ -14,6 +14,8 @@ import { STARTER_HABITS, frequencyLabel, habitDurationMinutes, habitGroup, minut
 import { repo } from '../../data/db';
 import { useApp } from '../../state/app';
 import { useScreenRevision } from '../../state/useScreenRevision';
+import { useLoadState } from '../../state/useLoadState';
+import { LoadError, SkeletonBlock, SkeletonCard, SkeletonCircle, SkeletonScreen } from '../../ui/Skeleton';
 import { Button, Field, Page, confirm, message } from '../../ui/components';
 import { BottomSheet } from '../../ui/BottomSheet';
 import { fonts, brand } from '../../ui/theme';
@@ -39,6 +41,28 @@ type EditorState = { habit: Habit | null; mode: 'time' | 'anytime' } | null;
  * category's bright colour, open rows a soft tint. Tap-only: the right circle
  * completes (or adds one step to a measured habit), ⋯ opens edit/correct/delete.
  */
+/** Placeholder for the Schedule timeline, Anytime rows and the weekly summary card. */
+function HabitsSkeleton() {
+  const row = (key: number) => <View key={key} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8 }}>
+    <SkeletonBlock width={46} height={11} radius={6}/>
+    <SkeletonCircle size={52}/>
+    <View style={{ flex: 1, gap: 7 }}><SkeletonBlock width="58%" height={13} radius={7}/><SkeletonBlock width="36%" height={10} radius={5}/></View>
+    <SkeletonBlock width={20} height={20} radius={10}/>
+  </View>;
+  return <SkeletonScreen label="Loading habits">
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}><SkeletonBlock width={92} height={15} radius={8}/><SkeletonBlock width={70} height={11} radius={6}/></View>
+    <View>{[0, 1, 2].map(row)}</View>
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}><SkeletonBlock width={84} height={15} radius={8}/><SkeletonBlock width={110} height={11} radius={6}/></View>
+    <View>{[3, 4].map(row)}</View>
+    <SkeletonBlock width={96} height={15} radius={8} style={{ marginTop: 8 }}/>
+    <SkeletonCard style={{ gap: 14 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}><SkeletonCircle size={36}/><SkeletonBlock width={120} height={12} radius={6}/><SkeletonCircle size={36}/></View>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 12 }}><SkeletonBlock width={84} height={40} radius={10}/><SkeletonBlock width="50%" height={11} radius={6} style={{ marginBottom: 6 }}/></View>
+      <SkeletonBlock height={7} radius={4}/>
+    </SkeletonCard>
+  </SkeletonScreen>;
+}
+
 export default function Habits() {
   const { changed, language, profile } = useApp();
   // Reloads only while this tab is focused (see useScreenRevision).
@@ -53,7 +77,10 @@ export default function Habits() {
   const { completions, progress } = track;
   // Measured-habit writes still in flight; a reload during a burst of taps would show an older total.
   const pendingWrites = useRef(0);
-  const [loaded, setLoaded] = useState(false);
+  // First load only; later reloads keep the list on screen. A failed first read shows a retry.
+  const load = useLoadState('habits');
+  const { attempt, succeed, fail } = load;
+  const loaded = load.status === 'ready';
   const [selected, setSelected] = useState(dayKey());
   const [summaryWeek, setSummaryWeek] = useState(weekStart(dayKey()));
   const [amountDraft, setAmountDraft] = useState('');
@@ -74,11 +101,12 @@ export default function Habits() {
     let active = true;
     Promise.all([repo.habits(), repo.completions(), repo.habitProgress()]).then(([allHabits, allCompletions, allProgress]) => {
       if (!active) return;
-      setHabits(allHabits); setLoaded(true);
+      setHabits(allHabits);
       if (pendingWrites.current === 0) setTrack({ completions: allCompletions, progress: allProgress });
-    }).catch(message);
+      succeed();
+    }).catch(error => { if (active && !fail()) message(error); });
     return () => { active = false; };
-  }, [revision]);
+  }, [revision, attempt, succeed, fail]);
   // Home / Progress links (`/habit-form`) arrive here with ?new=1 or ?edit=<id>.
   useEffect(() => {
     if (params.new) { setEditor({ habit: null, mode: 'time' }); router.setParams({ new: undefined }); }
@@ -207,6 +235,16 @@ export default function Habits() {
       </Pressable>}
     </View>
   </>;
+
+  // Before the first read: real header and date selector, placeholders for the strip, timeline and lists.
+  if (!loaded) return <Page title="">
+    {header}
+    {load.status === 'loading' && <SkeletonScreen><SkeletonBlock height={8} radius={4}/></SkeletonScreen>}
+    <MonthWeekCalendar selected={selected} onSelect={setSelected} locale={locale} marker={marker} open={calendarOpen} onOpenChange={setCalendarOpen}/>
+    {load.status === 'error' ? <LoadError text="Could not load your habits." onRetry={load.retry}/> : <HabitsSkeleton/>}
+    <BottomSheet layout="fixed" visible={!!editor} title={editor?.habit ? 'Edit habit' : 'New habit'} onClose={() => setEditor(null)}>{close => editor && <HabitEditor key={editor.habit?.id ?? `new-${editor.mode}`} habit={editor.habit} startDay={startDay} initialMode={editor.mode} close={close} onSaved={applySaved}/>}</BottomSheet>
+    <HabitHistorySheet visible={historyOpen} locale={locale} onClose={() => setHistoryOpen(false)} onUpgrade={() => { returnToHistory.current = true; router.push('/paywall'); }}/>
+  </Page>;
 
   if (loaded && active.length === 0) return <Page title="">
     {header}

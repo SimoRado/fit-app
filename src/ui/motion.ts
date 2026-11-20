@@ -1,10 +1,10 @@
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { AccessibilityInfo } from 'react-native';
 import { useReducedMotion as useNativeReducedMotion } from 'react-native-reanimated';
 
 const MotionContext = createContext(true);
 type TabTransition = { route: string; sequence: number };
-type TabMotionContextValue = { transition: TabTransition; activeRoute: string; setActiveRoute: (route: string) => void; reveal: (route: string) => void };
+type TabMotionContextValue = { transition: TabTransition; reveal: (route: string) => void };
 const TabMotionContext = createContext<TabMotionContextValue | null>(null);
 
 export function MotionProvider({ children }: { children: React.ReactNode }) {
@@ -22,13 +22,16 @@ export const useReducedMotion = () => useContext(MotionContext);
 
 export function TabMotionProvider({ children }: { children: React.ReactNode }) {
   const [transition, setTransition] = useState<TabTransition>({ route: '', sequence: 0 });
-  const [activeRoute, setActiveRoute] = useState('index');
   const reveal = useCallback((route: string) => {
     setTransition(current => ({ route, sequence: current.sequence + 1 }));
   }, []);
-  return React.createElement(TabMotionContext.Provider, { value: { transition, activeRoute, setActiveRoute, reveal } }, children);
+  // One context update per tab tap. (An unused `activeRoute` state used to add a second
+  // update, re-rendering every mounted tab Page again right after each switch.)
+  const value = useMemo(() => ({ transition, reveal }), [transition, reveal]);
+  return React.createElement(TabMotionContext.Provider, { value }, children);
 }
 
+const idleTabMotion: TabMotionContextValue = { transition: { route: '', sequence: 0 }, reveal: (_route: string) => {} };
 export function useTabMotion() {
-  return useContext(TabMotionContext) ?? { transition: { route: '', sequence: 0 }, activeRoute: '', setActiveRoute: (_route: string) => {}, reveal: (_route: string) => {} };
+  return useContext(TabMotionContext) ?? idleTabMotion;
 }

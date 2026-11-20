@@ -7,3 +7,9 @@ export const trainingWorkoutsQuery = `SELECT DISTINCT w.* FROM workouts w
         OR (x.metric='weight_reps' AND COALESCE(s.reps,0)>0))
   )
   ORDER BY w.day DESC, w.created_at DESC`;
+
+/** Exercises used by at least one routine, in the same order as the full `exercises()` list. */
+export const routineExerciseListQuery = 'SELECT * FROM exercises WHERE id IN (SELECT exercise_id FROM routine_exercises) ORDER BY custom, name';
+
+/** Exercises logged in at least one workout, in the same order as the full `exercises()` list. */
+export const workoutExerciseListQuery = 'SELECT * FROM exercises WHERE id IN (SELECT exercise_id FROM workout_exercises) ORDER BY custom, name';

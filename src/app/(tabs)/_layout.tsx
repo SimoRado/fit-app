@@ -11,6 +11,7 @@ import { Key, t } from '../../core/i18n';
 import { fonts, radii } from '../../ui/theme';
 import { useVoltTheme } from '../../ui/VoltThemeProvider';
 import { primaryTabRoutes, secondaryTabRoutes } from '../../core/voltNavigation';
+import { markTabPress } from '../../core/perf';
 import { TabMotionProvider, useReducedMotion, useTabMotion } from '../../ui/motion';
 import { candyStyle } from '../../ui/LotusArt';
 import type { Palette } from '../../ui/theme';
@@ -55,12 +56,11 @@ function AnimatedTab({ title, icon, selected, width, palette, activeText, active
 }
 
 function FloatingTabBar({ state, emitter, navigateToTab }: BottomTabBarProps) {
-  const { language, appearance } = useApp();
-  const { palette } = useVoltTheme();
+  const { language } = useApp();
+  const { palette, appearance } = useVoltTheme();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
-  const { reveal, setActiveRoute } = useTabMotion();
-  useEffect(() => { setActiveRoute(state.routes[state.index]?.name ?? 'index'); }, [setActiveRoute, state.index, state.routes]);
+  const { reveal } = useTabMotion();
   const barWidth = Math.min(width - 24, 540);
   const tabBaseWidth = Math.max(30, (barWidth - 10 - 16) / (5 + 1.7));
   const light = appearance === 'shore';
@@ -75,7 +75,7 @@ function FloatingTabBar({ state, emitter, navigateToTab }: BottomTabBarProps) {
         const active = state.index === index || (state.routes[state.index]?.name === 'profile' && route.name === 'index');
         const title = t(language, item.label);
         return <AnimatedTab key={route.key} title={title} icon={item.icon} selected={active} width={tabBaseWidth} palette={palette} activeText={palette.navActiveText} activeIcon={palette.navActiveIcon} inactiveText={palette.muted}
-          onPress={() => { const event = emitter.emit({ type: 'tabPress', target: route.key, canPreventDefault: true }); if (state.index !== index && !event.defaultPrevented) { reveal(route.name); navigateToTab(route.key); } }}
+          onPress={() => { const event = emitter.emit({ type: 'tabPress', target: route.key, canPreventDefault: true }); if (state.index !== index && !event.defaultPrevented) { markTabPress(route.name); reveal(route.name); navigateToTab(route.key); } }}
           onLongPress={() => emitter.emit({ type: 'tabLongPress', target: route.key })}/>;
       })}
     </View>
@@ -83,7 +83,9 @@ function FloatingTabBar({ state, emitter, navigateToTab }: BottomTabBarProps) {
 }
 
 export default function Layout() {
-  return <TabMotionProvider><Tabs tabBar={props => <FloatingTabBar {...props}/>} screenOptions={{ headerShown: false }}>
+  // SDK 58 React Activity hides inactive tab content but preserves its component state. This keeps
+  // cached data and scroll positions while avoiding a full hidden-tab paint on theme changes.
+  return <TabMotionProvider><Tabs activityEnabled tabBar={props => <FloatingTabBar {...props}/>} screenOptions={{ headerShown: false }}>
     {primaryTabRoutes.map(name => <Tabs.Screen key={name} name={name}/>)}
     {/* Secondary tabs stay navigable; the custom tab bar only draws routes listed in `items`. (`href: null` now hides AND redirects the route.) */}
     {secondaryTabRoutes.map(name => <Tabs.Screen key={name} name={name}/>)}

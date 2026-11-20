@@ -1,10 +1,11 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput, useWindowDimensions, View } from 'react-native';
-import { router, usePathname } from 'expo-router';
+import { router, usePathname, useRoute } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getActiveLanguage, localize } from '../core/i18n';
 import { storageErrorMessage } from '../core/errors';
+import { markTabPhase } from '../core/perf';
 import { colors, fonts, spacing, radii } from './theme';
 import { useApp } from '../state/app';
 import { Text } from './LocalizedText';
@@ -35,6 +36,8 @@ export function AngularBackground({ color = colors.card, border = colors.border,
   return <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: color, borderColor: border, borderWidth: 1, borderRadius: cut >= 30 ? radii.large : radii.card }]}/>;
 }
 
+const tabRouteNames: ReadonlySet<string> = new Set(['index', 'workouts', 'nutrition', 'habits', 'progress', 'profile']);
+
 export function Page({ title, children, headerAction, eyebrow, headerContent, footer, onBack }: { title: string; children: React.ReactNode; headerAction?: React.ReactNode; eyebrow?: string; headerContent?: React.ReactNode; footer?: React.ReactNode; onBack?: () => void }) {
   const { language } = useApp();
   const insets = useSafeAreaInsets();
@@ -44,11 +47,23 @@ export function Page({ title, children, headerAction, eyebrow, headerContent, fo
   // ScrollView, with the user's scroll position — is not rebuilt underneath.
   const currentPath = usePathname();
   const [pathname] = useState(currentPath);
-  const tabRoute = ['/', '/nutrition', '/habits', '/workouts', '/progress', '/profile'].includes(pathname);
-  const tabName = pathname === '/' ? 'index' : pathname.slice(1).split('/')[0];
+  // A tab screen identifies itself by its own route, not by the app-wide path at mount: tabs are
+  // preloaded in the background while another screen is showing (see Home), so the path then
+  // belongs to that other screen.
+  const route = useRoute();
+  const ownTab = tabRouteNames.has(route.name);
+  const tabRoute = ownTab || ['/', '/nutrition', '/habits', '/workouts', '/progress', '/profile'].includes(pathname);
+  const tabName = ownTab ? route.name : pathname === '/' ? 'index' : pathname.slice(1).split('/')[0];
   const { transition } = useTabMotion();
   const reducedMotion = useReducedMotion();
   const revealActive = !reducedMotion && tabRoute && transition.sequence > 0 && transition.route === tabName;
+  // Development-only timing: tab tap → this destination committed → its first drawn frame.
+  useEffect(() => {
+    if (!tabRoute || transition.sequence === 0 || transition.route !== tabName) return;
+    markTabPhase(tabName, 'committed');
+    const frame = requestAnimationFrame(() => markTabPhase(tabName, 'first frame'));
+    return () => cancelAnimationFrame(frame);
+  }, [tabRoute, tabName, transition.route, transition.sequence]);
   const showBack = !tabRoute && pathname !== '/onboarding';
   const compactHeader = !tabRoute && pathname !== '/onboarding';
   // Volt prototype: tab screens use a 44px `.top` row (eyebrow + actions) above a 41px
@@ -77,8 +92,9 @@ export function Page({ title, children, headerAction, eyebrow, headerContent, fo
     <View style={{ flex: 1 }}>
       {tabRoute ? <PageReveal sequence={revealActive ? transition.sequence : 0}>{pageContent}</PageReveal> : pageContent}
     </View>
-    {/* Status-bar strip: repaint the same fixed background so scrolled content never shows under the clock. */}
-    <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: insets.top, overflow: 'hidden', backgroundColor: colors.bg }}><PageBackground fade={pathname !== '/onboarding'}/></View>
+    {/* The fixed page background already covers the status area. Keeping a second SVG scene here
+        made every mounted tab paint its decoration twice on a palette change. */}
+    <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: insets.top, overflow: 'hidden' }}/>
     {/* Prototype `.dock`: sticky bottom actions above the system navigation area. */}
     {footer && <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0 }}>
       <View pointerEvents="none" style={{ height: 22, opacity: 0.9 }}><View style={{ flex: 1, backgroundColor: colors.bg, opacity: 0.35 }}/></View>

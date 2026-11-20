@@ -10,15 +10,16 @@
  *   one never changes the sex.
  * - Changing style or appearance only changes colours; no fitness data is touched.
  */
-import React from 'react';
+import React, { startTransition, useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from './LocalizedText';
 import { message } from './components';
 import { fonts, getAppearancePalette, resolveStyle, type Appearance, type Palette, type Style, type StyleMode } from './theme';
 import { usePalette } from './voltKit';
-import { useApp } from '../state/app';
+import { usePersonalization } from '../state/app';
 import type { Sex } from '../core/nutritionTargets';
+import { settlePending, type Pending } from '../core/personalizationPending';
 
 const styleSwatches: Record<Style, [string, string, string]> = {
   volt: ['#1D2E8F', '#9CCBFF', '#DFFF1F'],
@@ -27,39 +28,60 @@ const styleSwatches: Record<Style, [string, string, string]> = {
 
 export function PersonalizationSheet() {
   const p = usePalette();
-  const { sex, setSex, styleMode, setStyleMode, style, appearance, setAppearance } = useApp();
-  const run = (task: Promise<void>) => { task.catch(message); };
+  const { sex, setSex, styleMode, setStyleMode, style, appearance, setAppearance } = usePersonalization();
+  // A style/appearance change recolours every mounted screen, which takes a noticeable moment on
+  // mid-range phones (measured ≈1.3–3.4 s in a Redmi dev build). The tapped option is therefore
+  // shown as selected at once from local state, and the app-wide change runs as a transition, so
+  // it never blocks the sheet and later taps are handled while the app recolours.
+  const [pending, setPending] = useState<Pending>({});
+  // Drop each pending choice once the app state has caught up with it (only that one, so two quick
+  // changes never flicker back while the other is still being applied).
+  useEffect(() => {
+    setPending(current => settlePending(current, { sex, styleMode, appearance }));
+  }, [sex, styleMode, appearance]);
+  const shownSex = pending.sex ?? sex;
+  const shownMode = pending.styleMode ?? styleMode;
+  const choose = <K extends keyof Pending>(key: K, value: NonNullable<Pending[K]>, apply: () => Promise<void>) => {
+    setPending(current => ({ ...current, [key]: value }));
+    startTransition(() => {
+      // A failed save reverts the app state; drop the optimistic choice too, then report it.
+      apply().catch(error => {
+        setPending(current => { if (current[key] !== value) return current; const next = { ...current }; delete next[key]; return next; });
+        message(error);
+      });
+    });
+  };
   const profileStyle = resolveStyle('profile', sex);
   const options: { mode: StyleMode; title: string; subtitle: string; swatch: [string, string, string] }[] = [
     { mode: 'profile', title: 'Match my profile', subtitle: `Currently ${profileStyle === 'lotus' ? 'Lotus' : 'Volt'}`, swatch: ['#1D2E8F', '#7E30E1', '#E26EE5'] },
     { mode: 'volt', title: 'Volt', subtitle: 'Navy, sky and volt', swatch: styleSwatches.volt },
     { mode: 'lotus', title: 'Lotus', subtitle: 'Indigo, violet and orchid', swatch: styleSwatches.lotus },
   ];
-  const visibleAppearance: Appearance = appearance === 'shore' ? 'shore' : 'abyss';
+  const visibleAppearance: Appearance = (pending.appearance ?? appearance) === 'shore' ? 'shore' : 'abyss';
   return <View style={{ gap: 10 }}>
     <Text style={{ color: p.muted, fontFamily: fonts.medium, fontSize: 13.5, lineHeight: 20 }}>Cubyfit adapts its colours to your preferences. Choose a style and appearance that feel right for you. Your data and tracking stay exactly the same.</Text>
 
     <SectionHead title="Sex" hint="Also used for calorie estimates"/>
     <View accessibilityRole="radiogroup" style={{ flexDirection: 'row', padding: 4, borderRadius: 999, backgroundColor: p.light ? p.soft1 : p.card2 }}>
       {(['male', 'female'] as Sex[]).map(value => {
-        const on = sex === value;
-        return <Pressable key={value} accessibilityRole="radio" accessibilityState={{ checked: on }} onPress={() => { if (!on) run(setSex(value)); }}
+        const on = shownSex === value;
+        return <Pressable key={value} accessibilityRole="radio" accessibilityState={{ checked: on }} onPress={() => { if (!on) choose('sex', value, () => setSex(value)); }}
           style={{ flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 999, backgroundColor: on ? (p.light ? p.c8 : p.elevated) : 'transparent', ...(on && p.light ? { boxShadow: '0px 2px 8px rgba(11,20,70,0.12)' } : {}) }}>
           <Text style={{ color: on ? p.text : p.muted, fontFamily: fonts.bold, fontSize: 14 }}>{value === 'male' ? 'Male' : 'Female'}</Text>
         </Pressable>;
       })}
     </View>
-    {!sex && <Text style={{ color: p.muted, fontFamily: fonts.medium, fontSize: 12 }}>Not set yet. Automatic calorie estimates are less precise without it.</Text>}
-    {!!sex && <Text style={{ color: p.subtle, fontFamily: fonts.medium, fontSize: 12, lineHeight: 17 }}>Changing this updates automatic calorie estimates. Targets you set yourself stay the same.</Text>}
+    {!shownSex && <Text style={{ color: p.muted, fontFamily: fonts.medium, fontSize: 12 }}>Not set yet. Automatic calorie estimates are less precise without it.</Text>}
+    {!!shownSex && <Text style={{ color: p.subtle, fontFamily: fonts.medium, fontSize: 12, lineHeight: 17 }}>Changing this updates automatic calorie estimates. Targets you set yourself stay the same.</Text>}
 
     <SectionHead title="Style" hint="Colours across the app"/>
     <View accessibilityRole="radiogroup" style={{ gap: 10 }}>
-      {options.map(option => <StyleCard key={option.mode} {...option} selected={styleMode === option.mode} onPress={() => { if (styleMode !== option.mode) run(setStyleMode(option.mode)); }}/>)}
+      {options.map(option => <StyleCard key={option.mode} {...option} selected={shownMode === option.mode} onPress={() => { if (shownMode !== option.mode) choose('styleMode', option.mode, () => setStyleMode(option.mode)); }}/>)}
     </View>
 
     <SectionHead title="Appearance" hint="Light or dark"/>
     <View accessibilityRole="radiogroup" style={{ flexDirection: 'row', gap: 10 }}>
-      {(['shore', 'abyss'] as const).map(value => <AppearanceCard key={value} appearance={value} style={style} selected={visibleAppearance === value} onPress={() => { if (appearance !== value) run(setAppearance(value)); }}/>)}
+      {(['shore', 'abyss'] as const).map(value => <AppearanceCard key={value} appearance={value} style={style} selected={visibleAppearance === value} onPress={() => { if (visibleAppearance !== value) choose('appearance', value, () => setAppearance(value)); }}/>)}
     </View>
     <Text style={{ color: p.subtle, fontFamily: fonts.medium, fontSize: 12, lineHeight: 17 }}>Style and appearance only change colours. Your profile, habits, workouts, nutrition and weight are not affected.</Text>
   </View>;

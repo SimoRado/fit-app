@@ -10,6 +10,8 @@ import { Measurement, WeightEntry } from '../core/types';
 import { repo } from '../data/db';
 import { useApp } from '../state/app';
 import { Button, Page, confirm, message } from '../ui/components';
+import { useLoadState } from '../state/useLoadState';
+import { LoadError, SkeletonBlock, SkeletonCard, SkeletonRow, SkeletonScreen } from '../ui/Skeleton';
 import { Text } from '../ui/LocalizedText';
 import { fonts } from '../ui/theme';
 import { BottomSheet } from '../ui/BottomSheet';
@@ -36,9 +38,14 @@ export default function Weight() {
   const [adding, setAdding] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const [measurementMenu, setMeasurementMenu] = useState<Measurement | null>(null);
+  // First read only: until it completes, no "—" weight or empty history is shown as if it were real.
+  const load = useLoadState();
+  const { attempt, succeed, fail } = load;
   useEffect(() => {
-    Promise.all([repo.weights(), repo.measurements()]).then(([entries, records]) => { setWeights(entries); setMeasurements(records); }).catch(message);
-  }, [revision]);
+    let active = true;
+    Promise.all([repo.weights(), repo.measurements()]).then(([entries, records]) => { if (!active) return; setWeights(entries); setMeasurements(records); succeed(); }).catch(error => { if (active && !fail()) message(error); });
+    return () => { active = false; };
+  }, [revision, attempt, succeed, fail]);
 
   const locale = localeFor(language);
   const today = dayKey();
@@ -56,6 +63,15 @@ export default function Weight() {
   const editLabel = todayEntry ? 'Edit today’s weight' : 'Add today’s weight';
   const openToday = () => router.push('/weight-form');
   const history = showAll ? weights : weights.slice(0, HISTORY_PREVIEW);
+
+  if (load.status !== 'ready') return <Page title="Weight">
+    {load.status === 'error' ? <LoadError text="Could not load your weight history." onRetry={load.retry}/> : <SkeletonScreen label="Loading weight history">
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8 }}><SkeletonBlock width={170} height={80} radius={16}/><SkeletonBlock width={26} height={12} radius={6} style={{ marginBottom: 14 }}/></View>
+      <SkeletonBlock width="55%" height={12} radius={6}/>
+      <SkeletonCard style={{ gap: 12 }}><View style={{ flexDirection: 'row', gap: 18 }}>{[0, 1, 2].map(index => <SkeletonBlock key={index} width={44} height={12} radius={6}/>)}</View><SkeletonBlock height={170} radius={14}/></SkeletonCard>
+      <View style={{ gap: 8 }}>{[0, 1, 2].map(index => <SkeletonRow key={index}/>)}</View>
+    </SkeletonScreen>}
+  </Page>;
 
   return <Page title="Weight" headerAction={<CircleButton icon="add" tone="accent" label="Add weight or measurement" onPress={() => setAdding(true)}/>}>
     <Animated.View entering={heroEntering}>

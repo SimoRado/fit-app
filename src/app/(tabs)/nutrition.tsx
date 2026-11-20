@@ -6,7 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Text } from '../../ui/LocalizedText';
 import { Page, message } from '../../ui/components';
 import { BottomSheet } from '../../ui/BottomSheet';
-import { fonts, getAppearancePalette, brand } from '../../ui/theme';
+import { fonts, brand } from '../../ui/theme';
 import { dayKey, fromDay } from '../../core/date';
 import { calorieHeadline, meals, sumNutrients, weekStats, type CalorieDisplay, type Meal } from '../../core/nutrition';
 import { useReducedMotion } from '../../ui/motion';
@@ -16,7 +16,10 @@ import { calorieDisplay, customFoods, firstNutritionTarget, foodEntries, nutriti
 import { prepareFoodCatalog } from '../../data/foodCatalog';
 import { syncAutoTargets } from '../../data/nutritionPlan';
 import { useApp } from '../../state/app';
+import { useVoltTheme } from '../../ui/VoltThemeProvider';
 import { useScreenRevision } from '../../state/useScreenRevision';
+import { useLoadState } from '../../state/useLoadState';
+import { LoadError, SkeletonBlock, SkeletonCard, SkeletonRow, SkeletonScreen } from '../../ui/Skeleton';
 import { FoodSheet, TargetSetup, TargetsSheet } from '../../ui/NutritionSheets';
 import { AnimatedCollapse, AnimatedWeekBar } from '../../ui/MotionBlocks';
 import { MotionPressable } from '../../ui/MotionPressable';
@@ -49,6 +52,24 @@ function MealRow({ category, rows, kcal, open, onToggle, onAdd, onOpen, index }:
   </View>;
 }
 
+/** Placeholder for the Today view: week strip, calorie card (horseshoe + macros) and meal rows. */
+function NutritionSkeleton() {
+  const { width } = useWindowDimensions();
+  const gauge = Math.min(240, width - 70);
+  return <SkeletonScreen label="Loading nutrition" style={{ gap: 16 }}>
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 6 }}>{Array.from({ length: 7 }, (_, index) => <SkeletonBlock key={index} width={undefined} height={66} radius={22} style={{ flex: 1 }}/>)}</View>
+    <SkeletonCard>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><SkeletonBlock width={76} height={13} radius={7}/><SkeletonBlock width={96} height={11} radius={6}/></View>
+      <View style={{ alignItems: 'center', marginTop: 6 }}><View style={{ width: gauge, height: gauge * 0.62, alignItems: 'center', justifyContent: 'flex-end' }}>
+        <SkeletonBlock width={gauge} height={gauge * 0.62} radius={gauge / 2} style={{ position: 'absolute', top: 0, borderBottomLeftRadius: 24, borderBottomRightRadius: 24 }}/>
+      </View></View>
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 2 }}>{[0, 1, 2].map(index => <SkeletonBlock key={index} width={undefined} height={70} radius={20} style={{ flex: 1 }}/>)}</View>
+    </SkeletonCard>
+    <SkeletonBlock width={128} height={15} radius={8} style={{ marginTop: 4 }}/>
+    <View style={{ gap: 8 }}>{[0, 1, 2, 3].map(index => <SkeletonRow key={index}/>)}</View>
+  </SkeletonScreen>;
+}
+
 const MOTION_MS = 700;
 const countKcal = (value: number) => num(value);
 
@@ -64,10 +85,10 @@ function MacroChip({ label, value, target, background, bar, track }: { label: st
 
 export default function NutritionScreen() {
   const { width } = useWindowDimensions();
-  const { changed, appearance } = useApp();
+  const { changed } = useApp();
   // Reloads only while this tab is focused (see useScreenRevision).
   const revision = useScreenRevision();
-  const palette = getAppearancePalette(appearance);
+  const { palette } = useVoltTheme();
   const reduced = useReducedMotion();
   const today = dayKey();
   // Nutrition allows past days (backdated logging) but never future days or weeks.
@@ -83,7 +104,10 @@ export default function NutritionScreen() {
   const [firstTarget, setFirstTarget] = useState<NutritionTarget | null>(null);
   const [display, setDisplay] = useState<CalorieDisplay>('remaining');
   const [foods, setFoods] = useState<CustomFood[]>([]);
-  const [ready, setReady] = useState(false);
+  // First load only: later reloads (other week, revision bump) keep the current dashboard.
+  const load = useLoadState('nutrition');
+  const { attempt, succeed, fail } = load;
+  const ready = load.status === 'ready';
   const [sheet, setSheet] = useState<'food' | 'targets' | null>(null);
   const [editing, setEditing] = useState<FoodEntry | null>(null);
   const [meal, setMeal] = useState<Meal>('breakfast');
@@ -93,10 +117,10 @@ export default function NutritionScreen() {
     const days = weekDays(weekStartDay, 1);
     // In auto mode today's target follows the profile estimate (goal, weight, age…); custom targets are untouched.
     void syncAutoTargets(today).catch(() => false).then(() => Promise.all([foodEntries(days[0], days[6]), Promise.all(days.map(nutritionTarget)), customFoods(), firstNutritionTarget(), calorieDisplay()]))
-      .then(([nextEntries, nextTargets, nextFoods, nextFirst, nextDisplay]) => { if (active) { setEntries(nextEntries); setTargets(nextTargets); setLoadedWeek(weekStartDay); setFoods(nextFoods); setFirstTarget(nextFirst); setDisplay(nextDisplay); setReady(true); } })
-      .catch(message);
+      .then(([nextEntries, nextTargets, nextFoods, nextFirst, nextDisplay]) => { if (active) { setEntries(nextEntries); setTargets(nextTargets); setLoadedWeek(weekStartDay); setFoods(nextFoods); setFirstTarget(nextFirst); setDisplay(nextDisplay); succeed(); } })
+      .catch(error => { if (active && !fail()) message(error); });
     return () => { active = false; };
-  }, [revision, weekStartDay, today]);
+  }, [revision, weekStartDay, today, attempt, succeed, fail]);
   useEffect(() => { void prepareFoodCatalog(); }, []);
   // The dashboard follows `shownDay`, which catches up with `selected` once that
   // day's week is loaded. Entries/targets in state always belong to `loadedWeek`,
@@ -124,7 +148,7 @@ export default function NutritionScreen() {
   const headline = calorieHeadline(total.kcal, selectedTarget?.kcal ?? null, display);
   const needsSetup = ready && !firstTarget;
   return <Page title="Nutrition" eyebrow={view === 'week' ? 'This week' : selected === today ? 'Today' : dateLabel(selected)} headerAction={<CircleButton icon="options-outline" label="Nutrition targets" onPress={() => setSheet('targets')}/>}>
-    {!ready ? <Text style={{ color: p.muted }}>Loading nutrition…</Text> : needsSetup ? <TargetSetup onSaved={afterChange}/> : view === 'today' ? <Animated.View entering={reduced ? undefined : FadeIn.duration(320)} style={{ gap: 16 }}>
+    {load.status === 'error' ? <LoadError text="Could not load your nutrition log." onRetry={load.retry}/> : !ready ? <NutritionSkeleton/> : needsSetup ? <TargetSetup onSaved={afterChange}/> : view === 'today' ? <Animated.View entering={reduced ? undefined : FadeIn.duration(320)} style={{ gap: 16 }}>
       <WeekCalendar selected={selected} onSelect={setSelected} rules={rules} todayLabel="Back to today"
         marker={day => summaries.find(item => item.day === day)?.logged ? <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: day === selected ? p.plInk : p.g1 }}/> : null}/>
       <VCard>

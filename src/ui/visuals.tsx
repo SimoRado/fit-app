@@ -1,8 +1,8 @@
 import React from 'react';
 import { Pressable, View } from 'react-native';
 import { Text } from './LocalizedText';
-import { colors, fonts, getAppearancePalette } from './theme';
-import { useApp } from '../state/app';
+import { colors, fonts } from './theme';
+import { useVoltTheme } from './VoltThemeProvider';
 
 export function SectionHeader({ title, action, onPress }: { title: string; action?: string; onPress?: () => void }) {
   // Volt `.secl`: 17px display heading with an accent text action.
@@ -13,8 +13,7 @@ export function SectionHeader({ title, action, onPress }: { title: string; actio
 }
 
 export function ProgressBar({ value }: { value: number }) {
-  const { appearance } = useApp();
-  const palette = getAppearancePalette(appearance);
+  const { palette } = useVoltTheme();
   const progress = Math.max(0, Math.min(1, value));
   return <View accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: 100, now: Math.round(progress * 100) }} style={{ height: 6, borderRadius: 999, backgroundColor: palette.qTrack, overflow: 'hidden' }}>
     <View style={{ height: '100%', width: `${progress * 100}%`, borderRadius: 999, backgroundColor: palette.pgBar }}/>

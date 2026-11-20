@@ -19,6 +19,14 @@ export function HabitGlyph({ icon, size, color, filled = false }: { icon: string
  */
 export function groupColors(p: Readonly<Palette>, group: HabitGroup) {
   const light = isLight(p);
+  // Lotus category controls intentionally stay in the existing Lotus token family. The former
+  // light-mode fallbacks below were fixed Volt blue/lime tints, so unchecked rows leaked Volt
+  // colours even though completed rows already used the active palette.
+  if (p.style === 'lotus') {
+    if (group === 'Body') return { solid: p.blue, ink: p.accentInk, soft: p.paleBlue, softInk: p.accent };
+    if (group === 'Mind') return { solid: p.lime, ink: p.accentInk, soft: p.softLime, softInk: p.accent };
+    return { solid: p.g1, ink: p.plInk, soft: p.soft1, softInk: p.accent };
+  }
   if (group === 'Body') return { solid: p.blue, ink: brand.ink, soft: light ? '#EAF3FF' : 'rgba(185,138,240,0.12)', softInk: light ? '#5E7FAE' : 'rgba(185,138,240,0.78)' };
   if (group === 'Mind') return { solid: p.lime, ink: brand.ink, soft: light ? '#F4FBD2' : 'rgba(226,110,229,0.10)', softInk: light ? '#7C8A2E' : 'rgba(226,110,229,0.72)' };
   return { solid: light ? brand.violet : brand.mist, ink: light ? '#FFFFFF' : brand.ink, soft: light ? '#E7ECF8' : 'rgba(238,246,255,0.08)', softInk: light ? '#55618A' : 'rgba(238,246,255,0.66)' };
