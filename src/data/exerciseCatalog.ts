@@ -31,10 +31,29 @@ const seedNames = new Map<string, string>([['pull up', 'pullup']]);
 export const catalogVersion = version.sha256;
 export const fitExerciseId = (sourceId: string, name: string) => seedNames.get(normalizeExerciseText(name)) ?? `catalog:${sourceId}`;
 export const searchText = (row: CatalogRow) => [row.name, row.category, row.body_part, row.equipment, normalizeEquipment(row.equipment), row.muscle_group, normalizeMuscle(row.muscle_group), row.target_muscle, ...row.secondary_muscles].map(normalizeExerciseText).join(' ');
-export const exerciseSearchQuery = `SELECT e.*, c.muscle_group, c.equipment, c.category FROM exercises e LEFT JOIN exercise_catalog c ON c.exercise_id=e.id
-  WHERE (?='' OR instr(COALESCE(c.search_text, lower(e.name)), ?) > 0)
-  AND (?='' OR c.muscle_group_key=?) AND (?='' OR c.equipment_key=?) AND (?='' OR c.category=?)
-  ORDER BY e.custom DESC, e.name LIMIT ?`;
+
+export function exerciseSearchStatement(search: string, muscle = '', equipment = '', category = '', limit = 60, warmStartIds?: readonly string[]) {
+  const term = normalizeExerciseText(search);
+  const tokens = term.split(' ').filter(Boolean).slice(0, 8);
+  const clauses = tokens.map(() => 'instr(COALESCE(c.search_text, lower(e.name)), ?) > 0');
+  const searchClause = clauses.length ? clauses.join(' AND ') : '1=1';
+  const warmStartClause = warmStartIds?.length ? `AND (e.custom=1 OR e.id IN (${warmStartIds.map(() => '?').join(',')}))` : '';
+  return {
+    sql: `SELECT e.*, c.muscle_group, c.equipment, c.category FROM exercises e LEFT JOIN exercise_catalog c ON c.exercise_id=e.id
+      WHERE (${searchClause})
+      ${warmStartClause}
+      AND (?='' OR c.muscle_group_key=?) AND (?='' OR c.equipment_key=?) AND (?='' OR c.category=?)
+      ORDER BY CASE
+        WHEN lower(e.name)=? THEN 0
+        WHEN lower(e.name) LIKE ? THEN 1
+        WHEN COALESCE(c.search_text, lower(e.name)) LIKE ? THEN 2
+        WHEN instr(' ' || COALESCE(c.search_text, lower(e.name)), ' ' || ?) > 0 THEN 3
+        ELSE 4 END,
+        e.custom DESC, lower(e.name), e.name LIMIT ?`,
+    args: [...tokens, ...(warmStartIds ?? []), muscle, muscle, equipment, equipment, category, category,
+      term, `${term}%`, `${term}%`, term, limit],
+  };
+}
 
 /** Instruction languages stored on the device (the app's UI languages); others stay in the bundle only. */
 export const storedInstructionLanguages = ['en', 'fr', 'ar'] as const;

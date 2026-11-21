@@ -46,6 +46,8 @@ export default function Motivation() {
   const [category, setCategory] = useState<string>('All');
   const [today, setToday] = useState(() => dayKey());
   const [deck, setDeck] = useState<DeckState | null>(null);
+  const [deckError, setDeckError] = useState<string | null>(null);
+  const [deckReload, setDeckReload] = useState(0);
   const [saved, setSaved] = useState<string[]>([]);
   const [shareCard, setShareCard] = useState<MotivationCard | null>(null);
   const shareRef = useRef<Svg>(null);
@@ -63,12 +65,20 @@ export default function Motivation() {
     return () => { listener.remove(); clearTimeout(timer); };
   }, [checkDay, today]);
 
+  // Never leave one account's in-memory deck or favorites visible while Clerk/profile state
+  // transitions to another account (or signs out).
+  useEffect(() => { setDeck(null); setDeckError(null); setSaved([]); setShareCard(null); }, [ownerId]);
   useEffect(() => {
     if (!ownerId) return;
     let live = true;
-    motivationStore.deck(ownerId, today, catalogIds()).then(next => { if (live) setDeck(next); }).catch(message);
+    setDeckError(null);
+    motivationStore.deck(ownerId, today, catalogIds()).then(next => { if (live) setDeck(next); }).catch(error => {
+      if (!live) return;
+      setDeckError('Your cards could not be loaded.');
+      message(error);
+    });
     return () => { live = false; };
-  }, [ownerId, today, revision]);
+  }, [ownerId, today, revision, deckReload]);
   useEffect(() => {
     if (!ownerId) return;
     let live = true;
@@ -150,7 +160,8 @@ export default function Motivation() {
         </ScrollView>
 
         <View style={{ width: cardWidth, height: cardHeight + 14, alignSelf: 'center' }}>
-          {!deck ? <View style={{ width: cardWidth, height: cardHeight, borderRadius: 28, backgroundColor: light ? '#FFFFFF' : p.card, borderWidth: 1, borderColor: p.c8Line, opacity: 0.6 }}/>
+          {!deck ? deckError ? <DeckLoadFailure width={cardWidth} height={cardHeight} onRetry={() => setDeckReload(value => value + 1)}/>
+            : <View style={{ width: cardWidth, height: cardHeight, borderRadius: 28, backgroundColor: light ? '#FFFFFF' : p.card, borderWidth: 1, borderColor: p.c8Line, opacity: 0.6 }}/>
             : cards.length === 0 ? <EmptyCategory width={cardWidth} height={cardHeight} onReset={() => setCategory('All')}/>
             : <SwipeDeck key={deckKey} ref={deckRef} count={cards.length + 1} initialIndex={Math.min(index, cards.length)} width={cardWidth} height={cardHeight} reducedMotion={reduced}
               keyFor={keyFor} renderCard={renderCard} onIndexChange={onIndexChange} surface={light ? '#FFFFFF' : p.card} accessibilityLabel="Today’s motivation cards. Swipe or use the arrow buttons."/>}
@@ -174,6 +185,17 @@ export default function Motivation() {
       <MotivationShareCard ref={shareRef} card={shareCard} language={lang} width={216}/>
     </View>}
   </Page>;
+}
+
+function DeckLoadFailure({ width, height, onRetry }: { width: number; height: number; onRetry: () => void }) {
+  const p = usePalette();
+  return <View accessibilityRole="alert" style={{ width, height, borderRadius: 28, borderWidth: 1.5, borderStyle: 'dashed', borderColor: p.borderStrong, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 28 }}>
+    <Text style={{ color: p.text, fontFamily: fonts.displayHeavy, fontSize: 18, textAlign: 'center' }}>Cards are unavailable right now.</Text>
+    <Text style={{ color: p.muted, fontFamily: fonts.medium, fontSize: 13.5, lineHeight: 19, textAlign: 'center' }}>Your saved cards are safe. Try loading today’s deck again.</Text>
+    <MotionPressable pressScale={0.96} accessibilityRole="button" onPress={onRetry} style={{ marginTop: 6, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 999, backgroundColor: p.g1 }}>
+      <Text style={{ color: p.plInk, fontFamily: fonts.bold, fontSize: 13 }}>Try again</Text>
+    </MotionPressable>
+  </View>;
 }
 
 function EmptyCategory({ width, height, onReset }: { width: number; height: number; onReset: () => void }) {

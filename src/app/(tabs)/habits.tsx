@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { Alert, Pressable, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
@@ -29,6 +29,8 @@ import { MonthWeekCalendar } from '../../ui/MonthWeekCalendar';
 import { deviceUses12h } from '../../ui/WheelTimePicker';
 import { useReducedMotion } from '../../ui/motion';
 import { HabitHistorySheet } from '../../ui/HabitHistorySheet';
+import { isFeatureLimitError } from '../../services/featureLimits';
+import { useSubscription } from '../../state/subscriptions';
 
 const clock = () => new Date().toTimeString().slice(0, 5);
 const formatStep = (habit: Habit) => `${Number((habit.increment ?? 1).toFixed(2))} ${habit.unit ?? ''}`.trim();
@@ -65,6 +67,7 @@ function HabitsSkeleton() {
 
 export default function Habits() {
   const { changed, language, profile } = useApp();
+  const subscription = useSubscription();
   // Reloads only while this tab is focused (see useScreenRevision).
   const revision = useScreenRevision();
   const p = usePalette();
@@ -96,6 +99,13 @@ export default function Habits() {
   const creating = useRef(false);
   const today = dayKey();
   const locale = language === 'fr' ? 'fr-FR' : language === 'ar' ? 'ar-u-nu-arab' : 'en-US';
+
+  const showHabitLimit = useCallback(() => {
+    Alert.alert('Free plan limit reached', 'You can track up to 3 habits on Cubyfit Free. Upgrade to Pro for unlimited habits.', [
+      { text: 'Not now', style: 'cancel' },
+      { text: 'Upgrade to Pro', onPress: () => router.push('/paywall') },
+    ]);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -195,9 +205,9 @@ export default function Habits() {
     try {
       if (!profile) throw Error('Complete your profile first.');
       const times = starter.time ? [starter.time] : [];
-      await repo.saveHabit({ id: uid(), owner_id: profile.id, name: starter.name, description: '', category: starter.group, icon: starter.icon, frequency: 'daily', days: '0,1,2,3,4,5,6', weekly_target: 7, start_date: today, archived: 0, created_at: new Date().toISOString(), reminder_time: times[0] ?? null, reminder_enabled: 0, reminder_times: JSON.stringify(times), habit_type: 'boolean', target_value: 1, unit: '', increment: 1 });
+      await repo.saveHabit({ id: uid(), owner_id: profile.id, name: starter.name, description: '', category: starter.group, icon: starter.icon, frequency: 'daily', days: '0,1,2,3,4,5,6', weekly_target: 7, start_date: today, archived: 0, created_at: new Date().toISOString(), reminder_time: times[0] ?? null, reminder_enabled: 0, reminder_times: JSON.stringify(times), habit_type: 'boolean', target_value: 1, unit: '', increment: 1 }, { isPremium: subscription.isPremium });
       setSelected(today); changed();
-    } catch (error) { message(error); }
+    } catch (error) { if (isFeatureLimitError(error)) showHabitLimit(); else message(error); }
     finally { setTimeout(() => { creating.current = false; }, 600); }
   }
   /** The round control: yes/no toggles; measured adds one increment until the target (no accidental over-adding). */
@@ -242,14 +252,14 @@ export default function Habits() {
     {load.status === 'loading' && <SkeletonScreen><SkeletonBlock height={8} radius={4}/></SkeletonScreen>}
     <MonthWeekCalendar selected={selected} onSelect={setSelected} locale={locale} marker={marker} open={calendarOpen} onOpenChange={setCalendarOpen}/>
     {load.status === 'error' ? <LoadError text="Could not load your habits." onRetry={load.retry}/> : <HabitsSkeleton/>}
-    <BottomSheet layout="fixed" visible={!!editor} title={editor?.habit ? 'Edit habit' : 'New habit'} onClose={() => setEditor(null)}>{close => editor && <HabitEditor key={editor.habit?.id ?? `new-${editor.mode}`} habit={editor.habit} startDay={startDay} initialMode={editor.mode} close={close} onSaved={applySaved}/>}</BottomSheet>
+    <BottomSheet layout="fixed" visible={!!editor} title={editor?.habit ? 'Edit habit' : 'New habit'} onClose={() => setEditor(null)}>{close => editor && <HabitEditor key={editor.habit?.id ?? `new-${editor.mode}`} habit={editor.habit} startDay={startDay} initialMode={editor.mode} close={close} onSaved={applySaved} onLimit={showHabitLimit}/>}</BottomSheet>
     <HabitHistorySheet visible={historyOpen} locale={locale} onClose={() => setHistoryOpen(false)} onUpgrade={() => { returnToHistory.current = true; router.push('/paywall'); }}/>
   </Page>;
 
   if (loaded && active.length === 0) return <Page title="">
     {header}
     <EmptyHabits onPick={starter => { void createStarter(starter); }} onCreate={() => setEditor({ habit: null, mode: 'time' })}/>
-    <BottomSheet layout="fixed" visible={!!editor} title={editor?.habit ? 'Edit habit' : 'New habit'} onClose={() => setEditor(null)}>{close => editor && <HabitEditor key={editor.habit?.id ?? 'new'} habit={editor.habit} startDay={startDay} initialMode={editor.mode} close={close} onSaved={applySaved}/>}</BottomSheet>
+    <BottomSheet layout="fixed" visible={!!editor} title={editor?.habit ? 'Edit habit' : 'New habit'} onClose={() => setEditor(null)}>{close => editor && <HabitEditor key={editor.habit?.id ?? 'new'} habit={editor.habit} startDay={startDay} initialMode={editor.mode} close={close} onSaved={applySaved} onLimit={showHabitLimit}/>}</BottomSheet>
     <HabitHistorySheet visible={historyOpen} locale={locale} onClose={() => setHistoryOpen(false)} onUpgrade={() => { returnToHistory.current = true; router.push('/paywall'); }}/>
     <ManageSheet open={manage} habits={ordered} onClose={() => setManage(false)} onEdit={habit => { setManage(false); setEditor({ habit, mode: 'time' }); }}/>
   </Page>;
@@ -290,7 +300,7 @@ export default function Habits() {
       <View style={{ marginTop: 12 }}><MiniBar value={summary.due ? summary.done / summary.due : 0} color={p.pgBar} track={p.qTrack}/></View>
     </VCard>
 
-    <BottomSheet layout="fixed" visible={!!editor} title={editor?.habit ? 'Edit habit' : 'New habit'} onClose={() => setEditor(null)}>{close => editor && <HabitEditor key={editor.habit?.id ?? `new-${editor.mode}`} habit={editor.habit} startDay={startDay} initialMode={editor.mode} close={close} onSaved={applySaved}/>}</BottomSheet>
+    <BottomSheet layout="fixed" visible={!!editor} title={editor?.habit ? 'Edit habit' : 'New habit'} onClose={() => setEditor(null)}>{close => editor && <HabitEditor key={editor.habit?.id ?? `new-${editor.mode}`} habit={editor.habit} startDay={startDay} initialMode={editor.mode} close={close} onSaved={applySaved} onLimit={showHabitLimit}/>}</BottomSheet>
     <HabitHistorySheet visible={historyOpen} locale={locale} onClose={() => setHistoryOpen(false)} onUpgrade={() => { returnToHistory.current = true; router.push('/paywall'); }}/>
     <ManageSheet open={manage} habits={ordered} onClose={() => setManage(false)} onEdit={habit => { setManage(false); setEditor({ habit, mode: 'time' }); }}/>
     <BottomSheet visible={!!menu} title={menu?.name ?? 'Habit'} onClose={() => setMenu(null)}>{close => menu && <View style={{ gap: 6 }}>

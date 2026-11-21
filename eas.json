@@ -26,6 +26,26 @@
       "android": {
         "buildType": "apk"
       }
+    },
+    "production": {
+      "environment": "production",
+      "autoIncrement": true,
+      "env": {
+        "CUBYFIT_ADMOB_BUILD_CHANNEL": "production"
+      },
+      "android": {
+        "buildType": "app-bundle"
+      }
+    },
+    "production-smoke": {
+      "distribution": "internal",
+      "environment": "production",
+      "env": {
+        "CUBYFIT_ADMOB_BUILD_CHANNEL": "production"
+      },
+      "android": {
+        "buildType": "apk"
+      }
     }
   }
 }

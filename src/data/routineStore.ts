@@ -11,6 +11,7 @@ import { uid } from '../core/date';
 import { gymSchedulePreferenceKey, parseGymSchedule, serializeGymSchedule } from '../core/gymSchedule';
 import { blankTarget, decodeRoutineTargets, encodeRoutineTargets, routineDraftFrom, routineSetsPreferenceKey, validateRoutineDraft, type RoutineDraft, type TargetSet } from '../core/routineDraft';
 import type { Routine, RoutineExercise, WorkoutExercise, WorkoutSet } from '../core/types';
+import { assertMayCreate, type FeatureAccess } from '../services/featureLimits';
 
 type Tx = Pick<SQLiteDatabase, 'runAsync' | 'getFirstAsync' | 'getAllAsync'>;
 type Db = Pick<SQLiteDatabase, 'withExclusiveTransactionAsync' | 'getFirstAsync' | 'getAllAsync'>;
@@ -22,12 +23,18 @@ async function ownedRoutine(tx: Tx, ownerId: string, routineId: string) {
 }
 
 /** Creates or updates a routine, its exercise order and its planned sets in one transaction. */
-export async function saveRoutineDraft(database: Db, ownerId: string, draft: RoutineDraft, names?: ReadonlyMap<string, string>): Promise<string> {
+export async function saveRoutineDraft(database: Db, ownerId: string, draft: RoutineDraft, names: ReadonlyMap<string, string> | undefined, access: FeatureAccess): Promise<string> {
   validateRoutineDraft(draft, names);
   const routineId = draft.id ?? uid();
   await database.withExclusiveTransactionAsync(async tx => {
     const existing = await ownedRoutine(tx, ownerId, routineId);
     if (draft.id && !existing) throw Error('This routine was deleted. Go back and create it again.');
+    // Creation is checked with the insert under one exclusive transaction. Existing routines
+    // remain editable after expiry or when an account already has more than the Free allowance.
+    if (!existing) {
+      const saved = await tx.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM routines WHERE owner_id=?', ownerId);
+      assertMayCreate('routines', saved?.n ?? 0, access);
+    }
     await tx.runAsync('INSERT INTO routines VALUES (?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name', routineId, ownerId, draft.name.trim(), existing?.created_at ?? new Date().toISOString());
     await tx.runAsync('DELETE FROM routine_exercises WHERE routine_id=?', routineId);
     for (const [position, item] of draft.exercises.entries()) await tx.runAsync('INSERT INTO routine_exercises VALUES (?,?,?,?)', uid(), routineId, item.exerciseId, position);

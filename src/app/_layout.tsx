@@ -24,7 +24,7 @@ import { api } from '../../convex/_generated/api';
 import { pendingDeletions, forgetDeletion } from '../data/pendingDeletion';
 import { clearMonitoringUser, reportFailure } from '../core/monitoring';
 import { accessDestination } from '../core/accessGate';
-import { allowsClerkPublishableKey } from '../core/productionConfig';
+import { allowsClerkPublishableKey, usesExpectedConvexDeployment } from '../core/productionConfig';
 import { dayKey } from '../core/date';
 import { TERMS_VERSION } from '../../shared/legalVersions';
 
@@ -47,8 +47,15 @@ if (!convexUrl || !publishableKey) throw new Error('Missing Clerk or Convex conf
 // instance. A distributable production binary must fail closed instead of
 // silently authenticating against that instance.
 const internalBuild = Constants.expoConfig?.extra?.admob?.internalBuild === true;
+const productionBuild = Constants.expoConfig?.extra?.admob?.productionBuild === true;
 if (!allowsClerkPublishableKey(publishableKey, __DEV__, internalBuild)) {
   throw new Error('Production builds require a live Clerk publishable key');
+}
+if (productionBuild && !usesExpectedConvexDeployment(convexUrl, 'production')) {
+  throw new Error('Production builds must use the existing Cubyfit production Convex deployment');
+}
+if (internalBuild && !usesExpectedConvexDeployment(convexUrl, 'development')) {
+  throw new Error('Cubyfit internal builds must use the development Convex deployment');
 }
 const convex = new ConvexReactClient(convexUrl, { unsavedChangesWarning: false });
 

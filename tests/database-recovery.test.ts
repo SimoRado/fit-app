@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({ openDatabaseAsync: vi.fn(), importExerciseCatalog: vi.fn() }));
 vi.mock('expo-sqlite', () => ({ openDatabaseAsync: mocks.openDatabaseAsync }));
 vi.mock('../src/data/schema', () => ({ migrations: [], exerciseSeeds: [] }));
-vi.mock('../src/data/exerciseCatalog', () => ({ importExerciseCatalog: mocks.importExerciseCatalog, normalizeExerciseText: vi.fn(), exerciseSearchQuery: '' }));
+vi.mock('../src/data/exerciseCatalog', () => ({ importExerciseCatalog: mocks.importExerciseCatalog, normalizeExerciseText: vi.fn(), exerciseSearchStatement: vi.fn(() => ({ sql: '', args: [] })) }));
 vi.mock('../src/core/monitoring', () => ({ reportFailure: vi.fn() }));
 
 import { db, ensureExerciseCatalog, exerciseCatalogState, setLocalAccount } from '../src/data/db';

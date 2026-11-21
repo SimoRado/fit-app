@@ -6,6 +6,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, it } from 'vitest';
 import { Gunzip } from 'fflate';
 import { portionNutrients } from '../src/core/nutrition';
+import { rankLibrarySearchResults } from '../src/core/librarySearch';
 import manifest from '../src/data/catalog/food-manifest.json';
 
 const starterPath = join(process.cwd(), 'assets', 'foods-starter-v4.db');
@@ -47,11 +48,29 @@ describe('bundled OpenNutrition starter catalog', () => {
     db.close();
   });
 
+  it('ranks local FTS candidates by food-name match while preserving catalog identifiers', () => {
+    const db = new DatabaseSync(starterPath);
+    const rows = db.prepare('SELECT f.id,f.name FROM food_search s JOIN foods f ON f.id=s.food_id WHERE food_search MATCH ? ORDER BY rank LIMIT 90').all('"car"*') as { id: string; name: string }[];
+    const ranked = rankLibrarySearchResults(rows, 'Car', row => row.name);
+    expect(ranked.some(row => row.name === 'Carrots' && /^fd_[A-Za-z0-9]+$/.test(row.id))).toBe(true);
+    expect(ranked.findIndex(row => row.name === 'Carrots')).toBeLessThan(ranked.findIndex(row => row.name === 'Glazed Carrots'));
+    db.close();
+  });
+
   it('uses the stored metric serving grams for meal snapshots', () => {
     const db = new DatabaseSync(starterPath);
     const item = db.prepare('SELECT kcal_100,protein_100,carbs_100,fat_100,serving_grams FROM foods WHERE serving_grams > 0 AND kcal_100 IS NOT NULL AND protein_100 IS NOT NULL AND carbs_100 IS NOT NULL AND fat_100 IS NOT NULL LIMIT 1').get() as { kcal_100: number; protein_100: number; carbs_100: number; fat_100: number; serving_grams: number };
     const serving = portionNutrients({ kcal: item.kcal_100, protein: item.protein_100, carbs: item.carbs_100, fat: item.fat_100 }, item.serving_grams);
     expect(serving.kcal).toBeCloseTo(item.kcal_100 * item.serving_grams / 100);
+    db.close();
+  });
+
+  it('uses existing prefix indexes for short incremental searches', () => {
+    const db = new DatabaseSync(starterPath);
+    const namePlan = db.prepare('EXPLAIN QUERY PLAN SELECT id,name FROM foods WHERE name LIKE ? ORDER BY name COLLATE NOCASE LIMIT 45').all('c%') as { detail: string }[];
+    const aliasPlan = db.prepare('EXPLAIN QUERY PLAN SELECT f.id,f.name FROM food_aliases a JOIN foods f ON f.id=a.food_id WHERE a.alias LIKE ? ORDER BY a.alias COLLATE NOCASE LIMIT 45').all('c%') as { detail: string }[];
+    expect(namePlan.some(step => step.detail.includes('foods_name') && step.detail.includes('SEARCH'))).toBe(true);
+    expect(aliasPlan.some(step => step.detail.includes('aliases_name') && step.detail.includes('SEARCH'))).toBe(true);
     db.close();
   });
 });

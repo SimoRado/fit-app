@@ -20,6 +20,8 @@ import type { Habit } from '../core/types';
 import { reminderTimes, validReminderTime } from '../core/habitExtras';
 import { HABIT_GROUPS, HABIT_ICON_IDS, HABIT_ICONS, WEEKDAYS, displayTime, frequencyLabel, frequencyPreset, habitGroup, isHabitIconId, normalizeDays, type FrequencyPreset, type HabitGroup } from '../core/habitDesign';
 import { reconcileReminders, requestReminderPermission } from '../services/reminders';
+import { isFeatureLimitError } from '../services/featureLimits';
+import { useSubscription } from '../state/subscriptions';
 
 type Close = (after?: () => void) => void;
 const PICKER_HEIGHT = WHEEL_HEIGHT + 76;
@@ -35,11 +37,12 @@ const DAY_LETTER = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
  *   reminder_times → the scheduled time ("[]" for Anytime),
  *   reminder_enabled → notifications, off unless the user turns them on.
  */
-export function HabitEditor({ habit, startDay, initialMode = 'time', close, onSaved }: { habit: Habit | null; startDay: string; initialMode?: 'time' | 'anytime'; close: Close; onSaved: (saved?: Habit) => void }) {
+export function HabitEditor({ habit, startDay, initialMode = 'time', close, onSaved, onLimit }: { habit: Habit | null; startDay: string; initialMode?: 'time' | 'anytime'; close: Close; onSaved: (saved?: Habit) => void; onLimit: () => void }) {
   const p = usePalette();
   const reduced = useReducedMotion();
   const insets = useSafeAreaInsets();
   const { profile, language } = useApp();
+  const subscription = useSubscription();
   const hour12 = useMemo(() => deviceUses12h(), []);
   const existingTimes = habit ? reminderTimes(habit) : [];
   const [name, setName] = useState(habit?.name ?? '');
@@ -117,12 +120,15 @@ export function HabitEditor({ habit, startDay, initialMode = 'time', close, onSa
         habit_type: measured ? 'quantity' : 'boolean', target_value: measured ? amount : 1, unit: measured ? unit.trim() : '', increment: measured ? tap : 1,
         sort_order: habit?.sort_order,
       };
-      await repo.saveHabit(saved);
+      await repo.saveHabit(saved, { isPremium: subscription.isPremium });
       if (notify) await repo.setPreference('habit_reminders', 'on');
       // Show the saved habit at once; notification rescheduling (slow on Android) follows in the background.
       onSaved(saved); close();
       void reconcileReminders();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not save this habit.'); }
+    } catch (cause) {
+      if (isFeatureLimitError(cause)) { onLimit(); return; }
+      setError(cause instanceof Error ? cause.message : 'Could not save this habit.');
+    }
     finally { saving.current = false; setBusy(false); }
   }
   function remove() {

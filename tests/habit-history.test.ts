@@ -278,21 +278,21 @@ describe('Habits History — shades, calendars and access', () => {
     expect(yearMonths(2026)[11]).toBe('2026-12');
   });
 
-  it('gates past months, the year view and sharing on the verified entitlement', () => {
+  it('keeps monthly history available while gating only year and sharing on the verified entitlement', () => {
     const free = historyAccess(false, '2026-11-16'), pro = historyAccess(true, '2026-11-16');
     expect(free.canBrowseMonth('2026-11')).toBe(true);
-    expect(free.canBrowseMonth('2026-10')).toBe(false);
+    expect(free.canBrowseMonth('2026-10')).toBe(true);
     expect(free.canOpenYear || free.canShare).toBe(false);
     expect(pro.canBrowseMonth('2025-01')).toBe(true);
     expect(pro.canBrowseMonth('2026-12')).toBe(false); // never the future
     expect(pro.canOpenYear && pro.canShare).toBe(true);
-    // Individual habit detail: current month only, for Free and Pro alike; never future days.
+    // Monthly history includes its saved details for either plan; never future days.
     for (const access of [free, pro]) {
       expect(access.canSeeDetail('2026-11-02')).toBe(true);
-      expect(access.canSeeDetail('2026-10-31')).toBe(false);
+      expect(access.canSeeDetail('2026-10-31')).toBe(true);
       expect(access.canSeeDetail('2026-11-17')).toBe(false);
     }
-    // Pro expiring later only re-restricts access; stored history is untouched by this function.
-    expect(historyAccess(false, '2026-11-16').canBrowseMonth('2026-10')).toBe(false);
+    // Pro expiry hides only the Year visualization; stored monthly history stays untouched.
+    expect(historyAccess(false, '2026-11-16').canBrowseMonth('2026-10')).toBe(true);
   });
 });

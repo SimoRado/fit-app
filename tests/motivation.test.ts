@@ -240,6 +240,11 @@ describe('motivation screen wiring', () => {
     expect(screen).toContain('visibleIds(deck, isPro)');
     expect(screen).toContain("router.push('/paywall')");
   });
+  it('clears account-scoped in-memory cards during account switches and offers a retry instead of an endless loader', () => {
+    expect(screen).toContain('setDeck(null); setDeckError(null); setSaved([]); setShareCard(null);');
+    expect(screen).toContain('setDeckError(\'Your cards could not be loaded.\')');
+    expect(screen).toContain('<DeckLoadFailure');
+  });
   it('drives the card on the UI thread and routes the arrows through the same animation', () => {
     expect(deck).toContain('usePanGesture');
     expect(deck).toContain('useAnimatedStyle');

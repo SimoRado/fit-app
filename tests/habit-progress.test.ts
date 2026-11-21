@@ -2,11 +2,12 @@ import { DatabaseSync } from 'node:sqlite';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { amountLabel, applyAmountDelta, formatAmount, habitRatio, nextAmount, quantityDone } from '../src/core/habitProgress';
 import type { Habit, HabitCompletion, HabitProgress } from '../src/core/types';
+import { FeatureLimitError } from '../src/services/featureLimits';
 
 // Real migrations + sync triggers on node:sqlite, driven through the app's own db.ts.
 const fixture = vi.hoisted(() => ({ raw: null as unknown }));
 vi.mock('expo-sqlite', () => ({ openDatabaseAsync: async () => adapter(fixture.raw as DatabaseSync) }));
-vi.mock('../src/data/exerciseCatalog', () => ({ importExerciseCatalog: vi.fn(), normalizeExerciseText: (value: string) => value, exerciseSearchQuery: '' }));
+vi.mock('../src/data/exerciseCatalog', () => ({ importExerciseCatalog: vi.fn(), normalizeExerciseText: (value: string) => value, exerciseSearchStatement: vi.fn(() => ({ sql: '', args: [] })) }));
 vi.mock('../src/core/monitoring', () => ({ reportFailure: vi.fn() }));
 const { repo, setLocalAccount } = await import('../src/data/db');
 const { migrations } = await import('../src/data/schema');
@@ -96,7 +97,7 @@ describe('SQLite: atomic progress, completion records, sync queue', () => {
     raw.exec(`PRAGMA user_version = ${migrations.length}`);
     raw.exec("UPDATE sync_control SET choice='enabled' WHERE id=1");
     raw.prepare('INSERT INTO profile(id,name,birth_date,height_cm,start_weight,target_weight,experience,fitness_goal,growth_goals,language,completed_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)').run('p1', 'T', '1990-01-01', 170, 70, null, 'Beginner', 'Health', '', 'en', '2026-01-01');
-    await repo.saveHabit(water);
+    await repo.saveHabit(water, { isPremium: true });
   });
   const amount = (d: string) => (raw.prepare('SELECT amount FROM habit_progress WHERE habit_id=? AND day=?').get('water', d) as { amount: number } | undefined)?.amount ?? 0;
   const completed = (d: string) => (raw.prepare('SELECT count(*) n FROM habit_completions WHERE habit_id=? AND day=?').get('water', d) as { n: number }).n;
@@ -130,15 +131,39 @@ describe('SQLite: atomic progress, completion records, sync queue', () => {
   it('a new goal applies from today on; earlier days keep the target they were tracked against', async () => {
     await repo.addHabitAmount('water', day(-1), 3); // completed yesterday at 3 L
     await repo.addHabitAmount('water', day(), 3);   // completed today at 3 L
-    await repo.saveHabit({ ...water, target_value: 4 });
+    await repo.saveHabit({ ...water, target_value: 4 }, { isPremium: true });
     const target = (d: string) => (raw.prepare('SELECT target_snapshot t FROM habit_progress WHERE habit_id=? AND day=?').get('water', d) as { t: number }).t;
     expect([target(day(-1)), target(day())]).toEqual([3, 4]);
     expect([amount(day(-1)), amount(day())]).toEqual([3, 3]);           // progress preserved
     expect([completed(day(-1)), completed(day())]).toEqual([1, 0]);     // today now 3 / 4
   });
   it('rejects progress on a yes/no habit', async () => {
-    await repo.saveHabit({ ...water, id: 'plain', habit_type: 'boolean' });
+    await repo.saveHabit({ ...water, id: 'plain', habit_type: 'boolean' }, { isPremium: true });
     await expect(repo.addHabitAmount('plain', day(), 1)).rejects.toThrow();
+  });
+
+  it('caps Free accounts at three active habits atomically, preserves existing records, and frees a deleted slot', async () => {
+    const free = { isPremium: false };
+    const second = { ...water, id: 'h2', name: 'Second habit' };
+    const third = { ...water, id: 'h3', name: 'Third habit' };
+    const fourth = { ...water, id: 'h4', name: 'Fourth habit' };
+    await repo.saveHabit(second, free);
+    await repo.saveHabit(third, free);
+    await expect(repo.saveHabit(fourth, free)).rejects.toBeInstanceOf(FeatureLimitError);
+    // Existing accounts that became over-limit remain editable after expiry.
+    await repo.saveHabit({ ...fourth, name: 'Existing fourth' }, { isPremium: true });
+    await repo.saveHabit({ ...fourth, name: 'Existing fourth, edited' }, free);
+    await repo.deleteHabit(second.id);
+    await repo.deleteHabit(third.id);
+    await repo.saveHabit({ ...water, id: 'h5', name: 'Replacement habit' }, free);
+    expect(raw.prepare('SELECT COUNT(*) AS n FROM habits WHERE owner_id=? AND archived=0').get('p1')).toEqual({ n: 3 });
+  });
+
+  it('does not let rapid Free habit creation requests race past the active limit', async () => {
+    const attempts = await Promise.allSettled(['h2', 'h3', 'h4', 'h5'].map(id => repo.saveHabit({ ...water, id, name: id }, { isPremium: false })));
+    expect(attempts.filter(item => item.status === 'fulfilled')).toHaveLength(2);
+    expect(attempts.filter(item => item.status === 'rejected')).toHaveLength(2);
+    expect(raw.prepare('SELECT COUNT(*) AS n FROM habits WHERE owner_id=? AND archived=0').get('p1')).toEqual({ n: 3 });
   });
 });
 

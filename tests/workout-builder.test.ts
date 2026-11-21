@@ -126,13 +126,13 @@ describe('routine draft operations', () => {
 describe('routine persistence (SQLite)', () => {
   it('saves a new routine with ordered exercises and planned sets, then edits it', async () => {
     const { sql, adapter } = database();
-    const id = await saveRoutineDraft(adapter, 'owner', pushDay());
+    const id = await saveRoutineDraft(adapter, 'owner', pushDay(), undefined, { isPremium: true });
     expect(rows<{ exercise_id: string; position: number }>(sql, 'SELECT exercise_id,position FROM routine_exercises WHERE routine_id=? ORDER BY position', id)).toEqual([{ exercise_id: 'bench', position: 0 }, { exercise_id: 'shoulder', position: 1 }]);
     const loaded = await loadRoutineDraft(adapter, 'owner', id);
     expect(loaded?.name).toBe('Push Day');
     expect(loaded?.exercises[0].sets[0]).toMatchObject({ reps: 10, weightKg: 60 });
     const edited = moveExercise({ ...loaded!, name: 'Push A' }, loaded!.exercises[1].key, -1);
-    await saveRoutineDraft(adapter, 'owner', edited);
+    await saveRoutineDraft(adapter, 'owner', edited, undefined, { isPremium: true });
     expect(rows<{ name: string }>(sql, 'SELECT name FROM routines')).toEqual([{ name: 'Push A' }]);
     expect(rows<{ exercise_id: string }>(sql, 'SELECT exercise_id FROM routine_exercises WHERE routine_id=? ORDER BY position', id).map(row => row.exercise_id)).toEqual(['shoulder', 'bench']);
     expect((await loadRoutineDraft(adapter, 'owner', id))?.exercises[1].sets[0]).toMatchObject({ reps: 10, weightKg: 60 });
@@ -141,14 +141,29 @@ describe('routine persistence (SQLite)', () => {
 
   it('rejects invalid drafts without writing anything', async () => {
     const { sql, adapter } = database();
-    await expect(saveRoutineDraft(adapter, 'owner', { ...pushDay(), name: '' })).rejects.toThrow('Enter a routine name.');
+    await expect(saveRoutineDraft(adapter, 'owner', { ...pushDay(), name: '' }, undefined, { isPremium: true })).rejects.toThrow('Enter a routine name.');
     expect(rows(sql, 'SELECT * FROM routines')).toHaveLength(0);
+  });
+
+  it('caps Free accounts at six routines, allows Pro beyond that, and frees a deleted slot', async () => {
+    const { sql, adapter } = database();
+    const free = { isPremium: false };
+    const ids: string[] = [];
+    for (let index = 0; index < 6; index++) ids.push(await saveRoutineDraft(adapter, 'owner', { ...pushDay(), name: `Routine ${index}` }, undefined, free));
+    await expect(saveRoutineDraft(adapter, 'owner', { ...pushDay(), name: 'Seventh' }, undefined, free)).rejects.toThrow('Free plan limit reached');
+    const seventh = await saveRoutineDraft(adapter, 'owner', { ...pushDay(), name: 'Seventh' }, undefined, { isPremium: true });
+    // Expiry does not lock editing an existing saved routine.
+    await saveRoutineDraft(adapter, 'owner', { ...pushDay(), id: seventh, name: 'Seventh edited' }, undefined, free);
+    await deleteRoutine(adapter, 'owner', ids[0]);
+    await deleteRoutine(adapter, 'owner', ids[1]);
+    await saveRoutineDraft(adapter, 'owner', { ...pushDay(), name: 'Replacement' }, undefined, free);
+    expect(rows(sql, 'SELECT * FROM routines WHERE owner_id=?', 'owner')).toHaveLength(6);
   });
 
   it('deletes a routine, its plan and schedule references, but keeps workout history', async () => {
     const { sql, adapter } = database();
-    const id = await saveRoutineDraft(adapter, 'owner', pushDay());
-    const keep = await saveRoutineDraft(adapter, 'owner', { ...pushDay(), name: 'Legs' });
+    const id = await saveRoutineDraft(adapter, 'owner', pushDay(), undefined, { isPremium: true });
+    const keep = await saveRoutineDraft(adapter, 'owner', { ...pushDay(), name: 'Legs' }, undefined, { isPremium: true });
     const plan = setGymDayPlan(setGymDayPlan([], 1, { weekday: 1, kind: 'routine', routineId: id }), 3, { weekday: 3, kind: 'routine', routineId: keep });
     sql.prepare('INSERT INTO preferences VALUES (?,?)').run(gymSchedulePreferenceKey, serializeGymSchedule(plan));
     sql.prepare('INSERT INTO workouts (id,owner_id,name,day,started_at,notes,completed,created_at) VALUES (?,?,?,?,?,?,?,?)').run('w1', 'owner', 'Push Day', '2026-11-10', '2026-11-10T10:00:00Z', '', 1, 'now');
@@ -166,16 +181,16 @@ describe('routine persistence (SQLite)', () => {
 
   it('keeps routines isolated per account', async () => {
     const { adapter } = database();
-    const id = await saveRoutineDraft(adapter, 'owner', pushDay());
+    const id = await saveRoutineDraft(adapter, 'owner', pushDay(), undefined, { isPremium: true });
     expect(await loadRoutineDraft(adapter, 'other', id)).toBeNull();
     await expect(deleteRoutine(adapter, 'other', id)).rejects.toThrow('Routine not found for this account.');
-    await expect(saveRoutineDraft(adapter, 'other', { ...pushDay(), id })).rejects.toThrow('Routine not found for this account.');
+    await expect(saveRoutineDraft(adapter, 'other', { ...pushDay(), id }, undefined, { isPremium: true })).rejects.toThrow('Routine not found for this account.');
     expect((await loadRoutineDraft(adapter, 'owner', id))?.name).toBe('Push Day');
   });
 
   it('starts a scheduled routine with its planned sets prefilled and not completed', async () => {
     const { sql, adapter, api } = database();
-    const id = await saveRoutineDraft(adapter, 'owner', pushDay());
+    const id = await saveRoutineDraft(adapter, 'owner', pushDay(), undefined, { isPremium: true });
     sql.prepare('INSERT INTO workouts (id,owner_id,name,day,started_at,notes,completed,created_at) VALUES (?,?,?,?,?,?,?,?)').run('live', 'owner', 'Push Day', '2026-11-14', '2026-11-14T10:00:00Z', '', 0, 'now');
     const links = rows<{ id: string; routine_id: string; exercise_id: string; position: number }>(sql, 'SELECT * FROM routine_exercises WHERE routine_id=? ORDER BY position', id);
     const exercises = await insertRoutineSessionExercises(api, 'live', id, links);
@@ -256,7 +271,7 @@ describe('compact set row layout', () => {
 describe('screens use the shared engine, both themes and reduced motion', () => {
   it('routine builder saves through the repository and guards unsaved changes', () => {
     const form = source('src/app/routine-form.tsx');
-    expect(form).toContain('repo.saveRoutineDraft(profile.id, draft, names)');
+    expect(form).toContain('repo.saveRoutineDraft(profile.id, draft, names, { isPremium: subscription.isPremium })');
     expect(form).toContain('repo.deleteRoutine(profile.id, draft.id!)');
     expect(form).toContain('usePreventRemove(dirty && !leaving && !discarded');
     expect(form).toContain('if (savingRef.current) return;');

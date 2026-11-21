@@ -5,7 +5,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { describe, expect, it } from 'vitest';
 import catalogRows from '../src/data/catalog/exercises.json';
 import { exerciseSeeds, migrations } from '../src/data/schema';
-import { CATALOG_IMPORT_BATCH, exerciseSearchQuery, importExerciseCatalog, normalizeExerciseText, storedInstructionLanguages } from '../src/data/exerciseCatalog';
+import { CATALOG_IMPORT_BATCH, exerciseSearchStatement, importExerciseCatalog, storedInstructionLanguages } from '../src/data/exerciseCatalog';
 import { saveRoutineDraft } from '../src/data/routineStore';
 import { addExercise, emptyRoutineDraft, updateTargetSet } from '../src/core/routineDraft';
 import { storageErrorMessage } from '../src/core/errors';
@@ -50,7 +50,7 @@ describe('routine saving', () => {
 
   it('saves successfully and atomically', async () => {
     const { sql, adapter } = database();
-    await saveRoutineDraft(adapter, 'owner', draft());
+    await saveRoutineDraft(adapter, 'owner', draft(), undefined, { isPremium: true });
     expect(count(sql, 'routines')).toBe(1);
     expect(count(sql, 'routine_exercises')).toBe(2);
     expect(count(sql, 'preferences')).toBe(1);
@@ -59,14 +59,14 @@ describe('routine saving', () => {
   it('rolls back completely when a write fails and explains the failure', async () => {
     const { sql, adapter, failNext } = database();
     failNext(/INSERT OR REPLACE INTO preferences/);
-    const attempt = saveRoutineDraft(adapter, 'owner', draft());
+    const attempt = saveRoutineDraft(adapter, 'owner', draft(), undefined, { isPremium: true });
     await expect(attempt).rejects.toThrow('database is locked');
     expect(count(sql, 'routines')).toBe(0);
     expect(count(sql, 'routine_exercises')).toBe(0);
     expect(storageErrorMessage(Error('database is locked'))).toBe('Cubyfit was busy saving other data. Please try again.');
     // The same draft saves on retry.
     failNext(null);
-    await saveRoutineDraft(adapter, 'owner', draft());
+    await saveRoutineDraft(adapter, 'owner', draft(), undefined, { isPremium: true });
     expect(count(sql, 'routines')).toBe(1);
   });
 
@@ -74,7 +74,7 @@ describe('routine saving', () => {
     const { sql, adapter, counters } = database();
     let big = { ...emptyRoutineDraft(), name: 'Huge' };
     for (let i = 0; i < 40; i++) big = addExercise(big, `catalog:${String(i).padStart(4, '0')}`, { sets: 10 });
-    await expect(saveRoutineDraft(adapter, 'owner', big)).rejects.toThrow(/too many planned sets/);
+    await expect(saveRoutineDraft(adapter, 'owner', big, undefined, { isPremium: true })).rejects.toThrow(/too many planned sets/);
     expect(counters.writes).toBe(0);
     expect(count(sql, 'routines')).toBe(0);
   });
@@ -115,11 +115,12 @@ describe('exercise library initialization', () => {
     const restarted = database(first.sql, false);
     await importExerciseCatalog(restarted.adapter);
     expect(restarted.counters.writes).toBe(0);
-    const term = normalizeExerciseText('bench');
-    const rows = first.sql.prepare(exerciseSearchQuery).all(term, term, '', '', '', '', '', '', 60) as { name: string }[];
+    const statement = exerciseSearchStatement('bench');
+    const rows = first.sql.prepare(statement.sql).all(...statement.args) as { name: string }[];
     expect(rows.length).toBeGreaterThan(0);
     expect(rows.every(row => row.name.toLowerCase().includes('bench'))).toBe(true);
-    const none = first.sql.prepare(exerciseSearchQuery).all('zzzz-not-an-exercise', 'zzzz-not-an-exercise', '', '', '', '', '', '', 60);
+    const noneStatement = exerciseSearchStatement('zzzz-not-an-exercise');
+    const none = first.sql.prepare(noneStatement.sql).all(...noneStatement.args);
     expect(none).toEqual([]);
   });
 

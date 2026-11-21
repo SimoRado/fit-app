@@ -7,7 +7,7 @@ import type { WeightEntry } from '../src/core/types';
 // Disposable in-memory SQLite (real migrations + sync triggers) driven through the app's own db.ts.
 const fixture = vi.hoisted(() => ({ raw: null as unknown }));
 vi.mock('expo-sqlite', () => ({ openDatabaseAsync: async () => adapter(fixture.raw as DatabaseSync) }));
-vi.mock('../src/data/exerciseCatalog', () => ({ importExerciseCatalog: vi.fn(), normalizeExerciseText: (value: string) => value, exerciseSearchQuery: '' }));
+vi.mock('../src/data/exerciseCatalog', () => ({ importExerciseCatalog: vi.fn(), normalizeExerciseText: (value: string) => value, exerciseSearchStatement: vi.fn(() => ({ sql: '', args: [] })) }));
 vi.mock('../src/core/monitoring', () => ({ reportFailure: vi.fn() }));
 const { repo, setLocalAccount } = await import('../src/data/db');
 const { migrations } = await import('../src/data/schema');

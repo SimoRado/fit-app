@@ -3,7 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import catalogRows from '../src/data/catalog/exercises.json';
 import sourceAliases from '../src/data/catalog/source-aliases.json';
-import { exerciseSearchQuery, fitExerciseId, importExerciseCatalog, normalizeExerciseText } from '../src/data/exerciseCatalog';
+import { exerciseSearchStatement, fitExerciseId, importExerciseCatalog, normalizeExerciseText } from '../src/data/exerciseCatalog';
 import { exerciseSeeds, migrations } from '../src/data/schema';
 
 function database() {
@@ -25,8 +25,8 @@ function database() {
 }
 function count(sql: DatabaseSync, table: string) { return (sql.prepare(`SELECT count(*) AS n FROM ${table}`).get() as { n: number }).n; }
 function search(sql: DatabaseSync, term = '', muscle = '', equipment = '', category = '') {
-  const value = normalizeExerciseText(term);
-  return sql.prepare(exerciseSearchQuery).all(value, value, muscle, muscle, equipment, equipment, category, category, 60) as { id: string; name: string }[];
+  const statement = exerciseSearchStatement(term, muscle, equipment, category);
+  return sql.prepare(statement.sql).all(...statement.args as (string | number)[]) as { id: string; name: string }[];
 }
 
 describe('offline exercise catalog', () => {
@@ -74,6 +74,40 @@ describe('offline exercise catalog', () => {
     expect(JSON.parse(detail.instruction_steps).en.length).toBeGreaterThan(0);
     expect(detail.media_uri).toBeNull();
     expect(fitExerciseId('0001', '3/4 sit-up')).toBe('catalog:0001');
+    sql.close();
+  });
+  it('updates on one-character and multiword input with case, punctuation, accents, and name relevance', async () => {
+    const { sql, adapter } = database();
+    await importExerciseCatalog(adapter);
+    const oneCharacter = search(sql, 'l');
+    expect(oneCharacter.length).toBeGreaterThan(0);
+    expect(oneCharacter[0].name.toLowerCase().startsWith('l')).toBe(true);
+    expect(search(sql, 'LAT PULLDOWN')[0].name.toLowerCase()).toBe('lat pulldown');
+    expect(search(sql, 'lat-pulldown')[0].name.toLowerCase()).toBe('lat pulldown');
+    expect(normalizeExerciseText('Crème-brûlée')).toBe('creme brulee');
+    expect(search(sql, 'dumbbell press').length).toBeGreaterThan(0);
+    sql.close();
+  });
+  it('combines name search with filters and keeps saved exercise identifiers', async () => {
+    const { sql, adapter } = database();
+    await importExerciseCatalog(adapter);
+    const match = sql.prepare("SELECT muscle_group_key,equipment_key,category FROM exercise_catalog WHERE search_text LIKE 'dumbbell%' LIMIT 1").get() as { muscle_group_key: string; equipment_key: string; category: string };
+    expect(match).toBeTruthy();
+    const filtered = search(sql, 'dumbbell', match.muscle_group_key, match.equipment_key, match.category);
+    expect(filtered.length).toBeGreaterThan(0);
+    const saved = filtered[0];
+    expect(saved.id).toMatch(/^catalog:\d{4}$/);
+    expect(sql.prepare('SELECT id FROM exercises WHERE id=?').get(saved.id)).toBeTruthy();
+    sql.close();
+  });
+  it('can show seed and custom matches before the full local catalog import finishes', () => {
+    const { sql } = database();
+    sql.prepare('INSERT INTO exercises VALUES (?,?,?,1)').run('user-row', 'Lat Raise Custom', 'weight_reps');
+    const statement = exerciseSearchStatement('lat', '', '', '', 60, ['lat']);
+    const rows = sql.prepare(statement.sql).all(...statement.args as (string | number)[]) as { id: string; name: string; custom: number }[];
+    expect(rows.map(row => row.id)).toContain('lat');
+    expect(rows.map(row => row.id)).toContain('user-row');
+    expect(rows.every(row => row.id === 'lat' || row.custom === 1)).toBe(true);
     sql.close();
   });
   it('keeps catalog and custom exercises in separate per-account databases', async () => {

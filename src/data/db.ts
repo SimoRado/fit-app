@@ -6,13 +6,14 @@ import { startWorkoutTimer } from '../core/workoutTimer';
 import { exerciseSeeds, migrations } from './schema';
 import { routineExerciseListQuery, trainingWorkoutsQuery, workoutExerciseListQuery } from './queries';
 import { localDatabaseName } from './account';
-import { exerciseSearchQuery, importExerciseCatalog, normalizeExerciseText, type ExerciseDetail } from './exerciseCatalog';
+import { exerciseSearchStatement, importExerciseCatalog, type ExerciseDetail } from './exerciseCatalog';
 import { deleteRoutine, insertRoutineSessionExercises, loadRoutineDraft, saveRoutineDraft } from './routineStore';
 import type { RoutineDraft } from '../core/routineDraft';
 import { reportFailure } from '../core/monitoring';
 import { perfMark, perfNow } from '../core/perf';
 import { historyFirstDay, historyRange, reconcileHistory, withHistory } from './habitHistory';
 import { assertWeightDelete, assertWeightWrite, prepareTodayWeight } from '../core/weightPolicy';
+import { assertMayCreate, type FeatureAccess } from '../services/featureLimits';
 
 let promise: Promise<SQLite.SQLiteDatabase> | undefined;
 let activeAccount: string | null = null;
@@ -235,14 +236,21 @@ export const repo = {
   habits: () => all<Habit>('habits', 'ORDER BY sort_order, created_at DESC'),
   completions: () => all<HabitCompletion>('habit_completions'),
   habitProgress: () => all<HabitProgress>('habit_progress'),
-  saveHabit: async (h: Habit) => {
+  saveHabit: async (h: Habit, access: FeatureAccess) => {
     const d = await db();
     // One transaction: earlier days are frozen with the definition they were tracked under
     // before the edit lands, then today's open snapshot picks up the new definition.
     await d.withExclusiveTransactionAsync(async tx => {
       const today = dayKey();
       await withHistory(tx, today, async () => {
-        const existing = await tx.getFirstAsync<{ sort_order: number }>('SELECT sort_order FROM habits WHERE id=? AND owner_id=?', h.id, h.owner_id);
+        const existing = await tx.getFirstAsync<{ sort_order: number; archived: number }>('SELECT sort_order,archived FROM habits WHERE id=? AND owner_id=?', h.id, h.owner_id);
+        // Count inside the same exclusive transaction that performs the write. This covers the
+        // starter and editor flows and prevents rapid concurrent saves from creating a fourth
+        // active Free habit. Editing an existing active habit never consumes another slot.
+        if (!access.isPremium && !h.archived && (!existing || existing.archived)) {
+          const active = await tx.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM habits WHERE owner_id=? AND archived=0', h.owner_id);
+          assertMayCreate('habits', active?.n ?? 0, access);
+        }
         const next = existing ? existing.sort_order : (await tx.getFirstAsync<{ n: number }>('SELECT COALESCE(MAX(sort_order),-1)+1 AS n FROM habits WHERE owner_id=?', h.owner_id))?.n ?? 0;
         await upsertRow(tx, 'habits', { ...h, habit_type: h.habit_type ?? 'boolean', target_value: h.target_value ?? 1, unit: h.unit ?? '', increment: h.increment ?? 1, reminder_enabled: h.reminder_enabled ?? Number(!!h.reminder_time), reminder_times: h.reminder_times ?? JSON.stringify(h.reminder_time ? [h.reminder_time] : []), sort_order: h.sort_order ?? next });
         if ((h.habit_type ?? 'boolean') === 'quantity' && (h.target_value ?? 1) > 0) {
@@ -343,10 +351,24 @@ export const repo = {
   /** Only exercises logged in a workout (Progress records), in `exercises()` order — not the whole catalog. */
   workoutExerciseList: async () => { await ensureExerciseCatalog(); return (await db()).getAllAsync<Exercise>(workoutExerciseListQuery); },
   searchExercises: async (search = '', muscle = '', equipment = '', category = '', limit = 60) => {
+    const catalogStarted = perfNow();
     await ensureExerciseCatalog();
+    perfMark('exercise catalog wait', catalogStarted, 50);
     const d = await db();
-    const term = normalizeExerciseText(search);
-    return d.getAllAsync<Exercise & { muscle_group: string | null; equipment: string | null; category: string | null }>(exerciseSearchQuery, term, term, muscle, muscle, equipment, equipment, category, category, limit);
+    const statement = exerciseSearchStatement(search, muscle, equipment, category, limit);
+    const queryStarted = perfNow();
+    const rows = await d.getAllAsync<Exercise & { muscle_group: string | null; equipment: string | null; category: string | null }>(statement.sql, ...statement.args);
+    perfMark('exercise search SQLite query', queryStarted, 1);
+    return rows;
+  },
+  /** Seed/custom matches can render while the bundled catalog import is still in progress. */
+  searchQuickExercises: async (search = '', muscle = '', equipment = '', category = '', limit = 60) => {
+    const d = await db();
+    const statement = exerciseSearchStatement(search, muscle, equipment, category, limit, exerciseSeeds.map(([id]) => id));
+    const queryStarted = perfNow();
+    const rows = await d.getAllAsync<Exercise & { muscle_group: string | null; equipment: string | null; category: string | null }>(statement.sql, ...statement.args);
+    perfMark('exercise warm-start SQLite query', queryStarted, 1);
+    return rows;
   },
   exerciseFilters: async () => {
     await ensureExerciseCatalog();
@@ -457,7 +479,7 @@ export const repo = {
   saveRoutine: (r: Routine) => put('routines', r),
   saveRoutineExercise: (r: RoutineExercise) => put('routine_exercises', r),
   routineDraft: async (ownerId: string, routineId: string) => loadRoutineDraft(await db(), ownerId, routineId),
-  saveRoutineDraft: async (ownerId: string, draft: RoutineDraft, names?: ReadonlyMap<string, string>) => { await ensureExerciseCatalog(); return saveRoutineDraft(await db(), ownerId, draft, names); },
+  saveRoutineDraft: async (ownerId: string, draft: RoutineDraft, names: ReadonlyMap<string, string> | undefined, access: FeatureAccess) => { await ensureExerciseCatalog(); return saveRoutineDraft(await db(), ownerId, draft, names, access); },
   deleteRoutine: async (ownerId: string, routineId: string) => deleteRoutine(await db(), ownerId, routineId),
   /** Muscle group and target muscle for catalog exercises (custom exercises have none). */
   exerciseMuscles: async () => { await ensureExerciseCatalog(); return (await db()).getAllAsync<{ exercise_id: string; muscle_group: string; target_muscle: string }>('SELECT exercise_id,muscle_group,target_muscle FROM exercise_catalog'); },

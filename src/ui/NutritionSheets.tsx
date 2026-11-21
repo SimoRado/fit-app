@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, View, type ScrollViewInstance } from 'react-native';
+import React, { Profiler, useEffect, useRef, useState, type ProfilerOnRenderCallback } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, View, type ScrollViewInstance } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Link } from 'expo-router';
@@ -14,11 +14,16 @@ import { deleteCustomFood, deleteFoodEntry, foodEntryUnit, recentFoods, reusable
 import { NutritionTargetEditor } from './NutritionTargetEditor';
 import { catalogFoodById, foodCategories, searchFoodCatalog, type CatalogFood } from '../data/foodCatalog';
 import { useApp } from '../state/app';
+import { normalizeLibrarySearchText, rankLibrarySearchResults, SearchRequestGate } from '../core/librarySearch';
+import { perfMark, perfNow } from '../core/perf';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useReducedMotion } from './motion';
 
 type Close = (after?: () => void) => void;
 const title = (meal: Meal) => meal[0].toUpperCase() + meal.slice(1);
+const reportNutritionSearchRender: ProfilerOnRenderCallback = (_id, phase, actualDuration) => {
+  if (__DEV__) console.info(`[perf] nutrition search React render (${phase}): ${actualDuration.toFixed(1)} ms`);
+};
 function catalogResult(food: CatalogFood): ReusableFood {
   let sourceLabel: string | null = null;
   let sourceUrl: string | null = null;
@@ -100,6 +105,8 @@ export function FoodSheet({ entry, meal: initialMeal, day: initialDay, close, on
   const [mode, setMode] = useState<'search' | 'manual'>(entry && !priorReference ? 'manual' : 'search');
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<ReusableFood[]>([]);
+  const [resultKey, setResultKey] = useState<string | null>(null);
+  const [searchPending, setSearchPending] = useState(true);
   const [recents, setRecents] = useState<RecentFood[]>([]);
   const [selected, setSelected] = useState<ReusableFood | null>(priorReference ? { key: entry!.food_id ?? entry!.catalog_food_id ?? entry!.id, name: entry!.name, basis: '100g', nutrients: { kcal: entry!.kcal_100!, protein: entry!.protein_100!, carbs: entry!.carbs_100!, fat: entry!.fat_100! }, foodId: entry!.food_id, catalogId: entry!.catalog_food_id, grams: entry!.grams } : null);
   const [category, setCategory] = useState<string | null>(null);
@@ -130,6 +137,10 @@ export function FoodSheet({ entry, meal: initialMeal, day: initialDay, close, on
   const editedQuantity = useRef(false);
   const [error, setError] = useState('');
   const scroll = useRef<ScrollViewInstance>(null);
+  const searchInputAt = useRef(0);
+  const searchGate = useRef(new SearchRequestGate());
+  const searchKey = `${normalizeLibrarySearchText(query)}\u0000${category ?? ''}`;
+  const visibleResults = resultKey === searchKey ? results : [];
   useEffect(() => {
     if (!entry?.id || !priorReference) return;
     let active = true;
@@ -165,17 +176,54 @@ export function FoodSheet({ entry, meal: initialMeal, day: initialDay, close, on
   useEffect(() => { let active = true; foodCategories().then(rows => { if (active) { setCategories(rows); setCatalogReady(true); } }).catch(() => { if (active) setCatalogReady(true); }); return () => { active = false; }; }, []);
   useEffect(() => { if (entry) return; let active = true; recentFoods().then(rows => { if (active) setRecents(rows); }).catch(() => undefined); return () => { active = false; }; }, [entry]);
   useEffect(() => {
-    if (!catalogReady) return;
     let active = true;
-    const timer = setTimeout(() => {
-      Promise.allSettled([reusableFoods(query), searchFoodCatalog(query, category)])
-        .then(([saved, catalog]) => { if (active) {
-          setResults([...(saved.status === 'fulfilled' ? saved.value : []), ...(catalog.status === 'fulfilled' ? catalog.value.map(catalogResult) : [])].slice(0, 60));
-          setError(catalog.status === 'rejected' ? 'Offline catalog is unavailable. Your saved foods are still shown.' : '');
-        } });
-    }, 160);
-    return () => { active = false; clearTimeout(timer); };
-  }, [query, category, catalogReady]);
+    const gate = searchGate.current;
+    const request = gate.start();
+    const key = searchKey;
+    let saved: ReusableFood[] = [];
+    let catalog: ReusableFood[] = [];
+    let appSearchDone = false;
+    let catalogSearchDone = false;
+    let catalogFailed = false;
+    setSearchPending(true);
+    const publish = () => {
+      if (!active || !gate.isCurrent(request)) return;
+      const started = perfNow();
+      const ranked = rankLibrarySearchResults([...saved, ...catalog], query, food => food.name).slice(0, 30);
+      setResults(ranked);
+      setResultKey(key);
+      perfMark('nutrition search merge and rank', started);
+      if (appSearchDone && catalogSearchDone) {
+        setSearchPending(false);
+        setError(catalogFailed ? 'Offline catalog is unavailable. Your saved foods are still shown.' : '');
+      }
+    };
+
+    // Saved foods and the bundled SQLite catalog run independently. This lets a
+    // user's own foods appear while the catalog connection is still opening.
+    const appStarted = perfNow();
+    void reusableFoods(query).then(rows => { if (active && gate.isCurrent(request)) saved = rows; })
+      .catch(() => undefined)
+      .finally(() => {
+        appSearchDone = true;
+        perfMark('nutrition saved-food SQLite query', appStarted);
+        publish();
+      });
+    const catalogStarted = perfNow();
+    void searchFoodCatalog(query, category).then(rows => { if (active && gate.isCurrent(request)) catalog = rows.map(catalogResult); })
+      .catch(() => { catalogFailed = true; })
+      .finally(() => {
+        catalogSearchDone = true;
+        perfMark('nutrition catalog SQLite query', catalogStarted);
+        publish();
+      });
+    return () => { active = false; gate.cancel(request); };
+  }, [query, category, searchKey]);
+  useEffect(() => {
+    if (resultKey !== searchKey || !searchInputAt.current) return;
+    perfMark('nutrition input-to-results commit', searchInputAt.current);
+    searchInputAt.current = 0;
+  }, [resultKey, results, searchKey]);
   const measure = selected ? { name: selected.servingName ?? null, quantity: selected.servingQuantity ?? null, grams: selected.servingGrams ?? null } : null;
   const availableUnits = unitOptions(measure, measurementSystem);
   // Stable main row; an extra unit stays highlighted in the drawer and on the More button.
@@ -369,10 +417,18 @@ export function FoodSheet({ entry, meal: initialMeal, day: initialDay, close, on
             {recents.map(recent => <RecentChip key={recent.key} name={recent.food.name} onPress={() => void selectRecent(recent)}/>)}
           </ScrollView>
         </View>}
-        <Field label="Search foods or barcode" value={query} onChangeText={setQuery} placeholder="Name, alternative name, or barcode"/>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8 }}>
+          <View style={{ flex: 1 }}><Field label="Search foods or barcode" value={query} onChangeText={value => { searchInputAt.current = perfNow(); setQuery(value); }} placeholder="Name, alternative name, or barcode"/></View>
+          {!!query && <Pressable accessibilityRole="button" accessibilityLabel="Clear search" hitSlop={8} onPress={() => { searchInputAt.current = perfNow(); setQuery(''); }} style={{ width: 44, height: 48, alignItems: 'center', justifyContent: 'center' }}><Ionicons name="close-circle" size={19} color={colors.muted}/></Pressable>}
+        </View>
         {!catalogReady && <Text style={{ color: colors.muted }}>Preparing your offline food library…</Text>}
-        {!!categories.length && <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" style={{ marginHorizontal: -20 }} contentContainerStyle={{ paddingHorizontal: 20, gap: 7 }}>{[null, ...categories].map(item => <UnitChip key={item ?? 'all'} label={item ?? 'All'} accessibility={item ?? 'All categories'} selected={category === item} onPress={() => setCategory(item)}/>)}</ScrollView>}
-        {catalogReady && (results.length ? <View>{results.map(food => <Pressable key={food.key} accessibilityRole="button" onPress={() => selectFood(food)} style={{ minHeight: 57, borderBottomWidth: 1, borderBottomColor: colors.border, justifyContent: 'center' }}><Text style={{ color: colors.ink, fontFamily: fonts.bold }}>{food.name}</Text><Text style={{ color: colors.muted, fontSize: 12 }}>{food.missing?.includes('Calories') ? 'Calories unknown' : `${Math.round(food.nutrients.kcal)} kcal`} · {food.catalogId ? `OpenNutrition · ${food.category ?? 'food'}` : food.basis === '100g' ? 'saved · per 100 g' : 'saved serving'}</Text></Pressable>)}</View> : <Text style={{ color: colors.muted }}>No foods found. Use Manual to enter your own values.</Text>)}
+        {!!categories.length && <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" style={{ marginHorizontal: -20 }} contentContainerStyle={{ paddingHorizontal: 20, gap: 7 }}>{[null, ...categories].map(item => <UnitChip key={item ?? 'all'} label={item ?? 'All'} accessibility={item ?? 'All categories'} selected={category === item} onPress={() => { searchInputAt.current = perfNow(); setCategory(item); }}/>)}</ScrollView>}
+        {searchPending && visibleResults.length > 0 && <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><ActivityIndicator size="small" color={colors.muted}/><Text style={{ color: colors.muted, fontSize: 11 }}>Updating local results…</Text></View>}
+        <Profiler id="nutrition-search-results" onRender={reportNutritionSearchRender}>
+          {visibleResults.length ? <View>{visibleResults.map(food => <Pressable key={food.key} accessibilityRole="button" onPress={() => selectFood(food)} style={{ minHeight: 57, borderBottomWidth: 1, borderBottomColor: colors.border, justifyContent: 'center' }}><Text style={{ color: colors.ink, fontFamily: fonts.bold }}>{food.name}</Text><Text style={{ color: colors.muted, fontSize: 12 }}>{food.missing?.includes('Calories') ? 'Calories unknown' : `${Math.round(food.nutrients.kcal)} kcal`} · {food.catalogId ? `OpenNutrition · ${food.category ?? 'food'}` : food.basis === '100g' ? 'saved · per 100 g' : 'saved serving'}</Text></Pressable>)}</View>
+            : searchPending ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10 }}><ActivityIndicator size="small" color={colors.muted}/><Text style={{ color: colors.muted }}>Searching your offline library…</Text></View>
+            : <Text style={{ color: colors.muted }}>No foods found. Use Manual to enter your own values.</Text>}
+        </Profiler>
         <CatalogCredit/>
       </> : <>
         <Field label="Food name" value={name} onChangeText={value => { setName(value); setCustomSaved(false); }} placeholder="e.g. Homemade soup"/>

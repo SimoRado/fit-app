@@ -1,12 +1,14 @@
-import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import React, { Profiler, useEffect, useRef, useState, useSyncExternalStore, type ProfilerOnRenderCallback } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import type { Exercise } from '../core/types';
+import { SearchRequestGate } from '../core/librarySearch';
 import { localize } from '../core/i18n';
 import { ensureExerciseCatalog, exerciseCatalogState, repo, subscribeExerciseCatalog } from '../data/db';
 import { storageErrorMessage } from '../core/errors';
-import type { ExerciseDetail } from '../data/exerciseCatalog';
+import { normalizeExerciseText, type ExerciseDetail } from '../data/exerciseCatalog';
+import { perfMark, perfNow } from '../core/perf';
 import { useApp } from '../state/app';
 import { message } from './components';
 import { Text } from './LocalizedText';
@@ -16,6 +18,9 @@ import { MotionPressable } from './MotionPressable';
 import { isLight, usePalette } from './voltKit';
 
 type Result = Exercise & { muscle_group: string | null; equipment: string | null; category: string | null };
+const reportExerciseSearchRender: ProfilerOnRenderCallback = (_id, phase, actualDuration) => {
+  if (__DEV__) console.info(`[perf] exercise search React render (${phase}): ${actualDuration.toFixed(1)} ms`);
+};
 
 /** Volt filter chips (`.fchips`): horizontal, single-select, "All" clears. */
 function Filter({ title, values, value, change }: { title: string; values: string[]; value: string; change: (next: string) => void }) {
@@ -42,13 +47,13 @@ export function ExerciseBrowser({ onSelect, selectedIds = new Set<string>() }: {
   const p = usePalette();
   const reduced = useReducedMotion();
   const [search, setSearch] = useState('');
-  const [query, setQuery] = useState('');
   const [muscle, setMuscle] = useState('');
   const [equipment, setEquipment] = useState('');
   const [category, setCategory] = useState('');
   const [moreFilters, setMoreFilters] = useState(false);
   const [filters, setFilters] = useState({ muscles: [] as string[], equipment: [] as string[], categories: [] as string[] });
   const [results, setResults] = useState<Result[]>([]);
+  const [resultKey, setResultKey] = useState<string | null>(null);
   const [detail, setDetail] = useState<ExerciseDetail | null>(null);
   const lastPick = useRef(0);
   // Loading / error / retry: the library may still be importing on a first launch.
@@ -56,19 +61,38 @@ export function ExerciseBrowser({ onSelect, selectedIds = new Set<string>() }: {
   const [failure, setFailure] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   const catalog = useSyncExternalStore(subscribeExerciseCatalog, exerciseCatalogState);
+  const searchInputAt = useRef(0);
+  const searchGate = useRef(new SearchRequestGate());
+  const searchKey = JSON.stringify([normalizeExerciseText(search), muscle, equipment, category]);
+  const visibleResults = resultKey === searchKey ? results : [];
   useEffect(() => { let active = true; repo.exerciseFilters().then(rows => { if (active) setFilters(rows); }).catch(() => undefined); return () => { active = false; }; }, [attempt]);
-  useEffect(() => { const timer = setTimeout(() => setQuery(search), 150); return () => clearTimeout(timer); }, [search]);
   useEffect(() => {
     let active = true;
+    const gate = searchGate.current;
+    const request = gate.start();
+    const key = searchKey;
+    let fullSearchSucceeded = false;
     setLoading(true); setFailure(null);
     // Never spin forever: after 20 s offer a retry even if the query has not settled.
     const watchdog = setTimeout(() => { if (active) { setLoading(false); setFailure('The exercise library is taking longer than expected.'); } }, 20000);
-    repo.searchExercises(query, muscle, equipment, category)
-      .then(rows => { if (active) { setResults(rows); setFailure(null); } })
-      .catch(cause => { if (active) setFailure(storageErrorMessage(cause)); })
-      .finally(() => { if (active) { clearTimeout(watchdog); setLoading(false); } });
-    return () => { active = false; clearTimeout(watchdog); };
-  }, [query, muscle, equipment, category, attempt]);
+    if (catalog.status !== 'ready') {
+      void repo.searchQuickExercises(search, muscle, equipment, category)
+        .then(rows => {
+          if (active && !fullSearchSucceeded && gate.isCurrent(request)) { setResults(rows); setResultKey(key); }
+        })
+        .catch(() => undefined);
+    }
+    repo.searchExercises(search, muscle, equipment, category)
+      .then(rows => { fullSearchSucceeded = true; if (active && gate.isCurrent(request)) { setResults(rows); setResultKey(key); setFailure(null); } })
+      .catch(cause => { if (active && gate.isCurrent(request)) setFailure(storageErrorMessage(cause)); })
+      .finally(() => { if (active && gate.isCurrent(request)) { clearTimeout(watchdog); setLoading(false); } });
+    return () => { active = false; clearTimeout(watchdog); gate.cancel(request); };
+  }, [search, muscle, equipment, category, attempt, searchKey, catalog.status]);
+  useEffect(() => {
+    if (resultKey !== searchKey || !searchInputAt.current) return;
+    perfMark('exercise input-to-results commit', searchInputAt.current);
+    searchInputAt.current = 0;
+  }, [resultKey, searchKey]);
   async function toggleDetail(id: string) {
     if (detail?.exercise_id === id) { setDetail(null); return; }
     try { setDetail(await repo.exerciseDetail(id)); } catch (error) { message(error); }
@@ -89,7 +113,7 @@ export function ExerciseBrowser({ onSelect, selectedIds = new Set<string>() }: {
   return <View style={{ gap: 12 }}>
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 46, paddingHorizontal: 14, borderRadius: 999, backgroundColor: p.c8, borderWidth: 1.5, borderColor: p.borderStrong }}>
       <Ionicons name="search" size={17} color={p.muted}/>
-      <TextInput accessibilityLabel={localize('Search exercises', language)} value={search} onChangeText={setSearch} placeholder={localize('Name, muscle, equipment, or category', language)} placeholderTextColor={p.subtle} autoCorrect={false} returnKeyType="search" style={{ flex: 1, minHeight: 44, color: p.text, fontFamily: fonts.semibold, fontSize: 15 }}/>
+      <TextInput accessibilityLabel={localize('Search exercises', language)} value={search} onChangeText={value => { searchInputAt.current = perfNow(); setSearch(value); }} placeholder={localize('Name, muscle, equipment, or category', language)} placeholderTextColor={p.subtle} autoCorrect={false} returnKeyType="search" style={{ flex: 1, minHeight: 44, color: p.text, fontFamily: fonts.semibold, fontSize: 15 }}/>
       {!!search && <Pressable accessibilityRole="button" accessibilityLabel="Clear search" hitSlop={8} onPress={() => setSearch('')}><Ionicons name="close-circle" size={18} color={p.muted}/></Pressable>}
     </View>
     <Filter title="Muscle group" values={filters.muscles} value={muscle} change={setMuscle}/>
@@ -99,10 +123,12 @@ export function ExerciseBrowser({ onSelect, selectedIds = new Set<string>() }: {
     </>}
     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
       <Pressable accessibilityRole="button" onPress={() => setMoreFilters(value => !value)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4 }}><Ionicons name={moreFilters ? 'chevron-up' : 'options-outline'} size={14} color={p.accent}/><Text style={{ color: p.accent, fontFamily: fonts.bold, fontSize: 12.5 }}>{moreFilters ? 'Fewer filters' : 'Equipment & category'}</Text></Pressable>
-      {filtered ? <Pressable accessibilityRole="button" onPress={clearFilters} style={{ paddingVertical: 4 }}><Text style={{ color: p.accent, fontFamily: fonts.bold, fontSize: 12.5 }}>Clear filters</Text></Pressable> : <Text style={{ color: p.muted, fontFamily: fonts.semibold, fontSize: 12 }}>{results.length === 60 ? '60+ matches' : `${results.length} match${results.length === 1 ? '' : 'es'}`}</Text>}
+      {filtered ? <Pressable accessibilityRole="button" onPress={clearFilters} style={{ paddingVertical: 4 }}><Text style={{ color: p.accent, fontFamily: fonts.bold, fontSize: 12.5 }}>Clear filters</Text></Pressable> : <Text style={{ color: p.muted, fontFamily: fonts.semibold, fontSize: 12 }}>{visibleResults.length === 60 ? '60+ matches' : `${visibleResults.length} match${visibleResults.length === 1 ? '' : 'es'}`}</Text>}
     </View>
-    <View style={{ gap: 8 }}>
-      {results.map(exercise => {
+    {loading && visibleResults.length > 0 && <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><ActivityIndicator size="small" color={p.muted}/><Text style={{ color: p.muted, fontSize: 11 }}>Updating local results…</Text></View>}
+    <Profiler id="exercise-search-results" onRender={reportExerciseSearchRender}>
+      <View style={{ gap: 8 }}>
+      {visibleResults.map(exercise => {
         const added = selectedIds.has(exercise.id);
         const open = detail?.exercise_id === exercise.id;
         return <View key={exercise.id} style={{ borderRadius: 20, backgroundColor: p.c8, borderWidth: 1, borderColor: added ? p.g1 : p.c8Line, overflow: 'hidden' }}>
@@ -125,14 +151,15 @@ export function ExerciseBrowser({ onSelect, selectedIds = new Set<string>() }: {
           </Animated.View>}
         </View>;
       })}
-    </View>
-    {results.length === 60 && <Text style={{ color: p.muted, fontSize: 12 }}>Showing the first 60 matches. Refine your search for more.</Text>}
-    {(loading && !results.length) || (catalog.status === 'loading' && !results.length) ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 16 }}><ActivityIndicator color={p.accent}/><Text style={{ color: p.muted, fontFamily: fonts.semibold, fontSize: 13 }}>{catalog.status === 'loading' ? 'Preparing the exercise library…' : 'Loading exercises…'}</Text></View>
-      : failure && !results.length ? <View style={{ gap: 10, padding: 16, borderRadius: 18, backgroundColor: soft }}>
+      </View>
+    </Profiler>
+    {visibleResults.length === 60 && <Text style={{ color: p.muted, fontSize: 12 }}>Showing the first 60 matches. Refine your search for more.</Text>}
+    {(loading && !visibleResults.length) || (catalog.status === 'loading' && !visibleResults.length) ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 16 }}><ActivityIndicator color={p.accent}/><Text style={{ color: p.muted, fontFamily: fonts.semibold, fontSize: 13 }}>{catalog.status === 'loading' ? 'Preparing the exercise library…' : 'Loading exercises…'}</Text></View>
+      : failure && !visibleResults.length ? <View style={{ gap: 10, padding: 16, borderRadius: 18, backgroundColor: soft }}>
         <Text accessibilityRole="alert" style={{ color: p.text, fontFamily: fonts.semibold, fontSize: 13 }}>{failure}</Text>
         <Pressable accessibilityRole="button" onPress={() => { ensureExerciseCatalog().catch(() => undefined).finally(() => setAttempt(value => value + 1)); }} style={{ alignSelf: 'flex-start', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: p.g1 }}><Text style={{ color: p.plInk, fontFamily: fonts.bold, fontSize: 12.5 }}>Try again</Text></Pressable>
       </View>
       : null}
-    {!loading && !failure && !results.length && <View style={{ padding: 16, borderRadius: 18, borderWidth: 1.5, borderStyle: 'dashed', borderColor: p.borderStrong }}><Text style={{ color: p.muted, fontFamily: fonts.semibold, fontSize: 13 }}>No exercises found. Try another word or clear the filters.</Text></View>}
+    {!loading && !failure && !visibleResults.length && <View style={{ padding: 16, borderRadius: 18, borderWidth: 1.5, borderStyle: 'dashed', borderColor: p.borderStrong }}><Text style={{ color: p.muted, fontFamily: fonts.semibold, fontSize: 13 }}>No exercises found. Try another word or clear the filters.</Text></View>}
   </View>;
 }

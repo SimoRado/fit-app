@@ -5,6 +5,7 @@ import Storage from 'expo-sqlite/kv-store';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
 import { Gunzip } from 'fflate';
+import { normalizeLibrarySearchText, rankLibrarySearchResults } from '../core/librarySearch';
 import bundledManifest from './catalog/food-manifest.json';
 import { cachedManifest, catalogGatewayEndpoints, downloadRetryDelay, failedManifestMemo, nextManifestRetry, shouldDownloadCatalog, successfulManifestMemo, trustedCatalogInstallation, unchangedInvalidCatalog, type CatalogInstallationRecord, type CatalogManifestMemo } from './catalogProtection';
 
@@ -292,6 +293,25 @@ export async function searchFoodCatalog(query: string, category: string | null =
     if (/^\d{8}$|^\d{12,14}$/.test(term)) return d.getAllAsync<CatalogFood>(
       'SELECT f.id,f.name,f.category,f.kcal_100,f.protein_100,f.carbs_100,f.fat_100,f.fiber_100,f.sugar_100,f.sodium_100,f.serving_name,f.serving_quantity,f.serving_grams,f.sources_json,f.micronutrients_json FROM food_barcodes b JOIN foods f ON f.id=b.food_id WHERE b.barcode=? AND (? IS NULL OR f.category=?) LIMIT 30', term, category, category);
     const words = term.match(/[\p{L}\p{N}]+/gu)?.slice(0, 8) ?? [];
+    const firstWord = words[0] ?? '';
+    const normalizedFirstWord = normalizeLibrarySearchText(firstWord);
+    if (words.length === 1 && normalizedFirstWord.length > 0 && normalizedFirstWord.length <= 2) {
+      // One- and two-character prefixes are unusually broad in a 326k-row FTS
+      // index. Use the catalog's existing B-tree name/alias indexes for a fast,
+      // useful first batch while the user continues typing.
+      const patterns = new Set([`${normalizedFirstWord}%`]);
+      if (firstWord !== normalizedFirstWord) patterns.add(`${firstWord}%`);
+      if (/[^\x00-\x7f]/.test(firstWord)) patterns.add(`${firstWord.toLocaleUpperCase()}%`);
+      const prefixQueries = [...patterns].flatMap(pattern => [
+        d.getAllAsync<CatalogFood>(
+          'SELECT id,name,category,kcal_100,protein_100,carbs_100,fat_100,fiber_100,sugar_100,sodium_100,serving_name,serving_quantity,serving_grams,sources_json,micronutrients_json FROM foods WHERE name LIKE ? AND (? IS NULL OR category=?) ORDER BY name COLLATE NOCASE LIMIT 45', pattern, category, category),
+        d.getAllAsync<CatalogFood>(
+          'SELECT f.id,f.name,f.category,f.kcal_100,f.protein_100,f.carbs_100,f.fat_100,f.fiber_100,f.sugar_100,f.sodium_100,f.serving_name,f.serving_quantity,f.serving_grams,f.sources_json,f.micronutrients_json FROM food_aliases a JOIN foods f ON f.id=a.food_id WHERE a.alias LIKE ? AND (? IS NULL OR f.category=?) ORDER BY a.alias COLLATE NOCASE LIMIT 45', pattern, category, category),
+      ]);
+      const batches = await Promise.all(prefixQueries);
+      const unique = [...new Map<string, CatalogFood>(batches.flat().map(row => [row.id, row] as const)).values()];
+      return rankLibrarySearchResults(unique, term, food => food.name).slice(0, 30);
+    }
     if (!words.length) return category
       ? d.getAllAsync<CatalogFood>(
         'SELECT id,name,category,kcal_100,protein_100,carbs_100,fat_100,fiber_100,sugar_100,sodium_100,serving_name,serving_quantity,serving_grams,sources_json,micronutrients_json FROM foods WHERE category=? ORDER BY name LIMIT 30', category)
@@ -301,7 +321,8 @@ export async function searchFoodCatalog(query: string, category: string | null =
     const rows = await d.getAllAsync<CatalogFood>(
       'SELECT f.id,f.name,f.category,f.kcal_100,f.protein_100,f.carbs_100,f.fat_100,f.fiber_100,f.sugar_100,f.sodium_100,f.serving_name,f.serving_quantity,f.serving_grams,f.sources_json,f.micronutrients_json FROM food_search s JOIN foods f ON f.id=s.food_id WHERE food_search MATCH ? AND (? IS NULL OR f.category=?) ORDER BY rank LIMIT 90',
       fts, category, category);
-    return [...new Map<string, CatalogFood>(rows.map(row => [row.id, row] as const)).values()].slice(0, 30);
+    const unique = [...new Map<string, CatalogFood>(rows.map(row => [row.id, row] as const)).values()];
+    return rankLibrarySearchResults(unique, term, food => food.name).slice(0, 30);
   });
 }
 

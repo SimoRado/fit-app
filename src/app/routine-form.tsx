@@ -19,6 +19,8 @@ import { fonts } from '../ui/theme';
 import { useReducedMotion } from '../ui/motion';
 import { AddSetRow, SetHeader, SetRow } from '../ui/SetRow';
 import { CircleButton, EmptyAction, MenuItem, VCard, isLight, usePalette } from '../ui/voltKit';
+import { isFeatureLimitError } from '../services/featureLimits';
+import { useSubscription } from '../state/subscriptions';
 
 type Field3 = 'reps' | 'weight' | 'duration';
 type Texts = Record<string, Partial<Record<Field3, string>>>;
@@ -33,6 +35,7 @@ const show = (value: number | null) => value === null ? '' : String(value);
 export default function RoutineForm() {
   const { id } = useLocalSearchParams<{ id?: string }>();
   const { profile, changed, language } = useApp();
+  const subscription = useSubscription();
   const p = usePalette();
   const reduced = useReducedMotion();
   const [draft, setDraft] = useState<RoutineDraft>(emptyRoutineDraft);
@@ -135,13 +138,20 @@ export default function RoutineForm() {
     savingRef.current = true; setSaving(true);
     const startedAt = perfNow();
     try {
-      await repo.saveRoutineDraft(profile.id, draft, names);
+      await repo.saveRoutineDraft(profile.id, draft, names, { isPremium: subscription.isPremium });
       perfMark('routine save', startedAt);
       changed();
       // Navigate away only after the transaction committed.
       setBaseline(draft); setTexts({}); setLeaving(true);
     } catch (error) {
       perfMark('routine save failed', startedAt);
+      if (isFeatureLimitError(error)) {
+        Alert.alert('Free plan limit reached', 'You can create up to 6 gym routines on Cubyfit Free. Upgrade to Pro for unlimited routines.', [
+          { text: 'Not now', style: 'cancel' },
+          { text: 'Upgrade to Pro', onPress: () => router.push('/paywall') },
+        ]);
+        return;
+      }
       // The draft stays exactly as it was; show the real reason and offer a retry.
       Alert.alert(localize('Routine not saved', language), localize(storageErrorMessage(error), language), [
         { text: localize('Keep editing', language), style: 'cancel' },

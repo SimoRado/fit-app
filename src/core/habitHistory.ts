@@ -185,10 +185,11 @@ export type HistoryAccess = { canBrowseMonth: (month: string) => boolean; canOpe
 export function historyAccess(isPro: boolean, today: string): HistoryAccess {
   const current = monthKey(today);
   return {
-    canBrowseMonth: month => month <= current && (isPro || month === current),
+    // The limit is the yearly visualization, not ownership of historical habit data. Both
+    // plans can browse every completed calendar month; neither can browse future months.
+    canBrowseMonth: month => month <= current,
     canOpenYear: isPro,
     canShare: isPro,
-    // Product rule: individual habit results only for the current calendar month, for everyone.
-    canSeeDetail: day => monthKey(day) === current && day <= today,
+    canSeeDetail: day => day <= today,
   };
 }

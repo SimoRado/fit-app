@@ -29,9 +29,8 @@ type Locked = 'months' | 'year' | 'share' | null;
 const SHEET_PADDING = 20;
 
 /**
- * Habits History (references 1 and 2): Month for everyone, earlier months + Year + sharing for
- * Cubyfit Pro. Reads only local SQLite snapshots, so it works offline. Individual habit results
- * are shown only for days in the current calendar month (a product rule, for Free and Pro alike).
+ * Habits History: every completed month is available on-device for everyone; the yearly heatmap
+ * and its share action are Cubyfit Pro. It reads only local SQLite snapshots, so it works offline.
  */
 export function HabitHistorySheet({ visible, onClose, onUpgrade, locale }: { visible: boolean; onClose: () => void; onUpgrade: () => void; locale: string }) {
   const [sheetTab, setSheetTab] = useState<Tab>('month');
@@ -62,24 +61,22 @@ function HistoryBody({ locale, onTabChange, onUpgrade }: { locale: string; onTab
   const [weekRows, setWeekRows] = useState<Map<string, HistoryDay> | null>(null);
   const [yearRows, setYearRows] = useState<Map<string, HistoryDay> | null>(null);
 
-  // Entitlement can expire while the sheet is open: fall back to what Free may see. Data is untouched.
-  useEffect(() => { if (!access.canBrowseMonth(month)) setMonth(current); if (!access.canOpenYear && tab === 'year' && locked !== 'year') { setTab('month'); onTabChange('month'); setSharing(false); } }, [access, month, current, tab, locked, onTabChange]);
+  // Entitlement can expire while the sheet is open: return from Year to Month without touching data.
+  useEffect(() => { if (!access.canOpenYear && tab === 'year' && locked !== 'year') { setTab('month'); onTabChange('month'); setSharing(false); } }, [access, tab, locked, onTabChange]);
   useEffect(() => { if (isPro) setLocked(null); }, [isPro]);
   useEffect(() => { repo.habitHistoryFirstDay().then(setFirst).catch(() => setFirst(null)); }, [revision]);
   useEffect(() => {
     let active = true;
     const [y, m] = month.split('-').map(Number);
     const last = dayKey(new Date(y, m, 0, 12));
-    // Items are only read for the current month, where detail is allowed.
-    repo.habitHistory(`${month}-01`, last, month === current).then(rows => { if (active) setMonthRows(new Map(rows.map(row => [row.day, row]))); }).catch(error => { if (active) { setMonthRows(new Map()); message(error); } });
+    repo.habitHistory(`${month}-01`, last, true).then(rows => { if (active) setMonthRows(new Map(rows.map(row => [row.day, row]))); }).catch(error => { if (active) { setMonthRows(new Map()); message(error); } });
     return () => { active = false; };
   }, [month, current, revision]);
   useEffect(() => {
     if (tab !== 'week') return;
     let active = true;
     const end = addDays(week, 6);
-    // Items (habit detail) are only read when the week touches the current month, where detail is allowed.
-    repo.habitHistory(week, end, monthKey(end) === current || monthKey(week) === current).then(rows => { if (active) setWeekRows(new Map(rows.map(row => [row.day, row]))); }).catch(error => { if (active) { setWeekRows(new Map()); message(error); } });
+    repo.habitHistory(week, end, true).then(rows => { if (active) setWeekRows(new Map(rows.map(row => [row.day, row]))); }).catch(error => { if (active) { setWeekRows(new Map()); message(error); } });
     return () => { active = false; };
   }, [tab, week, current, revision]);
   useEffect(() => {
@@ -95,15 +92,13 @@ function HistoryBody({ locale, onTabChange, onUpgrade }: { locale: string; onTab
   const canPrevious = previousMonth >= firstMonth;
   function goMonth(delta: number) {
     const next = shiftMonth(month, delta);
-    if (delta < 0 && !access.canBrowseMonth(next)) { setLocked('months'); return; }
     if (!access.canBrowseMonth(next)) return;
     setLocked(null); setMonth(next); setSelected(next === current ? today : null);
   }
   function goWeek(delta: number) {
     const next = addDays(week, delta * 7);
     if (delta > 0 && next > today) return;
-    // A week is reachable when its last day is in a month the plan allows (Free: the current month).
-    if (delta < 0 && !access.canBrowseMonth(monthKey(addDays(next, 6)))) { setLocked('months'); return; }
+    if (delta < 0 && !access.canBrowseMonth(monthKey(addDays(next, 6)))) return;
     setLocked(null); setWeek(next); setSelected(today >= next && today <= addDays(next, 6) ? today : null);
   }
   function chooseTab(next: Tab) {
@@ -217,7 +212,7 @@ function WeekView({ week, rows, today, selected, locale, width, canPrevious, pre
   </>;
 }
 
-/** Current month: full detail. Older months: date and percentage only (product rule). */
+/** Every completed month can show its locally stored habit detail; future days never do. */
 function DayPanel({ day, row, today, locale, detail }: { day: string; row: HistoryDay | undefined; today: string; locale: string; detail: boolean }) {
   const p = usePalette();
   const reduced = useReducedMotion();
