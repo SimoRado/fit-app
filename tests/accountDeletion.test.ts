@@ -47,15 +47,20 @@ describe('account deletion authorization and cleanup', () => {
     expect(await t.run(async ctx => ctx.db.query('syncOperations').withIndex('by_owner', q => q.eq('owner', owner)).collect())).toEqual([]);
     expect(await t.run(async ctx => ctx.db.query('eligibility').withIndex('by_owner', q => q.eq('owner', owner)).collect())).toEqual([]);
     expect(await bob.query(api.weights.history, {})).toHaveLength(1);
-    expect((await t.query(api.accountDeletion.status, { receipt }))?.stage).toBe('revenuecat_pending');
-    expect(await t.query(api.accountDeletion.status, { receipt: 'x'.repeat(72) })).toBeNull();
+    expect((await alice.query(api.accountDeletion.status, { receipt }))?.stage).toBe('revenuecat_pending');
+    expect(await alice.query(api.accountDeletion.status, { receipt: 'x'.repeat(72) })).toBeNull();
+    expect(await bob.query(api.accountDeletion.status, { receipt })).toBeNull();
+    await expect(t.query(api.accountDeletion.status, { receipt })).rejects.toThrow('Authentication required');
+    expect(await t.query(api.accountDeletion.completionStatus, { receipt })).toBeNull();
+    expect(await t.query(api.accountDeletion.completionStatus, { receipt: 'not-a-receipt' })).toBeNull();
     await t.mutation(internal.accountDeletion.fail, { jobId, retryStage: 'revenuecat_pending', errorCategory: 'revenuecat_rate_limit' });
-    expect((await t.query(api.accountDeletion.status, { receipt }))?.stage).toBe('retry_required');
+    expect((await alice.query(api.accountDeletion.status, { receipt }))?.stage).toBe('retry_required');
     await t.mutation(internal.accountDeletion.resume, { jobId });
-    expect((await t.query(api.accountDeletion.status, { receipt }))?.stage).toBe('revenuecat_pending');
+    expect((await alice.query(api.accountDeletion.status, { receipt }))?.stage).toBe('revenuecat_pending');
     await t.mutation(internal.accountDeletion.advance, { jobId, from: 'revenuecat_pending', to: 'clerk_pending' });
     await t.mutation(internal.accountDeletion.complete, { jobId });
-    expect((await t.query(api.accountDeletion.status, { receipt }))?.stage).toBe('completed');
+    expect((await alice.query(api.accountDeletion.status, { receipt }))?.stage).toBe('completed');
+    expect(await t.query(api.accountDeletion.completionStatus, { receipt })).toEqual({ completed: true });
   });
   it('requires fresh factor evidence', () => {
     expect(recentFactor([0, -1])).toBe(true);

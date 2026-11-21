@@ -110,6 +110,19 @@ describe('Volt screens keep the existing engine and the agreed exceptions', () =
     expect(train).toContain('repo.toggleRest(profile!.id, today)');
   });
 
+  it('Train presents compact routines with separate details, menu and accent start actions', () => {
+    const train = source('src/app/(tabs)/workouts.tsx');
+    expect(train).toContain('<RoutineRow');
+    expect(train).toContain('function RoutineRow');
+    expect(train).toContain('icon="barbell-outline" size={40}');
+    expect(train).toContain('name="ellipsis-horizontal"');
+    expect(train).toContain('tone="accent" size={44}');
+    expect(train).toContain('<BottomSheet visible={!!routineDetails}');
+    expect(train).toContain('linksOf(routineDetails.id).map');
+    expect(train).not.toContain('<GalleryCard');
+    expect(train).not.toContain('ScrollView horizontal');
+  });
+
   it('active workout keeps its timer, finish flow and interstitial hook', () => {
     const workout = source('src/app/workout-form.tsx');
     expect(workout).toContain('togglePause');

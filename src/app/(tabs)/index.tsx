@@ -13,7 +13,6 @@ import { useScreenRevision } from '../../state/useScreenRevision';
 import { useLoadState } from '../../state/useLoadState';
 import { Button, Page, message } from '../../ui/components';
 import { colors, fonts, brand } from '../../ui/theme';
-import { cards } from '../../core/cards';
 import { gymSchedulePreferenceKey, parseGymSchedule, resolveDayPlan, type GymDayPlan } from '../../core/gymSchedule';
 import { dailyProgressPercent } from '../../core/voltGeometry';
 import { foodEntries, nutritionTarget, type FoodEntry, type NutritionTarget } from '../../data/nutrition';
@@ -150,7 +149,6 @@ export default function Home() {
   const ringValues = [firstRing ?? 0, habitRing ?? 0, workoutRing ?? 0];
   const percent = dailyProgressPercent([firstRing, habitRing, workoutRing]);
 
-  const featured = cards[fromDay(selectedDay).getDay() % cards.length];
   const todo = habitItems.filter(item => !item.complete).sort((a, b) => (a.habit.reminder_time ?? '99:99').localeCompare(b.habit.reminder_time ?? '99:99'));
   const nextHabit = selectedDay === today ? todo[0] : undefined;
   const nextMeal = mealForHour(new Date().getHours());
@@ -183,7 +181,10 @@ export default function Home() {
   return <Page title="">
     {/* .top8 — logo, greeting, account avatar */}
     <View style={{ height: 50, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-      <View style={{ width: 40, height: 40, borderRadius: 12, overflow: 'hidden' }}><CubyMark size={40}/></View>
+      <View style={{ width: 40, height: 40, borderRadius: 12, overflow: 'hidden' }}>
+        <CubyMark size={40} variant="brand"/>
+        <View pointerEvents="none" style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, borderWidth: 1, borderColor: p.accent, borderRadius: 12 }}/>
+      </View>
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text numberOfLines={1} accessibilityRole="header" style={{ color: p.text, fontFamily: fonts.displayHeavy, fontSize: 19, letterSpacing: -0.4 }}>Hi {firstName}</Text>
         <Text numberOfLines={1} style={{ color: p.muted, fontFamily: fonts.medium, fontSize: 12.5 }}>Here&apos;s your day so far</Text>
@@ -271,13 +272,6 @@ export default function Home() {
         </VCard>
     </View>
     </>}
-
-    {/* .q8 — daily quote */}
-    <MotionPressable pressScale={0.98} accessibilityRole="button" accessibilityLabel="Open motivation center" onPress={() => router.push('/motivation')} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 13, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1, borderStyle: 'dashed', borderColor: p.borderStrong }}>
-      <Text style={{ color: p.muted, fontFamily: fonts.bold, fontSize: 10.5, letterSpacing: 0.84, textTransform: 'uppercase' }}>Daily</Text>
-      <Text numberOfLines={1} style={{ flex: 1, minWidth: 0, color: p.text, fontFamily: fonts.displayHeavy, fontSize: 13.5, textTransform: 'uppercase' }}>{featured.text[language]}</Text>
-      <Ionicons name="chevron-forward" size={16} color={p.text}/>
-    </MotionPressable>
 
     {/* Secondary destinations (the prototype reaches these from its side panel). */}
     <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
@@ -383,5 +377,5 @@ function UpNextRow({ icon, caption, title, detail, onOpen, action, done = false,
 
 function MoreLink({ icon, label, onPress }: { icon: VoltIcon; label: string; onPress: () => void }) {
   const p = usePalette();
-  return <MotionPressable pressScale={0.95} accessibilityRole="button" onPress={onPress} style={{ flex: 1, minWidth: 0, minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: p.c8, borderWidth: 1, borderColor: p.light ? 'transparent' : p.c8Line, borderRadius: 16, paddingHorizontal: 7, ...cardShadow(p) }}><Ionicons name={icon} size={15} color={p.accent}/><Text numberOfLines={1} style={{ color: p.text, fontFamily: fonts.bold, fontSize: 11.5 }}>{label}</Text></MotionPressable>;
+  return <MotionPressable pressScale={0.95} accessibilityRole="button" onPress={onPress} style={{ flex: 1, minWidth: 0, minHeight: 49, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: p.c8, borderWidth: 1, borderColor: p.light ? 'transparent' : p.c8Line, borderRadius: 16, paddingHorizontal: 7, ...cardShadow(p) }}><Ionicons name={icon} size={15} color={p.accent}/><Text numberOfLines={1} style={{ color: p.text, fontFamily: fonts.bold, fontSize: 11.5 }}>{label}</Text></MotionPressable>;
 }

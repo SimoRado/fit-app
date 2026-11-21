@@ -323,7 +323,7 @@ function EmptyHabits({ onPick, onCreate }: { onPick: (starter: StarterHabit) => 
   const p = usePalette();
   return <View style={{ gap: 10, marginTop: 6 }}>
     <View style={{ alignItems: 'center', gap: 8, paddingVertical: 10 }}>
-      <View style={{ width: 72, height: 72, borderRadius: 22, overflow: 'hidden', marginBottom: 6 }}><CubyMark size={72}/></View>
+      <View style={{ width: 72, height: 72, borderRadius: 22, overflow: 'hidden', marginBottom: 6 }}><CubyMark size={72} variant="brand"/></View>
       <Text style={{ color: p.text, fontFamily: fonts.displayHeavy, fontSize: 21, textAlign: 'center' }}>Start with one small habit</Text>
       <Text style={{ color: p.muted, fontFamily: fonts.medium, fontSize: 13.5, lineHeight: 19, textAlign: 'center', maxWidth: 290 }}>Pick one below, or make your own. You can change it anytime.</Text>
     </View>

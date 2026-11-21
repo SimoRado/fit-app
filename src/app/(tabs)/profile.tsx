@@ -152,7 +152,7 @@ export default function ProfileScreen() {
 
     {subscription.ready && <MotionPressable pressScale={0.98} accessibilityRole="button" accessibilityLabel={subscription.isPremium ? 'Cubyfit Pro is active' : 'Try Cubyfit Pro'} onPress={() => router.push('/paywall')}
       style={{ marginTop: 12, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 22, backgroundColor: p.heroCard }}>
-      <View style={{ width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: p.paleBlue }}><CubyMark size={30} tile={false}/></View>
+      <View style={{ width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: p.paleBlue }}><CubyMark size={30} tile={false} variant="brand"/></View>
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={{ color: '#FFFFFF', fontFamily: fonts.displayHeavy, fontSize: 15 }}>{subscription.isPremium ? 'Cubyfit Pro' : 'Try Cubyfit Pro'}</Text>
         <Text numberOfLines={1} style={{ color: brand.lilac, fontSize: 11.5 }}>{subscription.isPremium ? 'Active · manage your subscription' : proTeaser}</Text>

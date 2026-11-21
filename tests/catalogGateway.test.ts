@@ -148,6 +148,27 @@ describe('Cloudflare catalog gateway authorization and abuse limits', () => {
     expect((await download(env, sessionToken, grant.value.sessionId!)).status).toBe(403);
   });
 
+  it('does not grant browser CORS access or trust an Origin header', async () => {
+    const env = environment();
+    const sessionToken = await token('user_cors');
+    for (const origin of ['https://cubyfit.app', 'https://attacker.invalid', 'not a valid origin']) {
+      const response = await call(env, '/v1/manifest', sessionToken, { headers: { Origin: origin } });
+      expect(response.status).toBe(200);
+      expect(response.headers.get('Access-Control-Allow-Origin')).toBeNull();
+      expect(response.headers.get('Access-Control-Allow-Credentials')).toBeNull();
+    }
+    const unauthorized = await call(env, '/v1/manifest', null, { headers: { Origin: 'https://cubyfit.app' } });
+    expect(unauthorized.status).toBe(401);
+    expect(unauthorized.headers.get('Access-Control-Allow-Origin')).toBeNull();
+
+    const preflight = await call(env, '/v1/authorize', null, {
+      method: 'OPTIONS',
+      headers: { Origin: 'https://attacker.invalid', 'Access-Control-Request-Method': 'POST' },
+    });
+    expect(preflight.status).toBe(404);
+    expect(preflight.headers.get('Access-Control-Allow-Origin')).toBeNull();
+  });
+
   it('requires a verified, unexpired Clerk JWT and rejects modified tokens', async () => {
     const env = environment();
     const expired = await token('user_expired', Math.floor(Date.now() / 1000) - 60);
@@ -158,6 +179,22 @@ describe('Cloudflare catalog gateway authorization and abuse limits', () => {
     const changed = `${header}.${base64url(new TextEncoder().encode(JSON.stringify({ iss: issuer, sub: 'user_victim', aud: 'convex', exp: Math.floor(Date.now() / 1000) + 300 })))}.${signature}`;
     expect((await call(env, '/v1/manifest', changed)).status).toBe(401);
     expect(payload).toBeTruthy();
+  });
+
+  it('rejects tokens from another issuer or audience, future nbf claims, and algorithm confusion', async () => {
+    const env = environment();
+    const now = Math.floor(Date.now() / 1000);
+    const wrongIssuer = await token('user_wrong_issuer', now + 300, { iss: 'https://other-clerk.test' });
+    const wrongAudience = await token('user_wrong_audience', now + 300, { aud: 'another-service' });
+    const futureNbf = await token('user_future_nbf', now + 300, { nbf: now + 31 });
+    const valid = await token('user_algorithm_confusion', now + 300);
+    const [, payload, signature] = valid.split('.');
+    const nonRs256Header = base64url(new TextEncoder().encode(JSON.stringify({ alg: 'HS256', kid: keyId })));
+    const wrongAlgorithm = `${nonRs256Header}.${payload}.${signature}`;
+
+    for (const candidate of [wrongIssuer, wrongAudience, futureNbf, wrongAlgorithm]) {
+      expect((await call(env, '/v1/manifest', candidate)).status).toBe(401);
+    }
   });
 
   it('fails closed when Clerk JWKS cannot be reached', async () => {

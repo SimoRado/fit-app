@@ -5,6 +5,7 @@ import { tokenCache } from '@clerk/expo/token-cache';
 import { ConvexProviderWithClerk } from 'convex/react-clerk';
 import { ConvexReactClient, useConvexAuth, useQuery } from 'convex/react';
 import { Stack } from 'expo-router';
+import Constants from 'expo-constants';
 import * as Sentry from '@sentry/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppProvider, useApp } from '../state/app';
@@ -23,6 +24,7 @@ import { api } from '../../convex/_generated/api';
 import { pendingDeletions, forgetDeletion } from '../data/pendingDeletion';
 import { clearMonitoringUser, reportFailure } from '../core/monitoring';
 import { accessDestination } from '../core/accessGate';
+import { allowsClerkPublishableKey } from '../core/productionConfig';
 import { dayKey } from '../core/date';
 import { TERMS_VERSION } from '../../shared/legalVersions';
 
@@ -40,7 +42,14 @@ export const ErrorBoundary = Sentry.wrapExpoRouterErrorBoundary(RenderError);
 
 const convexUrl = process.env.EXPO_PUBLIC_CONVEX_URL;
 const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
-if (!convexUrl || !publishableKey) throw new Error('Missing Clerk or Convex development configuration');
+if (!convexUrl || !publishableKey) throw new Error('Missing Clerk or Convex configuration');
+// Internal development/preview binaries may intentionally use Clerk's test
+// instance. A distributable production binary must fail closed instead of
+// silently authenticating against that instance.
+const internalBuild = Constants.expoConfig?.extra?.admob?.internalBuild === true;
+if (!allowsClerkPublishableKey(publishableKey, __DEV__, internalBuild)) {
+  throw new Error('Production builds require a live Clerk publishable key');
+}
 const convex = new ConvexReactClient(convexUrl, { unsavedChangesWarning: false });
 
 function Loading() { const { palette } = useVoltTheme(); return <View style={{ flex: 1, backgroundColor: palette.bg, justifyContent: 'center' }}><ActivityIndicator color={palette.accent}/></View>; }
@@ -113,8 +122,8 @@ function Navigator() {
       try {
         for (const pending of await pendingDeletions()) {
           if (!active) return;
-          const state = await convex.query(api.accountDeletion.status, { receipt: pending.receipt });
-          if (state?.stage !== 'completed') continue;
+          const state = await convex.query(api.accountDeletion.completionStatus, { receipt: pending.receipt });
+          if (!state?.completed) continue;
           if (userId === pending.userId) await clearAccountReminders();
           await removeLocalAccountData(pending.userId);
           await forgetDeletion(pending.userId);

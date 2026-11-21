@@ -1,5 +1,6 @@
 import * as Sentry from '@sentry/react-native';
 import Constants from 'expo-constants';
+import { sanitizeMonitoringEvent } from './monitoringSanitizer';
 
 const dsn = process.env.EXPO_PUBLIC_SENTRY_DSN?.trim();
 export const monitoringEnabled = Boolean(dsn);
@@ -20,20 +21,8 @@ if (dsn) {
     tracesSampleRate: __DEV__ ? 0 : 0.05,
     integrations: [Sentry.expoRouterIntegration()],
     beforeBreadcrumb: breadcrumb => breadcrumb.category === 'navigation' ? { ...breadcrumb, data: undefined } : null,
-    beforeSend: event => {
-      // Error strings and URLs can contain fitness data or auth callbacks.
-      delete event.request;
-      delete event.user;
-      delete event.extra;
-      delete event.contexts;
-      delete event.breadcrumbs;
-      event.message = undefined;
-      event.transaction = undefined;
-      for (const exception of event.exception?.values ?? []) {
-        exception.value = `Fitapp ${exception.type ?? 'error'}`;
-      }
-      return event;
-    },
+    // Error strings and URLs can contain fitness data or auth callbacks.
+    beforeSend: sanitizeMonitoringEvent,
   });
 }
 

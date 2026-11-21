@@ -26,8 +26,22 @@ export const current = query({ args: {}, handler: async ctx => {
 } });
 export const status = query({ args: { receipt: v.string() }, handler: async (ctx, { receipt }) => {
   if (receipt.length < 60 || receipt.length > 100) return null;
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) throw Error('Authentication required');
   const job = await ctx.db.query('deletionJobs').withIndex('by_receipt', q => q.eq('receipt', receipt)).first();
-  return job ? { stage: job.stage, errorCategory: job.errorCategory ?? null, completedAt: job.completedAt ?? null } : null;
+  if (!job || job.owner !== identity.tokenIdentifier) return null;
+  return { stage: job.stage, errorCategory: job.errorCategory ?? null, completedAt: job.completedAt ?? null };
+} });
+/**
+ * A deletion completes by removing the Clerk identity, so the device can no
+ * longer authenticate to learn that it should clear its local database. The
+ * receipt is a high-entropy, SecureStore-held cleanup capability; expose only
+ * the completed bit here, never an in-progress stage or service error.
+ */
+export const completionStatus = query({ args: { receipt: v.string() }, handler: async (ctx, { receipt }) => {
+  if (!/^[0-9a-f-]{72}$/.test(receipt)) return null;
+  const job = await ctx.db.query('deletionJobs').withIndex('by_receipt', q => q.eq('receipt', receipt)).first();
+  return job?.stage === 'completed' ? { completed: true } : null;
 } });
 export const retry = mutation({ args: {}, handler: async ctx => {
   const identity = await ctx.auth.getUserIdentity();
