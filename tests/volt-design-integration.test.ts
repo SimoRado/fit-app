@@ -107,7 +107,8 @@ describe('Volt screens keep the existing engine and the agreed exceptions', () =
     const train = source('src/app/(tabs)/workouts.tsx');
     expect(train).toContain("params: { routine: routine.id }");
     expect(train).toContain('<WorkoutInProgressCard');
-    expect(train).toContain('repo.toggleRest(profile!.id, today)');
+    // Rest today / Undo rest day: one-off rest via rest_days, a weekly rest skipped for today only.
+    expect(train).toContain("todayPlan.oneOff ? saveSchedule({ rest: { day: today, on: false } }) : saveDay(today, { kind: 'none' })");
   });
 
   it('Train presents compact routines with separate details, menu and accent start actions', () => {

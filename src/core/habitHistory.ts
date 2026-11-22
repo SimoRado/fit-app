@@ -185,11 +185,12 @@ export type HistoryAccess = { canBrowseMonth: (month: string) => boolean; canOpe
 export function historyAccess(isPro: boolean, today: string): HistoryAccess {
   const current = monthKey(today);
   return {
-    // The limit is the yearly visualization, not ownership of historical habit data. Both
-    // plans can browse every completed calendar month; neither can browse future months.
-    canBrowseMonth: month => month <= current,
+    // Free: the current month only. Pro: every recorded month and the year. Neither plan browses
+    // future months here (History is a record, not a planner). Stored history is never removed
+    // when Pro ends; it is only hidden until Pro returns.
+    canBrowseMonth: month => month === current || (month < current && isPro),
     canOpenYear: isPro,
     canShare: isPro,
-    canSeeDetail: day => day <= today,
+    canSeeDetail: day => day <= today && (isPro || monthKey(day) === current),
   };
 }

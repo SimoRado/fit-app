@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Animated, { FadeIn } from 'react-native-reanimated';
-import { Link } from 'expo-router';
+import { Link, router } from 'expo-router';
 import { Pressable, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '../../ui/LocalizedText';
@@ -11,8 +11,13 @@ import { dayKey, fromDay } from '../../core/date';
 import { calorieHeadline, meals, sumNutrients, weekStats, type CalorieDisplay, type Meal } from '../../core/nutrition';
 import { useReducedMotion } from '../../ui/motion';
 import { clampDay, moveSelectionByWeek, startOfWeek, weekDays, weekNavigation } from '../../core/weekCalendar';
-import { WeekCalendar } from '../../ui/WeekCalendar';
-import { calorieDisplay, customFoods, firstNutritionTarget, foodEntries, nutritionTarget, type CustomFood, type FoodEntry, type NutritionTarget } from '../../data/nutrition';
+import { calorieDisplay, customFoods, firstFoodDay, firstNutritionTarget, foodEntries, nutritionDayTotals, nutritionTarget, nutritionTargets, type CustomFood, type FoodEntry, type NutritionTarget } from '../../data/nutrition';
+import { nutritionScore, targetForDay, type NutritionDayTotals } from '../../core/nutritionCalendar';
+import { calendarAccess } from '../../core/calendarAccess';
+import { monthKey, shadeLevel } from '../../core/habitHistory';
+import { useSubscription } from '../../state/subscriptions';
+import { CalendarButtons, MonthCalendarSheet, YearCalendarSheet, useCalendarMonth } from '../../ui/ProgressCalendar';
+import { dayLabel, type CalendarCell, type MiniCell } from '../../ui/HistoryCalendar';
 import { prepareFoodCatalog } from '../../data/foodCatalog';
 import { syncAutoTargets } from '../../data/nutritionPlan';
 import { useApp } from '../../state/app';
@@ -27,6 +32,17 @@ import { CircleButton, CountUp, EmptyAction, Horseshoe, KpiRow, ListRow, MiniBar
 
 const num = (value: number) => Math.round(value).toLocaleString();
 const dateLabel = (day: string) => new Intl.DateTimeFormat(undefined, { weekday: 'long', day: 'numeric', month: 'short' }).format(fromDay(day));
+
+/** Nutrition day → shared calendar tile (0 / 1–33 / 34–67 / 68–100% goal completion, see nutritionScore). */
+function nutritionCell(day: string, today: string, start: string | null, totals: NutritionDayTotals | undefined, target: NutritionTarget | null, locale: string): CalendarCell {
+  const date = dayLabel(day, locale);
+  if (day > today) return { shade: null, tone: 'future', disabled: true, label: `${date}, upcoming` };
+  if (!totals && (!start || day < start)) return { shade: null, label: `${date}, nothing logged` };
+  const score = nutritionScore(totals ?? { kcal: 0, protein: 0, carbs: 0, fat: 0 }, !!totals?.entries, target);
+  if (!score) return { shade: null, tone: 'none', label: `${date}, no nutrition target set` };
+  return { shade: shadeLevel(score.percent), label: `${date}, ${Math.round(score.percent)}% of nutrition goals${totals ? `, ${num(totals.kcal)} kcal` : ', nothing logged'}` };
+}
+const monthEnd = (month: string) => { const [y, m] = month.split('-').map(Number); return `${month}-${String(new Date(y, m, 0, 12).getDate()).padStart(2, '0')}`; };
 
 const mealIcon: Record<Meal, VoltIcon> = { breakfast: 'sunny-outline', lunch: 'restaurant-outline', dinner: 'moon-outline', snacks: 'sparkles-outline' };
 const mealName = (meal: Meal) => meal[0].toUpperCase() + meal.slice(1);
@@ -83,9 +99,32 @@ function MacroChip({ label, value, target, background, bar, track }: { label: st
   </View>;
 }
 
+/** Selected day in the month sheet: goal completion and the totals it is based on (same maths as the tiles). */
+function NutritionDayCard({ day, today, locale, totals, target, onView }: { day: string; today: string; locale: string; totals: NutritionDayTotals | undefined; target: NutritionTarget | null; onView: () => void }) {
+  const p = usePalette();
+  const score = day > today ? null : nutritionScore(totals ?? { kcal: 0, protein: 0, carbs: 0, fat: 0 }, !!totals?.entries, target);
+  const date = new Intl.DateTimeFormat(locale, { weekday: 'long', day: 'numeric', month: 'long' }).format(fromDay(day));
+  const summary = day > today ? 'Upcoming' : !target ? 'No nutrition target set' : !totals ? 'Nothing logged' : `${num(totals.kcal)} / ${num(target.kcal)} kcal${target.protein > 0 ? ` · protein ${num(totals.protein)} / ${num(target.protein)} g` : ''}`;
+  return <View style={{ gap: 12, padding: 16, borderRadius: 24, backgroundColor: p.light ? p.c8 : p.card2, borderWidth: 1, borderColor: p.c8Line }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+      <View style={{ width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: p.light ? p.soft1 : p.card }}>
+        <Text style={{ color: p.text, fontFamily: fonts.displayHeavy, fontSize: 15 }}>{score ? `${Math.round(score.percent)}%` : '–'}</Text>
+      </View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={{ color: p.text, fontFamily: fonts.displayHeavy, fontSize: 16 }}>{day === today ? `Today · ${date}` : date}</Text>
+        <Text style={{ color: p.muted, fontFamily: fonts.semibold, fontSize: 12.5 }}>{summary}</Text>
+      </View>
+    </View>
+    {day <= today && <Pressable accessibilityRole="button" onPress={onView} style={{ minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 999, backgroundColor: p.light ? p.soft1 : p.card }}>
+      <Text style={{ color: p.accent, fontFamily: fonts.bold, fontSize: 13.5 }}>{day === today ? 'Show today’s meals' : 'Show meals for this day'}</Text>
+    </Pressable>}
+  </View>;
+}
+
 export default function NutritionScreen() {
   const { width } = useWindowDimensions();
-  const { changed } = useApp();
+  const { changed, language } = useApp();
+  const locale = language === 'fr' ? 'fr-FR' : language === 'ar' ? 'ar-u-nu-arab' : 'en-US';
   // Reloads only while this tab is focused (see useScreenRevision).
   const revision = useScreenRevision();
   const { palette } = useVoltTheme();
@@ -112,6 +151,34 @@ export default function NutritionScreen() {
   const [editing, setEditing] = useState<FoodEntry | null>(null);
   const [meal, setMeal] = useState<Meal>('breakfast');
   const [expanded, setExpanded] = useState<Partial<Record<Meal, boolean>>>({});
+  // Month calendar (current month Free; earlier months and the year with the verified Pro entitlement).
+  const subscription = useSubscription();
+  const access = useMemo(() => calendarAccess(subscription.isPremium, today, 0), [subscription.isPremium, today]);
+  const calendar = useCalendarMonth(access);
+  const [monthTotals, setMonthTotals] = useState<Map<string, NutritionDayTotals> | null>(null);
+  const [allTargets, setAllTargets] = useState<NutritionTarget[]>([]);
+  const [startDay, setStartDay] = useState<string | null>(null);
+  const [yearOpen, setYearOpen] = useState(false);
+  const [monthOpen, setMonthOpen] = useState(false);
+  const [year, setYear] = useState(() => Number(today.slice(0, 4)));
+  const [yearTotals, setYearTotals] = useState<{ year: number; rows: Map<string, NutritionDayTotals> } | null>(null);
+  // One grouped read per visible month plus the (tiny) target list; reloads after every food change.
+  useEffect(() => {
+    let active = true;
+    Promise.all([nutritionDayTotals(`${calendar.month}-01`, monthEnd(calendar.month)), nutritionTargets(), firstFoodDay()])
+      .then(([rows, saved, first]) => { if (!active) return; setMonthTotals(new Map(rows.map(row => [row.day, row]))); setAllTargets(saved); const firstTargetDay = saved[0]?.effective_day ?? null; setStartDay(first && firstTargetDay ? (first < firstTargetDay ? first : firstTargetDay) : first ?? firstTargetDay); })
+      .catch(() => { if (active) setMonthTotals(new Map()); });
+    return () => { active = false; };
+  }, [calendar.month, revision]);
+  useEffect(() => {
+    if (!yearOpen || !access.canOpenYear) return;
+    let active = true;
+    nutritionDayTotals(`${year}-01-01`, `${year}-12-31`).then(rows => { if (active) setYearTotals({ year, rows: new Map(rows.map(row => [row.day, row])) }); }).catch(() => { if (active) setYearTotals({ year, rows: new Map() }); });
+    return () => { active = false; };
+  }, [yearOpen, year, access.canOpenYear, revision]);
+  const calendarCell = useCallback((day: string, totals: NutritionDayTotals | undefined) => nutritionCell(day, today, startDay, totals, targetForDay(allTargets, day), locale), [today, startDay, allTargets, locale]);
+  const cellFor = useMemo(() => monthTotals ? (day: string) => calendarCell(day, monthTotals.get(day)) : null, [monthTotals, calendarCell]);
+  const miniFor = useMemo(() => yearTotals && yearTotals.year === year ? (day: string): MiniCell => { const cell = calendarCell(day, yearTotals.rows.get(day)); return { shade: cell.shade }; } : null, [yearTotals, year, calendarCell]);
   useEffect(() => {
     let active = true;
     const days = weekDays(weekStartDay, 1);
@@ -147,10 +214,8 @@ export default function NutritionScreen() {
   const p = palette;
   const headline = calorieHeadline(total.kcal, selectedTarget?.kcal ?? null, display);
   const needsSetup = ready && !firstTarget;
-  return <Page title="Nutrition" eyebrow={view === 'week' ? 'This week' : selected === today ? 'Today' : dateLabel(selected)} headerAction={<CircleButton icon="options-outline" label="Nutrition targets" onPress={() => setSheet('targets')}/>}>
+  return <Page title="Nutrition" eyebrow={view === 'week' ? 'This week' : selected === today ? 'Today' : dateLabel(selected)} headerAction={<><CalendarButtons onYear={() => { setYear(Number(calendar.month.slice(0, 4))); setYearOpen(true); }} onMonth={() => { calendar.focus(selected); setMonthOpen(true); }} yearLocked={!access.canOpenYear}/><CircleButton icon="options-outline" label="Nutrition targets" onPress={() => setSheet('targets')}/></>}>
     {load.status === 'error' ? <LoadError text="Could not load your nutrition log." onRetry={load.retry}/> : !ready ? <NutritionSkeleton/> : needsSetup ? <TargetSetup onSaved={afterChange}/> : view === 'today' ? <Animated.View entering={reduced ? undefined : FadeIn.duration(320)} style={{ gap: 16 }}>
-      <WeekCalendar selected={selected} onSelect={setSelected} rules={rules} todayLabel="Back to today"
-        marker={day => summaries.find(item => item.day === day)?.logged ? <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: day === selected ? p.plInk : p.g1 }}/> : null}/>
       <VCard>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
           <Text style={{ color: p.text, fontFamily: fonts.displayHeavy, fontSize: 15.5 }}>Calories</Text>
@@ -180,6 +245,12 @@ export default function NutritionScreen() {
       <Text style={{ color: p.muted, fontSize: 12, lineHeight: 18 }}>On target means within 10% of your calorie target. Unlogged days are skipped.</Text>
     </>}
     <Text style={{ color: p.muted, fontSize: 11, marginTop: 20 }}>Food data: <Link href="https://www.opennutrition.app" style={{ textDecorationLine: 'underline' }}>OpenNutrition</Link> (ODbL). Includes data © <Link href="https://world.openfoodfacts.org" style={{ textDecorationLine: 'underline' }}>Open Food Facts contributors</Link>.</Text>
+    <MonthCalendarSheet visible={monthOpen} onClose={() => setMonthOpen(false)} title="Nutrition calendar" state={calendar} access={access} firstMonth={startDay ? monthKey(startDay) : null} today={today} selected={selected} locale={locale}
+      cellFor={cellFor} onSelect={day => setSelected(clampDay(day, rules))} checking={!subscription.ready && !subscription.error} onUpgrade={() => router.push('/paywall')}
+      details={close => <NutritionDayCard day={selected} today={today} locale={locale} totals={monthTotals?.get(selected)} target={targetForDay(allTargets, selected)} onView={() => { setView('today'); close(); }}/>}/>
+    <YearCalendarSheet visible={yearOpen} access={access} onUpgrade={() => router.push('/paywall')} checking={!subscription.ready && !subscription.error} onClose={() => setYearOpen(false)} year={year} onYear={setYear} firstYear={Number((startDay ?? today).slice(0, 4))} today={today} locale={locale}
+      miniFor={miniFor} summaryFor={month => { let logged = 0; if (yearTotals) for (const day of yearTotals.rows.keys()) if (day.startsWith(month)) logged++; return logged ? `${logged} day${logged === 1 ? '' : 's'} logged` : 'nothing logged'; }}
+      onMonth={month => { calendar.go(month); setMonthOpen(true); }}/>
     <BottomSheet layout="fixed" visible={sheet === 'food'} title={editing ? 'Edit entry' : 'Add food'} onClose={() => setSheet(null)}>{close => <FoodSheet key={editing?.id ?? `${meal}:${selected}`} entry={editing} meal={meal} day={selected} close={close} onSaved={afterFoodChange}/>}</BottomSheet>
     <BottomSheet visible={sheet === 'targets'} title="Nutrition settings" onClose={() => setSheet(null)}>{close => <TargetsSheet display={display} foods={foods} close={close} onSaved={afterChange} onDisplayChange={setDisplay}/>}</BottomSheet>
   </Page>;

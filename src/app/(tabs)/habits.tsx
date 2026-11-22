@@ -5,30 +5,33 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import Animated, { interpolateColor, useAnimatedProps, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { Text } from '../../ui/LocalizedText';
-import { addDays, dayKey, fromDay, uid, weekStart } from '../../core/date';
-import { habitDone, habitRate, habitStreak, scheduled } from '../../core/logic';
+import { dayKey, fromDay, uid } from '../../core/date';
+import { habitDone, habitStreak, scheduled } from '../../core/logic';
 import { Habit, HabitCompletion, HabitProgress } from '../../core/types';
-import { filterHabits, habitProgressOn, reminderTimes, weeklyConsistency } from '../../core/habitExtras';
+import { filterHabits, habitProgressOn, reminderTimes } from '../../core/habitExtras';
+import { computeDay, evidence, type HistoryDay } from '../../core/habitHistory';
+import { calendarAccess } from '../../core/calendarAccess';
 import { amountLabel, applyAmountDelta, habitRatio, quantityDone } from '../../core/habitProgress';
 import { STARTER_HABITS, frequencyLabel, habitDurationMinutes, habitGroup, minutesLeft, nowLineIndex, scheduleLine, type StarterHabit } from '../../core/habitDesign';
 import { repo } from '../../data/db';
 import { useApp } from '../../state/app';
 import { useScreenRevision } from '../../state/useScreenRevision';
 import { useLoadState } from '../../state/useLoadState';
-import { LoadError, SkeletonBlock, SkeletonCard, SkeletonCircle, SkeletonScreen } from '../../ui/Skeleton';
+import { LoadError, SkeletonBlock, SkeletonCircle, SkeletonScreen } from '../../ui/Skeleton';
 import { Button, Field, Page, confirm, message } from '../../ui/components';
 import { BottomSheet } from '../../ui/BottomSheet';
 import { fonts, brand } from '../../ui/theme';
 import { reconcileReminders } from '../../services/reminders';
 import { MotionPressable } from '../../ui/MotionPressable';
-import { CircleButton, EmptyAction, MiniBar, SectionLink, VCard, isLight, useEntering, usePalette, type VoltIcon } from '../../ui/voltKit';
+import { CircleButton, EmptyAction, MiniBar, SectionLink, isLight, useEntering, usePalette, type VoltIcon } from '../../ui/voltKit';
 import { CubyMark } from '../../ui/CubyMark';
 import { HabitEditor } from '../../ui/HabitEditor';
 import { HabitGlyph, groupColors } from '../../ui/HabitVisuals';
-import { MonthWeekCalendar } from '../../ui/MonthWeekCalendar';
+import { CalendarButtons, MonthCalendarSheet, YearCalendarSheet, useCalendarMonth } from '../../ui/ProgressCalendar';
+import { habitCell } from '../../ui/HistoryCalendar';
 import { deviceUses12h } from '../../ui/WheelTimePicker';
 import { useReducedMotion } from '../../ui/motion';
-import { HabitHistorySheet } from '../../ui/HabitHistorySheet';
+import { DayPanel, HabitHistorySheet } from '../../ui/HabitHistorySheet';
 import { isFeatureLimitError } from '../../services/featureLimits';
 import { useSubscription } from '../../state/subscriptions';
 
@@ -38,12 +41,12 @@ type EditorState = { habit: Habit | null; mode: 'time' | 'anytime' } | null;
 
 /**
  * Volt Habits (references 1, 4, 5, 7): empty state with one-tap starters, a
- * segmented completion bar, the shared month/week calendar, a timed Schedule
+ * segmented completion bar, header buttons for the shared month/year calendars, a timed Schedule
  * with a live "Now" line, and an Anytime list. Completed rows use their
  * category's bright colour, open rows a soft tint. Tap-only: the right circle
  * completes (or adds one step to a measured habit), ⋯ opens edit/correct/delete.
  */
-/** Placeholder for the Schedule timeline, Anytime rows and the weekly summary card. */
+/** Placeholder for the Schedule timeline and Anytime rows. */
 function HabitsSkeleton() {
   const row = (key: number) => <View key={key} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8 }}>
     <SkeletonBlock width={46} height={11} radius={6}/>
@@ -56,12 +59,6 @@ function HabitsSkeleton() {
     <View>{[0, 1, 2].map(row)}</View>
     <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}><SkeletonBlock width={84} height={15} radius={8}/><SkeletonBlock width={110} height={11} radius={6}/></View>
     <View>{[3, 4].map(row)}</View>
-    <SkeletonBlock width={96} height={15} radius={8} style={{ marginTop: 8 }}/>
-    <SkeletonCard style={{ gap: 14 }}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}><SkeletonCircle size={36}/><SkeletonBlock width={120} height={12} radius={6}/><SkeletonCircle size={36}/></View>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 12 }}><SkeletonBlock width={84} height={40} radius={10}/><SkeletonBlock width="50%" height={11} radius={6} style={{ marginBottom: 6 }}/></View>
-      <SkeletonBlock height={7} radius={4}/>
-    </SkeletonCard>
   </SkeletonScreen>;
 }
 
@@ -85,13 +82,14 @@ export default function Habits() {
   const { attempt, succeed, fail } = load;
   const loaded = load.status === 'ready';
   const [selected, setSelected] = useState(dayKey());
-  const [summaryWeek, setSummaryWeek] = useState(weekStart(dayKey()));
   const [amountDraft, setAmountDraft] = useState('');
   const [menu, setMenu] = useState<Habit | null>(null);
   const [editor, setEditor] = useState<EditorState>(null);
   const [manage, setManage] = useState(false);
-  const [calendarOpen, setCalendarOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyTab, setHistoryTab] = useState<'month' | 'year'>('month');
+  const [monthOpen, setMonthOpen] = useState(false);
+  const [yearLockedOpen, setYearLockedOpen] = useState(false);
   // Set while the paywall (opened from History) is on top; History reopens when Habits regains focus.
   const returnToHistory = useRef(false);
   useFocusEffect(useCallback(() => { if (returnToHistory.current) { returnToHistory.current = false; setHistoryOpen(true); } }, []));
@@ -99,6 +97,12 @@ export default function Habits() {
   const creating = useRef(false);
   const today = dayKey();
   const locale = language === 'fr' ? 'fr-FR' : language === 'ar' ? 'ar-u-nu-arab' : 'en-US';
+  // Month calendar: current month for everyone, earlier months with the verified Pro entitlement,
+  // and up to a year ahead for planning (planning is never Pro-only).
+  const access = useMemo(() => calendarAccess(subscription.isPremium, today, 12), [subscription.isPremium, today]);
+  const calendar = useCalendarMonth(access);
+  const [monthRows, setMonthRows] = useState<Map<string, HistoryDay> | null>(null);
+  const [firstHistoryDay, setFirstHistoryDay] = useState<string | null>(null);
 
   const showHabitLimit = useCallback(() => {
     Alert.alert('Free plan limit reached', 'You can track up to 3 habits on Cubyfit Free. Upgrade to Pro for unlimited habits.', [
@@ -117,6 +121,16 @@ export default function Habits() {
     }).catch(error => { if (active && !fail()) message(error); });
     return () => { active = false; };
   }, [revision, attempt, succeed, fail]);
+  // One range read per visible month from the local History snapshots (offline, no per-day queries).
+  useEffect(() => {
+    let active = true;
+    const [y, m] = calendar.month.split('-').map(Number);
+    repo.habitHistory(`${calendar.month}-01`, dayKey(new Date(y, m, 0, 12)), true)
+      .then(rows => { if (active) setMonthRows(new Map(rows.map(row => [row.day, row]))); })
+      .catch(() => { if (active) setMonthRows(new Map()); });
+    return () => { active = false; };
+  }, [calendar.month, revision]);
+  useEffect(() => { repo.habitHistoryFirstDay().then(setFirstHistoryDay).catch(() => setFirstHistoryDay(null)); }, [revision]);
   // Home / Progress links (`/habit-form`) arrive here with ?new=1 or ?edit=<id>.
   useEffect(() => {
     if (params.new) { setEditor({ habit: null, mode: 'time' }); router.setParams({ new: undefined }); }
@@ -138,7 +152,6 @@ export default function Habits() {
   const ordered = filterHabits(habits, 'All Habits');
   const active = ordered.filter(habit => !habit.archived);
   const due = active.filter(habit => scheduled(habit, selected));
-  const summary = weeklyConsistency(habits, completions, progress, summaryWeek, today);
   const isDone = (habit: Habit, day = selected) => habit.habit_type === 'quantity' ? quantityDone(habit, habitProgressOn(progress, habit.id, day)) : habitDone(habit, completions, day);
   /** 0–1 for the ring and the segment: partial for measured habits. */
   const ratio = (habit: Habit) => habitRatio(habit, habitProgressOn(progress, habit.id, selected), isDone(habit));
@@ -221,19 +234,31 @@ export default function Habits() {
   const dayLabel = new Intl.DateTimeFormat(locale, { weekday: 'short', day: 'numeric', month: 'short' }).format(fromDay(selected)).toUpperCase();
   const menuProgress = menu ? habitProgressOn(progress, menu.id, selected) : undefined;
   const startDay = selected > today ? selected : today;
-  const marker = (day: string) => {
-    const rate = habitRate(habits, completions, day, day);
-    if (!rate.due || day > today) return null;
-    const level = rate.done / rate.due;
-    const on = day === selected;
-    return <View style={{ width: 14, height: 3.5, borderRadius: 2, marginTop: 2, backgroundColor: on ? p.plInk : level === 0 ? p.qTrack : level < 1 ? p.lv1 : p.lv3, opacity: on ? 0.6 : 1 }}/>;
-  };
+  // Today's tile follows taps at once: the same snapshot maths History uses, on the optimistic state.
+  const todayRow = useMemo<HistoryDay>(() => { const live = computeDay(habits, today, evidence(completions, progress)); return { day: today, status: 'open', source: 'tracked', eligible: live.eligible, completed: live.completed, percent: live.percent, items: live.items }; }, [habits, completions, progress, today]);
+  const cellFor = useMemo(() => monthRows ? (day: string) => habitCell(day, today, day === today ? todayRow : monthRows.get(day), locale, false, true) : null, [monthRows, todayRow, today, locale]);
+  const openHistory = (tab: 'month' | 'year') => { setHistoryTab(tab); setHistoryOpen(true); };
+  /** Month button: the shared month sheet, opened on the selected day's month. Year: Pro yearly history, or the Pro explanation. */
+  const openMonth = () => { calendar.focus(selected); setMonthOpen(true); };
+  const openYear = () => { if (access.canOpenYear) openHistory('year'); else setYearLockedOpen(true); };
+  const selectedRow = selected === today ? todayRow : monthRows?.get(selected);
+  const sheets = <>
+    <HabitHistorySheet visible={historyOpen} initialTab={historyTab} locale={locale} onClose={() => setHistoryOpen(false)} onUpgrade={() => { returnToHistory.current = true; router.push('/paywall'); }}/>
+    <MonthCalendarSheet visible={monthOpen} onClose={() => setMonthOpen(false)} title="History" state={calendar} access={access} firstMonth={firstHistoryDay ? firstHistoryDay.slice(0, 7) : null}
+      today={today} selected={selected} locale={locale} cellFor={cellFor} onSelect={setSelected} checking={!subscription.ready && !subscription.error} onUpgrade={() => router.push('/paywall')}
+      details={close => <>
+        {selected <= today && monthRows && <DayPanel key={selected} day={selected} row={selectedRow} today={today} locale={locale} detail/>}
+        {selected > today && <Text style={{ color: p.muted, fontFamily: fonts.medium, fontSize: 12.5 }}>{due.length ? `${due.length} habit${due.length === 1 ? ' is' : 's are'} scheduled on this day.` : 'No habits are scheduled on this day.'}</Text>}
+        <Button title={selected === today ? 'Show today' : `Show ${new Intl.DateTimeFormat(locale, { weekday: 'short', day: 'numeric', month: 'short' }).format(fromDay(selected))}`} kind="ghost" onPress={() => close()}/>
+      </>}/>
+    <YearCalendarSheet visible={yearLockedOpen} onClose={() => setYearLockedOpen(false)} access={access} year={Number(today.slice(0, 4))} onYear={() => undefined} firstYear={Number(today.slice(0, 4))} today={today} locale={locale}
+      miniFor={null} summaryFor={() => ''} onMonth={() => undefined} checking={!subscription.ready && !subscription.error} onUpgrade={() => router.push('/paywall')}/>
+  </>;
 
   const header = <>
     <View style={{ height: 44, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
       <Text numberOfLines={1} style={{ flex: 1, color: p.muted, fontFamily: fonts.bold, fontSize: 11, letterSpacing: 0.8 }}>{selected === today ? `TODAY · ${dayLabel}` : dayLabel}</Text>
-      <CircleButton icon="grid-outline" label="History" onPress={() => setHistoryOpen(true)}/>
-      <CircleButton icon="calendar-outline" label="Choose a date" onPress={() => setCalendarOpen(true)}/>
+      <CalendarButtons onYear={openYear} onMonth={openMonth} yearLocked={!access.canOpenYear}/>
       <CircleButton icon="add" tone="accent" label="New habit" onPress={() => setEditor({ habit: null, mode: 'time' })}/>
     </View>
     <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }}>
@@ -250,24 +275,22 @@ export default function Habits() {
   if (!loaded) return <Page title="">
     {header}
     {load.status === 'loading' && <SkeletonScreen><SkeletonBlock height={8} radius={4}/></SkeletonScreen>}
-    <MonthWeekCalendar selected={selected} onSelect={setSelected} locale={locale} marker={marker} open={calendarOpen} onOpenChange={setCalendarOpen}/>
     {load.status === 'error' ? <LoadError text="Could not load your habits." onRetry={load.retry}/> : <HabitsSkeleton/>}
     <BottomSheet layout="fixed" visible={!!editor} title={editor?.habit ? 'Edit habit' : 'New habit'} onClose={() => setEditor(null)}>{close => editor && <HabitEditor key={editor.habit?.id ?? `new-${editor.mode}`} habit={editor.habit} startDay={startDay} initialMode={editor.mode} close={close} onSaved={applySaved} onLimit={showHabitLimit}/>}</BottomSheet>
-    <HabitHistorySheet visible={historyOpen} locale={locale} onClose={() => setHistoryOpen(false)} onUpgrade={() => { returnToHistory.current = true; router.push('/paywall'); }}/>
+    {sheets}
   </Page>;
 
   if (loaded && active.length === 0) return <Page title="">
     {header}
     <EmptyHabits onPick={starter => { void createStarter(starter); }} onCreate={() => setEditor({ habit: null, mode: 'time' })}/>
     <BottomSheet layout="fixed" visible={!!editor} title={editor?.habit ? 'Edit habit' : 'New habit'} onClose={() => setEditor(null)}>{close => editor && <HabitEditor key={editor.habit?.id ?? 'new'} habit={editor.habit} startDay={startDay} initialMode={editor.mode} close={close} onSaved={applySaved} onLimit={showHabitLimit}/>}</BottomSheet>
-    <HabitHistorySheet visible={historyOpen} locale={locale} onClose={() => setHistoryOpen(false)} onUpgrade={() => { returnToHistory.current = true; router.push('/paywall'); }}/>
+    {sheets}
     <ManageSheet open={manage} habits={ordered} onClose={() => setManage(false)} onEdit={habit => { setManage(false); setEditor({ habit, mode: 'time' }); }}/>
   </Page>;
 
   return <Page title="">
     {header}
     {due.length > 0 && <SegmentBar values={due.map(ratio)} ids={due.map(habit => habit.id)}/>}
-    <MonthWeekCalendar selected={selected} onSelect={setSelected} locale={locale} marker={marker} open={calendarOpen} onOpenChange={setCalendarOpen}/>
     {selected !== today && <Text style={{ color: p.muted, fontFamily: fonts.medium, fontSize: 12.5 }}>{selected < today ? 'Looking back at' : 'Planning ahead for'} <Text style={{ color: p.text, fontFamily: fonts.bold }}>{dayLabel}</Text>. <Text accessibilityRole="button" onPress={() => setSelected(today)} style={{ color: p.accent, fontFamily: fonts.bold, textDecorationLine: 'underline' }}>Back to today</Text></Text>}
 
     <SectionLink title="Schedule" right={<View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}><Text style={{ color: p.muted, fontFamily: fonts.semibold, fontSize: 12 }}>{timed.length} planned</Text><CircleButton icon="add" tone="accent" size={30} label="New habit at a time" onPress={() => setEditor({ habit: null, mode: 'time' })}/></View>}/>
@@ -286,22 +309,8 @@ export default function Habits() {
     {selected !== today && <View style={{ padding: 12, borderRadius: 14, backgroundColor: isLight(p) ? p.soft1 : p.card2 }}><Text style={{ color: p.muted, fontFamily: fonts.medium, fontSize: 12.5 }}>{selected < today ? 'Viewing a past day. Measured habits can still be adjusted; yes/no habits can only be checked off for today.' : 'Viewing a future day. Habits can be completed on the day itself.'}</Text></View>}
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><Ionicons name="information-circle-outline" size={14} color={p.muted}/><Text style={{ flex: 1, color: p.muted, fontFamily: fonts.medium, fontSize: 11.5 }}>Tap the circle to complete or add progress. Tap ⋯ to edit, correct or delete.</Text></View>
 
-    <SectionLink title="This week"/>
-    <VCard>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <CircleButton icon="chevron-back" label="Previous week" onPress={() => setSummaryWeek(addDays(summaryWeek, -7))}/>
-        <Text style={{ color: p.text, fontFamily: fonts.bold, fontSize: 13.5 }}>{summary.first} – {summary.last}</Text>
-        <CircleButton icon="chevron-forward" label="Next week" disabled={summaryWeek >= weekStart(today)} onPress={() => setSummaryWeek(addDays(summaryWeek, 7))}/>
-      </View>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 12, marginTop: 14 }}>
-        <Text style={{ color: p.text, fontFamily: fonts.displayHeavy, fontSize: 44, lineHeight: 46, letterSpacing: -2 }}>{summary.percent}<Text style={{ color: p.muted, fontSize: 18 }}>%</Text></Text>
-        <Text style={{ flex: 1, color: p.muted, fontFamily: fonts.semibold, fontSize: 12.5, paddingBottom: 6 }}>{summary.due ? `${summary.done} of ${summary.due} scheduled habit-days${summary.partial ? ` · ${summary.partial} partly done` : ''}` : 'No habits scheduled for this week.'}</Text>
-      </View>
-      <View style={{ marginTop: 12 }}><MiniBar value={summary.due ? summary.done / summary.due : 0} color={p.pgBar} track={p.qTrack}/></View>
-    </VCard>
-
     <BottomSheet layout="fixed" visible={!!editor} title={editor?.habit ? 'Edit habit' : 'New habit'} onClose={() => setEditor(null)}>{close => editor && <HabitEditor key={editor.habit?.id ?? `new-${editor.mode}`} habit={editor.habit} startDay={startDay} initialMode={editor.mode} close={close} onSaved={applySaved} onLimit={showHabitLimit}/>}</BottomSheet>
-    <HabitHistorySheet visible={historyOpen} locale={locale} onClose={() => setHistoryOpen(false)} onUpgrade={() => { returnToHistory.current = true; router.push('/paywall'); }}/>
+    {sheets}
     <ManageSheet open={manage} habits={ordered} onClose={() => setManage(false)} onEdit={habit => { setManage(false); setEditor({ habit, mode: 'time' }); }}/>
     <BottomSheet visible={!!menu} title={menu?.name ?? 'Habit'} onClose={() => setMenu(null)}>{close => menu && <View style={{ gap: 6 }}>
       {menu.habit_type === 'quantity' ? <>

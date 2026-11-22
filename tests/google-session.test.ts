@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { activateGoogleSession, clerkGateState } from '../src/core/googleSession';
+import { clerkMessage } from '../src/core/clerkError';
 
 describe('Google session and Clerk navigation gate', () => {
   it('activates only the session Clerk returned', async () => {
@@ -20,5 +21,9 @@ describe('Google session and Clerk navigation gate', () => {
     expect(clerkGateState(true, true, null)).toBe('signed-out');
     expect(clerkGateState(true, true, 'user_a')).toBe('signed-in');
     expect(clerkGateState(true, false, 'user_a')).toBe('signed-out');
+  });
+  it('explains Clerk state conflicts without treating them as credential failures', () => {
+    expect(clerkMessage({ errors: [{ code: 'strategy_for_user_invalid' }] })).toMatch(/separate Development account/);
+    expect(clerkMessage({ errors: [{ code: 'session_exists' }] })).toMatch(/already active/);
   });
 });

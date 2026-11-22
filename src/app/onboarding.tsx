@@ -112,7 +112,7 @@ export default function Onboarding() {
       <Text style={styles.label}>Fitness goal</Text><Text style={styles.text}>{goal}</Text>
       <Text style={styles.label}>Personal growth goals</Text>{growth.map(item => <Text key={item} style={styles.text}>· {item}</Text>)}
     </Card>}
-    {step === 3 && <Card><Text style={styles.label}>Legal agreements</Text><LegalAgreementChoice checked={legalAccepted} onChange={setLegalAccepted}/></Card>}
+    {step === 3 && <Card><LegalAgreementChoice checked={legalAccepted} onChange={setLegalAccepted}/></Card>}
     <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>{step > 0 && <Button title="Back" kind="ghost" onPress={() => setStep(value => value - 1)}/>}<View style={{ flex: 1 }}><Button title={step === 3 ? busy ? 'Saving…' : "Let's Begin" : 'Continue  →'} onPress={step === 3 ? save : next} disabled={busy || (step === 3 && !legalAccepted)}/></View></View>
   </Page>;
 }

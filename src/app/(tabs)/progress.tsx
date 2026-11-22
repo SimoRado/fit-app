@@ -271,7 +271,7 @@ function WeightCard({ weights, startWeight, target, locale }: { weights: WeightE
     </View>
     <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
       {[[latest ? latest.kg.toFixed(1) : '—', 'kg', 'Current'], [target !== null ? target.toFixed(1) : '—', 'kg', 'Goal'], [goal?.progress != null ? String(goal.progress) : '—', '%', 'Progress']].map(([value, unit, label]) => <View key={label} style={{ flex: 1 }}>
-        <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: '#FFFFFF', fontFamily: fonts.displayHeavy, fontSize: 28, lineHeight: 30, letterSpacing: -0.84 }}>{value}{value !== '—' && <Text style={{ fontFamily: fonts.bold, fontSize: 14, letterSpacing: 0 }}>{unit === '%' ? ' %' : ` ${unit}`}</Text>}</Text>
+        <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: '#FFFFFF', fontFamily: fonts.displayHeavy, fontSize: 28, lineHeight: 30, letterSpacing: -0.84 }}>{value}{value !== '—' && <Text style={{ color: '#FFFFFF', fontFamily: fonts.bold, fontSize: 14, letterSpacing: 0 }}>{unit === '%' ? ' %' : ` ${unit}`}</Text>}</Text>
         <Text style={{ color: 'rgba(255,255,255,0.78)', fontFamily: fonts.semibold, fontSize: 12, marginTop: 6 }}>{label}</Text>
       </View>)}
     </View>

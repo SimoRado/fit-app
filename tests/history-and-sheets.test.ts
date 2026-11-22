@@ -17,12 +17,12 @@ describe('History calendar layout', () => {
     const sheet = source('src/ui/HabitHistorySheet.tsx');
     expect(sheet).toContain("const TABS: Tab[] = ['week', 'month', 'year']");
     expect(sheet).toContain('function WeekView(');
-    expect(sheet).toContain('if (delta < 0 && !access.canBrowseMonth(monthKey(addDays(next, 6)))) return;');
+    expect(sheet).toContain("if (delta < 0 && !access.canBrowseMonth(monthKey(addDays(next, 6)))) { setLocked('months'); return; }");
     expect(sheet).toContain('isLocked={day => !access.canBrowseMonth(monthKey(day))}');
   });
-  it('Free keeps every completed month while Pro additionally gets the year', () => {
+  it('Free sees the current month only while Pro additionally gets earlier months and the year', () => {
     const free = historyAccess(false, '2026-11-18'), pro = historyAccess(true, '2026-11-18');
-    expect([free.canBrowseMonth('2026-11'), free.canBrowseMonth('2026-10'), free.canOpenYear]).toEqual([true, true, false]);
+    expect([free.canBrowseMonth('2026-11'), free.canBrowseMonth('2026-10'), free.canOpenYear]).toEqual([true, false, false]);
     expect([pro.canBrowseMonth('2026-10'), pro.canOpenYear]).toEqual([true, true]);
     expect(free.canBrowseMonth('2026-12')).toBe(false);
   });

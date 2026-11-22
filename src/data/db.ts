@@ -484,6 +484,22 @@ export const repo = {
   /** Muscle group and target muscle for catalog exercises (custom exercises have none). */
   exerciseMuscles: async () => { await ensureExerciseCatalog(); return (await db()).getAllAsync<{ exercise_id: string; muscle_group: string; target_muscle: string }>('SELECT exercise_id,muscle_group,target_muscle FROM exercise_catalog'); },
   restDays: async () => (await db()).getAllAsync<{ day: string }>('SELECT day FROM rest_days'),
+  /**
+   * One training-schedule change, atomically: optional preference values (weekly plan, its history,
+   * one-date exceptions) and, when given, whether the given day is a one-off rest day. Uses the same
+   * synced tables as before (preferences, rest_days); nothing else is touched.
+   */
+  saveTrainingSchedule: async (owner: string, change: { preferences?: Record<string, string>; rest?: { day: string; on: boolean } }) => {
+    const d = await db();
+    await d.withExclusiveTransactionAsync(async tx => {
+      for (const [key, value] of Object.entries(change.preferences ?? {})) await tx.runAsync('INSERT OR REPLACE INTO preferences VALUES (?,?)', key, value);
+      if (change.rest) {
+        const x = await tx.getFirstAsync('SELECT day FROM rest_days WHERE owner_id=? AND day=?', owner, change.rest.day);
+        if (change.rest.on && !x) await tx.runAsync('INSERT INTO rest_days VALUES (?,?)', owner, change.rest.day);
+        if (!change.rest.on && x) await tx.runAsync('DELETE FROM rest_days WHERE owner_id=? AND day=?', owner, change.rest.day);
+      }
+    });
+  },
   toggleRest: async (owner: string, day: string) => { const d = await db(); await d.withExclusiveTransactionAsync(async tx=>{const x=await tx.getFirstAsync('SELECT day FROM rest_days WHERE owner_id=? AND day=?',owner,day);if(x)await tx.runAsync('DELETE FROM rest_days WHERE owner_id=? AND day=?',owner,day);else await tx.runAsync('INSERT INTO rest_days VALUES (?,?)',owner,day);}); },
   favorites: () => all<Favorite>('favorites'),
   toggleFavorite: async (owner: string, card: string) => { const d = await db(); await d.withExclusiveTransactionAsync(async tx=>{const x=await tx.getFirstAsync('SELECT card_id FROM favorites WHERE owner_id=? AND card_id=?',owner,card);if(x)await tx.runAsync('DELETE FROM favorites WHERE owner_id=? AND card_id=?',owner,card);else await tx.runAsync('INSERT INTO favorites VALUES (?,?)',card,owner);}); },

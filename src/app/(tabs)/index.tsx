@@ -13,7 +13,7 @@ import { useScreenRevision } from '../../state/useScreenRevision';
 import { useLoadState } from '../../state/useLoadState';
 import { Button, Page, message } from '../../ui/components';
 import { colors, fonts, brand } from '../../ui/theme';
-import { gymSchedulePreferenceKey, parseGymSchedule, resolveDayPlan, type GymDayPlan } from '../../core/gymSchedule';
+import { gymOverridesPreferenceKey, gymSchedulePreferenceKey, parseGymOverrides, parseGymSchedule, resolveDayPlan, type GymDayOverride, type GymDayPlan } from '../../core/gymSchedule';
 import { dailyProgressPercent } from '../../core/voltGeometry';
 import { foodEntries, nutritionTarget, type FoodEntry, type NutritionTarget } from '../../data/nutrition';
 import { sumNutrients, type Meal, type Nutrients } from '../../core/nutrition';
@@ -58,6 +58,7 @@ export default function Home() {
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [routineLinks, setRoutineLinks] = useState<RoutineExercise[]>([]);
   const [weeklyPlan, setWeeklyPlan] = useState<GymDayPlan[]>([]);
+  const [dayOverrides, setDayOverrides] = useState<Map<string, GymDayOverride>>(new Map());
   const [restDays, setRestDays] = useState<string[]>([]);
   const [openWorkout, setOpenWorkout] = useState<OpenWorkout | null>(null);
   const [selectedDay, setSelectedDay] = useState(dayKey());
@@ -78,7 +79,7 @@ export default function Home() {
     Promise.all([repo.habits(), repo.completions(), repo.habitProgress(), repo.trainingWorkouts(), repo.routines(), repo.routineExercises(), repo.openWorkoutSession(profile.id), repo.preferences(), repo.restDays()])
       .then(([h, c, hp, w, r, re, open, prefs, rd]) => {
         if (!active) return;
-        setHabits(h); setCompletions(c); setHabitProgress(hp); setTraining(w); setRoutines(r); setRoutineLinks(re); setOpenWorkout(open); setWeeklyPlan(parseGymSchedule(prefs.find(item => item.key === gymSchedulePreferenceKey)?.value)); setRestDays(rd.map(row => row.day));
+        setHabits(h); setCompletions(c); setHabitProgress(hp); setTraining(w); setRoutines(r); setRoutineLinks(re); setOpenWorkout(open); setWeeklyPlan(parseGymSchedule(prefs.find(item => item.key === gymSchedulePreferenceKey)?.value)); setDayOverrides(parseGymOverrides(prefs.find(item => item.key === gymOverridesPreferenceKey)?.value)); setRestDays(rd.map(row => row.day));
         dataReady();
       }).catch(error => { if (active && !dataFailed()) message(error); });
     return () => { active = false; };
@@ -154,7 +155,7 @@ export default function Home() {
   const nextMeal = mealForHour(new Date().getHours());
   const nextMealKcal = sumNutrients(dayNutrition?.entries.filter(entry => entry.meal === nextMeal) ?? []).kcal;
   // Workout card follows the gym-day plan for the selected date, then falls back to the newest routine.
-  const dayPlan = resolveDayPlan(weeklyPlan, selectedDay, restDays, new Set(routines.map(item => item.id)));
+  const dayPlan = resolveDayPlan(weeklyPlan, selectedDay, restDays, new Set(routines.map(item => item.id)), dayOverrides);
   const plannedRoutine = dayPlan?.kind === 'routine' ? routines.find(item => item.id === dayPlan.routineId) : undefined;
   const routine = plannedRoutine ?? (dayPlan?.kind === 'rest' ? undefined : routines[0]);
   const routineExerciseCount = routine ? routineLinks.filter(link => link.routine_id === routine.id).length : 0;
@@ -183,13 +184,12 @@ export default function Home() {
     <View style={{ height: 50, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
       <View style={{ width: 40, height: 40, borderRadius: 12, overflow: 'hidden' }}>
         <CubyMark size={40} variant="brand"/>
-        <View pointerEvents="none" style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, borderWidth: 1, borderColor: p.accent, borderRadius: 12 }}/>
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text numberOfLines={1} accessibilityRole="header" style={{ color: p.text, fontFamily: fonts.displayHeavy, fontSize: 19, letterSpacing: -0.4 }}>Hi {firstName}</Text>
         <Text numberOfLines={1} style={{ color: p.muted, fontFamily: fonts.medium, fontSize: 12.5 }}>Here&apos;s your day so far</Text>
       </View>
-      <Pressable accessibilityRole="button" accessibilityLabel="Profile" hitSlop={8} onPress={() => router.navigate('/profile')} style={{ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', backgroundColor: p.light ? p.soft1 : p.c8, borderWidth: 1, borderColor: p.light ? p.soft1 : p.c8Line }}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Profile" hitSlop={8} onPress={() => router.navigate('/profile')} style={{ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', backgroundColor: p.light ? p.soft1 : p.c8, borderWidth: 1.5, borderColor: p.borderStrong }}>
         <Text style={{ color: p.accent, fontFamily: fonts.displayHeavy, fontSize: 15 }}>{initials}</Text>
       </Pressable>
     </View>

@@ -2,6 +2,7 @@ import { db } from './db';
 import { uid, validDay } from '../core/date';
 import { FoodInput, Meal, Nutrients, parseCalorieDisplay, pickRecentFoods, recentFoodIdentity, validateFood, type CalorieDisplay } from '../core/nutrition';
 import { toGrams, type FoodUnit } from '../core/foodUnits';
+import type { NutritionDayTotals } from '../core/nutritionCalendar';
 
 export type NutritionTarget = Nutrients & { id: string; owner_id: string; effective_day: string; created_at: string };
 export type CustomFood = { id: string; owner_id: string; name: string; kcal_100: number; protein_100: number; carbs_100: number; fat_100: number; created_at: string };
@@ -85,6 +86,21 @@ export async function recentFoods(limit = 10): Promise<RecentFood[]> {
 export async function foodEntries(start: string, end: string): Promise<FoodEntry[]> {
   const id = await owner();
   return (await db()).getAllAsync<FoodEntry>('SELECT * FROM food_entries WHERE owner_id=? AND day BETWEEN ? AND ? ORDER BY day DESC, created_at DESC', id, start, end);
+}
+/** Calendar read: one row per logged day in the range (uses the `food_entries_day` index), no per-day queries. */
+export async function nutritionDayTotals(start: string, end: string): Promise<NutritionDayTotals[]> {
+  const id = await owner();
+  return (await db()).getAllAsync<NutritionDayTotals>('SELECT day, SUM(kcal) AS kcal, SUM(protein) AS protein, SUM(carbs) AS carbs, SUM(fat) AS fat, COUNT(*) AS entries FROM food_entries WHERE owner_id=? AND day BETWEEN ? AND ? GROUP BY day', id, start, end);
+}
+/** First day anything was logged (calendar days before it, and before the first target, stay neutral). */
+export async function firstFoodDay(): Promise<string | null> {
+  const id = await owner();
+  return (await (await db()).getFirstAsync<{ first: string | null }>('SELECT min(day) AS first FROM food_entries WHERE owner_id=?', id))?.first ?? null;
+}
+/** Every saved target, oldest first (a handful of rows), so a calendar resolves each day's target in memory. */
+export async function nutritionTargets(): Promise<NutritionTarget[]> {
+  const id = await owner();
+  return (await db()).getAllAsync<NutritionTarget>('SELECT * FROM nutrition_targets WHERE owner_id=? ORDER BY effective_day ASC', id);
 }
 export type SavedFoodUnit = { unit: FoodUnit; quantity: number; servingName?: string };
 export type CustomFoodMeasure = Omit<SavedFoodUnit, 'servingName'> & { servingName: string | null; servingQuantity: number | null; servingGrams: number | null };

@@ -9,6 +9,7 @@ import { useVoltTheme } from './VoltThemeProvider';
 import Svg, { Rect } from 'react-native-svg';
 import { CubyMark } from './CubyMark';
 import { PageBackground } from './LotusArt';
+export { clerkErrorCode, clerkMessage } from '../core/clerkError';
 
 export function AuthPage({ title, detail, children }: { title: string; detail: string; children: React.ReactNode }) {
   const { appearance } = useVoltTheme();
@@ -45,21 +46,3 @@ export function AuthLink({ href, title }: { href: '/(auth)/welcome' | '/(auth)/s
 export function AuthError({ message }: { message: string }) { useVoltTheme(); return message ? <Text accessibilityRole="alert" style={{ color: colors.danger, fontSize: 14 }}>{message}</Text> : null; }
 // Clerk API errors carry `errors[0].code`; other ClerkErrors (including some
 // returned by the signIn.password()/signUp future API) carry `code` directly.
-export function clerkErrorCode(error: unknown): string {
-  if (!error || typeof error !== 'object') return '';
-  const item = error as { code?: unknown; errors?: { code?: string }[] };
-  return item.errors?.[0]?.code ?? (typeof item.code === 'string' ? item.code : '');
-}
-
-export function clerkMessage(error: unknown): string {
-  if (error && typeof error === 'object') {
-    const item = error as { errors?: { code?: string; longMessage?: string; message?: string }[] };
-    const code = clerkErrorCode(error);
-    if (/form_identifier_not_found|form_password_incorrect|identifier_not_found/.test(code)) return 'Email or password is incorrect.';
-    if (/form_identifier_exists|email_address_exists/.test(code)) return 'This email is already registered. Try signing in.';
-    if (/form_code_incorrect/.test(code)) return 'That code is incorrect. Check it and try again.';
-    if (/verification_expired|form_code_expired/.test(code)) return 'That code expired. Request a new one.';
-    if (/password/.test(code)) return item.errors?.[0]?.longMessage ?? item.errors?.[0]?.message ?? 'Choose a stronger password.';
-  }
-  return 'Could not complete authentication. Check your connection and try again.';
-}

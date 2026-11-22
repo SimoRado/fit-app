@@ -10,7 +10,7 @@ import { Button, message } from './components';
 import { fonts, brand } from './theme';
 import { CircleButton, isLight, usePalette } from './voltKit';
 import { HabitGlyph, groupColors } from './HabitVisuals';
-import { HISTORY_WEEK_START, HistoryScale, MiniMonth, MonthGrid, WeekRow, historyColors } from './HistoryCalendar';
+import { HISTORY_WEEK_START, HistoryScale, MiniMonth, MonthGrid, NavRow, UpgradePrompt, WeekRow, historyColors, type LockReason } from './HistoryCalendar';
 import { SHARE_HEIGHT, SHARE_WIDTH, YearShareCard } from './YearShareCard';
 import { useReducedMotion } from './motion';
 import { addDays, dayKey, fromDay } from '../core/date';
@@ -25,20 +25,20 @@ import { canShareFiles, shareFile, writePng } from '../services/shareImage';
 type Tab = 'week' | 'month' | 'year';
 /** First day (Sunday) of the history week containing `day`. */
 const historyWeekStart = (day: string) => addDays(day, -((fromDay(day).getDay() - HISTORY_WEEK_START + 7) % 7));
-type Locked = 'months' | 'year' | 'share' | null;
+type Locked = LockReason | null;
 const SHEET_PADDING = 20;
 
 /**
  * Habits History: every completed month is available on-device for everyone; the yearly heatmap
  * and its share action are Cubyfit Pro. It reads only local SQLite snapshots, so it works offline.
  */
-export function HabitHistorySheet({ visible, onClose, onUpgrade, locale }: { visible: boolean; onClose: () => void; onUpgrade: () => void; locale: string }) {
-  const [sheetTab, setSheetTab] = useState<Tab>('month');
-  useEffect(() => { if (!visible) setSheetTab('month'); }, [visible]);
-  return <BottomSheet layout="fixed" fixedHeight={sheetTab === 'week' ? '60%' : '82%'} visible={visible} title="History" onClose={onClose}>{close => <HistoryBody locale={locale} onTabChange={setSheetTab} onUpgrade={() => close(onUpgrade)}/>}</BottomSheet>;
+export function HabitHistorySheet({ visible, onClose, onUpgrade, locale, initialTab = 'month' }: { visible: boolean; onClose: () => void; onUpgrade: () => void; locale: string; initialTab?: 'month' | 'year' }) {
+  const [sheetTab, setSheetTab] = useState<Tab>(initialTab);
+  useEffect(() => { setSheetTab(visible ? initialTab : 'month'); }, [visible, initialTab]);
+  return <BottomSheet layout="fixed" fixedHeight={sheetTab === 'week' ? '60%' : '82%'} visible={visible} title="History" onClose={onClose}>{close => <HistoryBody locale={locale} initialTab={initialTab} onTabChange={setSheetTab} onUpgrade={() => close(onUpgrade)}/>}</BottomSheet>;
 }
 
-function HistoryBody({ locale, onTabChange, onUpgrade }: { locale: string; onTabChange: (tab: Tab) => void; onUpgrade: () => void }) {
+function HistoryBody({ locale, initialTab, onTabChange, onUpgrade }: { locale: string; initialTab: 'month' | 'year'; onTabChange: (tab: Tab) => void; onUpgrade: () => void }) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const { revision } = useApp();
@@ -49,7 +49,8 @@ function HistoryBody({ locale, onTabChange, onUpgrade }: { locale: string; onTab
   const isPro = subscription.isPremium;
   const access = useMemo(() => historyAccess(isPro, today), [isPro, today]);
   const content = Math.min(width, 620) - SHEET_PADDING * 2;
-  const [tab, setTab] = useState<Tab>('month');
+  // Year opens only with a verified entitlement; a Free request starts on Month.
+  const [tab, setTab] = useState<Tab>(initialTab === 'year' && isPro ? 'year' : 'month');
   const [month, setMonth] = useState(current);
   const [year, setYear] = useState(Number(today.slice(0, 4)));
   const [selected, setSelected] = useState<string | null>(today);
@@ -64,6 +65,9 @@ function HistoryBody({ locale, onTabChange, onUpgrade }: { locale: string; onTab
   // Entitlement can expire while the sheet is open: return from Year to Month without touching data.
   useEffect(() => { if (!access.canOpenYear && tab === 'year' && locked !== 'year') { setTab('month'); onTabChange('month'); setSharing(false); } }, [access, tab, locked, onTabChange]);
   useEffect(() => { if (isPro) setLocked(null); }, [isPro]);
+  // Pro can end while an earlier month or week is open: go back to the current one (data is untouched).
+  useEffect(() => { if (!access.canBrowseMonth(month)) { setMonth(current); setSelected(today); } }, [access, month, current, today]);
+  useEffect(() => { if (!access.canBrowseMonth(monthKey(addDays(week, 6)))) setWeek(historyWeekStart(today)); }, [access, week, today]);
   useEffect(() => { repo.habitHistoryFirstDay().then(setFirst).catch(() => setFirst(null)); }, [revision]);
   useEffect(() => {
     let active = true;
@@ -92,13 +96,13 @@ function HistoryBody({ locale, onTabChange, onUpgrade }: { locale: string; onTab
   const canPrevious = previousMonth >= firstMonth;
   function goMonth(delta: number) {
     const next = shiftMonth(month, delta);
-    if (!access.canBrowseMonth(next)) return;
+    if (!access.canBrowseMonth(next)) { if (next < current) setLocked('months'); return; }
     setLocked(null); setMonth(next); setSelected(next === current ? today : null);
   }
   function goWeek(delta: number) {
     const next = addDays(week, delta * 7);
     if (delta > 0 && next > today) return;
-    if (delta < 0 && !access.canBrowseMonth(monthKey(addDays(next, 6)))) return;
+    if (delta < 0 && !access.canBrowseMonth(monthKey(addDays(next, 6)))) { setLocked('months'); return; }
     setLocked(null); setWeek(next); setSelected(today >= next && today <= addDays(next, 6) ? today : null);
   }
   function chooseTab(next: Tab) {
@@ -157,15 +161,6 @@ function TabSwitch({ tab, width, yearLocked, onChange }: { tab: Tab; width: numb
   </View>;
 }
 
-function NavRow({ title, onPrevious, onNext, canPrevious, previousLocked, canNext, previousLabel, nextLabel }: { title: string; onPrevious: () => void; onNext: () => void; canPrevious: boolean; previousLocked?: boolean; canNext: boolean; previousLabel: string; nextLabel: string }) {
-  const p = usePalette();
-  return <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-    <CircleButton icon={previousLocked ? 'lock-closed' : 'chevron-back'} label={previousLocked ? `${previousLabel}, Cubyfit Pro` : previousLabel} disabled={!canPrevious} onPress={onPrevious}/>
-    <Animated.Text key={title} entering={FadeIn.duration(180)} accessibilityRole="header" style={{ flex: 1, textAlign: 'center', color: p.text, fontFamily: fonts.displayHeavy, fontSize: 16, letterSpacing: -0.3 }}>{title}</Animated.Text>
-    <CircleButton icon="chevron-forward" label={nextLabel} disabled={!canNext} onPress={onNext}/>
-  </View>;
-}
-
 function MonthView({ month, rows, today, selected, locale, width, canPrevious, previousLocked, canNext, onPrevious, onNext, onSelect, detailAllowed }: {
   month: string; rows: Map<string, HistoryDay> | null; today: string; selected: string | null; locale: string; width: number;
   canPrevious: boolean; previousLocked: boolean; canNext: boolean; onPrevious: () => void; onNext: () => void; onSelect: (day: string) => void; detailAllowed: (day: string) => boolean;
@@ -213,7 +208,7 @@ function WeekView({ week, rows, today, selected, locale, width, canPrevious, pre
 }
 
 /** Every completed month can show its locally stored habit detail; future days never do. */
-function DayPanel({ day, row, today, locale, detail }: { day: string; row: HistoryDay | undefined; today: string; locale: string; detail: boolean }) {
+export function DayPanel({ day, row, today, locale, detail }: { day: string; row: HistoryDay | undefined; today: string; locale: string; detail: boolean }) {
   const p = usePalette();
   const reduced = useReducedMotion();
   const c = historyColors(p);
@@ -314,30 +309,5 @@ function SharePreview({ year, rows, today, locale, width, onBack }: { year: numb
     <Text style={{ color: p.muted, fontFamily: fonts.medium, fontSize: 12, lineHeight: 17 }}>Only your year, the day colours and this heading are included — no habit names or account details. The image is made on this phone and is not uploaded.</Text>
     {!available && <Text style={{ color: p.muted, fontFamily: fonts.semibold, fontSize: 12 }}>Sharing images needs the next Cubyfit Dev build.</Text>}
     <Button title={busy ? 'Preparing image…' : 'Share image'} disabled={busy || !available || !rows} onPress={share}/>
-  </Animated.View>;
-}
-
-function UpgradePrompt({ reason, checking, onUpgrade, onDismiss }: { reason: Exclude<Locked, null>; checking: boolean; onUpgrade: () => void; onDismiss: () => void }) {
-  const p = usePalette();
-  const light = isLight(p);
-  const c = historyColors(p);
-  const title = reason === 'year' ? 'See your whole year' : reason === 'share' ? 'Share your year' : 'Look back further';
-  const body = reason === 'year' ? 'Cubyfit Pro unlocks the yearly heatmap and every month you have recorded.'
-    : reason === 'share' ? 'Cubyfit Pro lets you export a clean image of your year to share.'
-    : 'Your earlier months are saved. Cubyfit Pro lets you browse every month you have recorded.';
-  return <Animated.View entering={FadeInDown.duration(220).withInitialValues({ opacity: 0, transform: [{ translateY: 8 }] })}
-    style={{ gap: 14, padding: 18, borderRadius: 26, backgroundColor: light ? brand.violet : p.card2, borderWidth: light ? 0 : 1, borderColor: p.c8Line }}>
-    <View style={{ flexDirection: 'row', gap: 4 }}>{c.fill.map((fill, index) => <View key={index} style={{ width: 18, height: 18, borderRadius: 6, backgroundColor: light && index === 3 ? brand.orchid : fill }}/>)}</View>
-    <View style={{ gap: 6 }}>
-      <Text style={{ color: light ? '#FFFFFF' : p.text, fontFamily: fonts.displayHeavy, fontSize: 20 }}>{title}</Text>
-      <Text style={{ color: light ? 'rgba(255,255,255,0.82)' : p.muted, fontFamily: fonts.medium, fontSize: 13.5, lineHeight: 19 }}>{body}</Text>
-      {checking && <Text style={{ color: light ? 'rgba(255,255,255,0.7)' : p.muted, fontFamily: fonts.medium, fontSize: 12 }}>Checking your Cubyfit Pro status…</Text>}
-    </View>
-    <Pressable accessibilityRole="button" onPress={onUpgrade} style={{ minHeight: 48, alignItems: 'center', justifyContent: 'center', borderRadius: 999, backgroundColor: light ? brand.orchid : p.lime }}>
-      <Text style={{ color: brand.ink, fontFamily: fonts.bold, fontSize: 15 }}>See Cubyfit Pro</Text>
-    </Pressable>
-    <Pressable accessibilityRole="button" onPress={onDismiss} style={{ minHeight: 36, alignItems: 'center', justifyContent: 'center' }}>
-      <Text style={{ color: light ? '#FFFFFF' : p.text, fontFamily: fonts.semibold, fontSize: 13.5 }}>Not now</Text>
-    </Pressable>
   </Animated.View>;
 }

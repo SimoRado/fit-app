@@ -24,7 +24,7 @@ import { api } from '../../convex/_generated/api';
 import { pendingDeletions, forgetDeletion } from '../data/pendingDeletion';
 import { clearMonitoringUser, reportFailure } from '../core/monitoring';
 import { accessDestination } from '../core/accessGate';
-import { allowsClerkPublishableKey, usesExpectedConvexDeployment } from '../core/productionConfig';
+import { allowsClerkPublishableKey, usesExpectedConvexDeployment, validateCubyfitAuthConfiguration } from '../core/productionConfig';
 import { dayKey } from '../core/date';
 import { TERMS_VERSION } from '../../shared/legalVersions';
 
@@ -43,6 +43,10 @@ export const ErrorBoundary = Sentry.wrapExpoRouterErrorBoundary(RenderError);
 const convexUrl = process.env.EXPO_PUBLIC_CONVEX_URL;
 const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
 if (!convexUrl || !publishableKey) throw new Error('Missing Clerk or Convex configuration');
+// Do this before Clerk can restore a cached session or Convex can make a
+// protected request. A development Convex deployment with a production Clerk
+// key (or the reverse) must never look like a recoverable auth failure.
+validateCubyfitAuthConfiguration(convexUrl, publishableKey);
 // Internal development/preview binaries may intentionally use Clerk's test
 // instance. A distributable production binary must fail closed instead of
 // silently authenticating against that instance.

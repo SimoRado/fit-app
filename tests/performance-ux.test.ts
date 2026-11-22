@@ -275,12 +275,14 @@ describe('week calendar', () => {
     expect(clampDay('2026-11-20', rules)).toBe(today);
   });
 
-  it('is wired into Train and Nutrition with the right rules, and meals save under the selected day', () => {
+  it('Train and Nutrition use the shared month calendar with the right rules, and meals save under the selected day', () => {
     const train = source('src/app/(tabs)/workouts.tsx');
-    expect(train).toContain('<WeekCalendar');
-    expect(train).toContain('rules={{ minDay: today, startsOn: 1 }}');
+    expect(train).toContain('<MonthCalendarSheet');
+    // Only today and later open the scheduling sheet; earlier days only show their record.
+    expect(train).toContain('if (day >= today) close(() => { reopenMonth.current = true; setPlanningDay(day); });');
     const nutrition = source('src/app/(tabs)/nutrition.tsx');
-    expect(nutrition).toContain('<WeekCalendar selected={selected}');
+    expect(nutrition).toContain('<MonthCalendarSheet visible={monthOpen}');
+    expect(nutrition).toContain('onSelect={day => setSelected(clampDay(day, rules))}');
     expect(nutrition).toContain('maxDay: today');
     expect(nutrition).toContain('day={selected}');
     const sheet = source('src/ui/NutritionSheets.tsx');
@@ -288,7 +290,7 @@ describe('week calendar', () => {
   });
 
   it('uses theme tokens for the new controls', () => {
-    for (const path of ['src/ui/WeekCalendar.tsx', 'src/ui/DateField.tsx']) {
+    for (const path of ['src/ui/ProgressCalendar.tsx', 'src/ui/DateField.tsx']) {
       const text = source(path);
       expect(text).toContain('usePalette()');
       expect(text).not.toMatch(/#[0-9A-Fa-f]{6}\b/);

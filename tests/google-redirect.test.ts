@@ -6,6 +6,10 @@ describe('Google browser return URI', () => {
     const redirect = googleRedirect('betterday', options => options.native);
     expect(redirect).toEqual({ url: 'betterday://oauth-callback', generatedMatches: true });
   });
+  it('uses the Development-client callback rather than the production callback', () => {
+    const redirect = googleRedirect('betterday-dev', options => options.native);
+    expect(redirect).toEqual({ url: 'betterday-dev://oauth-callback', generatedMatches: true });
+  });
   it('does not send a Metro host URI to Clerk if Expo returns one', () => {
     const redirect = googleRedirect('betterday', () => 'betterday://192.168.1.5:8081/oauth-callback');
     expect(redirect.url).toBe('betterday://oauth-callback');
