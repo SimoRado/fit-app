@@ -1,8 +1,7 @@
 import React, { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
-import { GestureDetector, GestureHandlerRootView, usePanGesture } from 'react-native-gesture-handler';
+import { PanResponder, StyleSheet, View } from 'react-native';
 import Animated, { Easing, runOnJS, runOnUI, useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming, type SharedValue } from 'react-native-reanimated';
-import { SWIPE, clampIndex, dragOffset, releaseVelocity, stepIndex, swipeDecision } from '../../core/motivationDeck';
+import { SWIPE, clampIndex, deckShouldClaim, dragOffset, releaseVelocity, stepIndex, swipeDecision } from '../../core/motivationDeck';
 import { brand } from '../theme';
 
 /**
@@ -18,7 +17,12 @@ import { brand } from '../theme';
  * new front card must be; dragging right reveals the previous card instead of the next one; the
  * deck does not wrap; fast flicks commit; and the arrow buttons run the very same exit animation.
  *
- * Everything per-frame runs on the UI thread: the pan gesture writes `drag`, and each layer derives
+ * Touch input comes from React Native's PanResponder (the same core gesture system as the shared
+ * bottom sheet), so the deck does not depend on react-native-gesture-handler's native module. Each
+ * touch event is forwarded with `runOnUI` to the worklets below, so all the deck logic still runs
+ * on the UI thread.
+ *
+ * Everything per-frame runs on the UI thread: the pan worklets write `drag`, and each layer derives
  * its transform from `drag` + `active` in `useAnimatedStyle`. When the exit ends, `active` and
  * `drag` are swapped in the same UI frame (no blank or duplicated frame) and only then is React told
  * about the new index — which merely shifts the rendered window; layers are keyed by card, so
@@ -122,58 +126,66 @@ export const SwipeDeck = forwardRef<SwipeDeckHandle, Props>(function SwipeDeck({
   useEffect(() => { goRef.current = dir => runOnUI(goOnUI)(dir); }, [goOnUI]);
   useImperativeHandle(ref, () => ({ go: dir => runOnUI(goOnUI)(dir) }), [goOnUI]);
 
-  const pan = usePanGesture({
-    activeOffsetX: [-8, 8],
-    failOffsetY: [-14, 14],
-    onActivate: () => {
-      'worklet';
-      tracking.value = !busy.value;
-      start.value = drag.value; // grabbing a card mid-spring continues from where it is
-      sampleX.value = drag.value; sampleT.value = Date.now();
-    },
-    onUpdate: event => {
-      'worklet';
-      if (!tracking.value) return;
-      const i = active.value;
-      const x = dragOffset(start.value + event.translationX, i > 0, i < total.value - 1);
-      const now = Date.now();
-      if (now - sampleT.value > 60) { sampleX.value = drag.value; sampleT.value = now; }
-      drag.value = x;
-    },
-    onDeactivate: event => {
-      'worklet';
-      if (!tracking.value) return;
-      tracking.value = false;
-      const i = active.value;
-      const vx = releaseVelocity(event.velocityX, drag.value - sampleX.value, Date.now() - sampleT.value);
-      const dir = swipeDecision(drag.value, vx, i > 0, i < total.value - 1);
-      if (dir !== 0) commit(dir, vx);
-      else drag.value = withSpring(0, { ...settle, velocity: vx });
-    },
-    onFinalize: () => {
-      'worklet';
-      // Cancelled (e.g. the scroll view took over): put the card back.
-      if (!tracking.value) return;
-      tracking.value = false;
-      drag.value = withSpring(0, settle);
-    },
-  });
+  const onActivate = useCallback(() => {
+    'worklet';
+    tracking.value = !busy.value;
+    start.value = drag.value; // grabbing a card mid-spring continues from where it is
+    sampleX.value = drag.value; sampleT.value = Date.now();
+  }, [tracking, busy, start, drag, sampleX, sampleT]);
+  const onUpdate = useCallback((translationX: number) => {
+    'worklet';
+    if (!tracking.value) return;
+    const i = active.value;
+    const x = dragOffset(start.value + translationX, i > 0, i < total.value - 1);
+    const now = Date.now();
+    if (now - sampleT.value > 60) { sampleX.value = drag.value; sampleT.value = now; }
+    drag.value = x;
+  }, [tracking, active, start, total, sampleT, sampleX, drag]);
+  const onRelease = useCallback((velocityX: number) => {
+    'worklet';
+    if (!tracking.value) return;
+    tracking.value = false;
+    const i = active.value;
+    const vx = releaseVelocity(velocityX, drag.value - sampleX.value, Date.now() - sampleT.value);
+    const dir = swipeDecision(drag.value, vx, i > 0, i < total.value - 1);
+    if (dir !== 0) commit(dir, vx);
+    else drag.value = withSpring(0, { ...settle, velocity: vx });
+  }, [tracking, active, drag, sampleX, sampleT, total, commit]);
+  const onCancel = useCallback(() => {
+    'worklet';
+    // Cancelled (e.g. the scroll view took over): put the card back.
+    if (!tracking.value) return;
+    tracking.value = false;
+    drag.value = withSpring(0, settle);
+  }, [tracking, drag]);
+
+  // The responder is created once; it always forwards to the latest worklets.
+  const handlers = useRef({ onActivate, onUpdate, onRelease, onCancel });
+  useEffect(() => { handlers.current = { onActivate, onUpdate, onRelease, onCancel }; }, [onActivate, onUpdate, onRelease, onCancel]);
+  const [pan] = useState(() => PanResponder.create({
+    // Horizontal intent only (the old `activeOffsetX: ±8` / `failOffsetY: ±14`): vertical drags stay
+    // with the page's ScrollView and the category chips keep their taps.
+    onMoveShouldSetPanResponder: (_, g) => deckShouldClaim(g.dx, g.dy),
+    onMoveShouldSetPanResponderCapture: (_, g) => deckShouldClaim(g.dx, g.dy),
+    onPanResponderGrant: () => { runOnUI(handlers.current.onActivate)(); },
+    onPanResponderMove: (_, g) => { runOnUI(handlers.current.onUpdate)(g.dx); },
+    // PanResponder reports px/ms; the deck's thresholds are px/s.
+    onPanResponderRelease: (_, g) => { runOnUI(handlers.current.onRelease)(g.vx * 1000); },
+    onPanResponderTerminate: () => { runOnUI(handlers.current.onCancel)(); },
+    onPanResponderTerminationRequest: () => false,
+  }));
 
   const first = Math.max(0, index - WINDOW), last = Math.min(count - 1, index + WINDOW);
   const slots: number[] = [];
   for (let i = first; i <= last; i++) slots.push(i);
 
-  return <GestureHandlerRootView style={{ width, height }}>
-    <GestureDetector gesture={pan}>
-      <View style={{ width, height }} accessible accessibilityRole="adjustable" accessibilityLabel={accessibilityLabel}
-        accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
-        onAccessibilityAction={event => runOnUI(goOnUI)(event.nativeEvent.actionName === 'increment' ? 1 : -1)}>
-        {slots.map(slot => <DeckLayer key={keyFor(slot)} slot={slot} width={width} height={height} surface={surface} active={active} drag={drag} fade={fade} backIn={backIn} reveal={reveal} revealDir={revealDir}>
-          {renderCard(slot)}
-        </DeckLayer>)}
-      </View>
-    </GestureDetector>
-  </GestureHandlerRootView>;
+  return <View {...pan.panHandlers} style={{ width, height }} accessible accessibilityRole="adjustable" accessibilityLabel={accessibilityLabel}
+    accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
+    onAccessibilityAction={event => runOnUI(goOnUI)(event.nativeEvent.actionName === 'increment' ? 1 : -1)}>
+    {slots.map(slot => <DeckLayer key={keyFor(slot)} slot={slot} width={width} height={height} surface={surface} active={active} drag={drag} fade={fade} backIn={backIn} reveal={reveal} revealDir={revealDir}>
+      {renderCard(slot)}
+    </DeckLayer>)}
+  </View>;
 });
 
 type LayerProps = { slot: number; width: number; height: number; surface: string; children: React.ReactNode; active: SharedValue<number>; drag: SharedValue<number>; fade: SharedValue<number>; backIn: SharedValue<number>; reveal: SharedValue<number>; revealDir: SharedValue<number> };

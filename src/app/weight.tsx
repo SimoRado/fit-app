@@ -6,9 +6,11 @@ import Animated from 'react-native-reanimated';
 import { dayKey } from '../core/date';
 import { dailyWeights, pointsInWindow, windowStart } from '../core/weightChart';
 import { todaysWeightEntry, weightGoal } from '../core/weightPolicy';
+import { effectiveWeightRange, isProWeightRange, proStatus, weightRangeDays, weightRangeTap, weightRanges, freeFallbackRange, type WeightRangeKey } from '../core/proAccess';
 import { Measurement, WeightEntry } from '../core/types';
 import { repo } from '../data/db';
 import { useApp } from '../state/app';
+import { useSubscription } from '../state/subscriptions';
 import { Button, Page, confirm, message } from '../ui/components';
 import { useLoadState } from '../state/useLoadState';
 import { LoadError, SkeletonBlock, SkeletonCard, SkeletonRow, SkeletonScreen } from '../ui/Skeleton';
@@ -16,10 +18,9 @@ import { Text } from '../ui/LocalizedText';
 import { fonts } from '../ui/theme';
 import { BottomSheet } from '../ui/BottomSheet';
 import { WeightChart } from '../ui/WeightChart';
-import { localeFor, shortDay } from '../ui/dates';
+import { axisLabel, localeFor, shortDay } from '../ui/dates';
 import { CircleButton, EmptyAction, MiniBar, Segmented, StatTrio, useEntering, usePalette } from '../ui/voltKit';
 
-type Range = '7' | '30' | '90';
 const sign = (value: number) => `${value > 0 ? '+' : value < 0 ? '−' : ''}${Math.abs(value).toFixed(1)}`;
 const HISTORY_PREVIEW = 14;
 
@@ -27,13 +28,18 @@ const HISTORY_PREVIEW = 14;
  * Weight: current value, 7D/30D/90D chart, goal progress and the weigh-in
  * history. Only today's weigh-in can be added or edited; earlier ones are
  * read-only (enforced again in the repository, see core/weightPolicy).
+ *
+ * 7D and 30D are free; 90D needs the live RevenueCat Pro entitlement (core/proAccess). A Free tap
+ * on 90D opens the paywall and keeps the current range; losing Pro while on 90D falls back to 30D.
+ * Only the chart range is gated — every weigh-in stays visible in the history below.
  */
 export default function Weight() {
   const { profile, revision, changed, language } = useApp();
   const p = usePalette();
   const [weights, setWeights] = useState<WeightEntry[]>([]);
   const [measurements, setMeasurements] = useState<Measurement[]>([]);
-  const [period, setPeriod] = useState<Range>('30');
+  const subscription = useSubscription();
+  const [selectedRange, setSelectedRange] = useState<WeightRangeKey>(freeFallbackRange);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [showAll, setShowAll] = useState(false);
@@ -47,12 +53,27 @@ export default function Weight() {
     return () => { active = false; };
   }, [revision, attempt, succeed, fail]);
 
+  // Never render a Pro range without an active entitlement (restored state, expiry, still loading).
+  const range = effectiveWeightRange(selectedRange, subscription);
+  const days = weightRangeDays[range];
+  const status = proStatus(subscription);
+  useEffect(() => {
+    // Entitlement resolved as Free (expired / revoked): drop the Pro selection for good.
+    if (status === 'free' && selectedRange !== range) { setSelectedRange(range); setSelectedId(null); }
+  }, [status, selectedRange, range]);
+  const pickRange = (next: WeightRangeKey) => {
+    if (weightRangeTap(next, subscription) === 'paywall') { router.push('/paywall'); return; }
+    setSelectedRange(next); setSelectedId(null);
+  };
+  const locked = status === 'pro' ? {} : Object.fromEntries(weightRanges.filter(isProWeightRange).map(key => [key, 'lock-closed' as const]));
+  const lockedHints = status === 'pro' ? {} : Object.fromEntries(weightRanges.filter(isProWeightRange).map(key => [key, 'Cubyfit Pro feature. Opens Cubyfit Pro plans']));
+
   const locale = localeFor(language);
   const today = dayKey();
   const daily = dailyWeights(weights);
   const latest = daily.at(-1);
   const todayEntry = todaysWeightEntry(weights, today);
-  const start = windowStart(today, Number(period));
+  const start = windowStart(today, days);
   const inPeriod = pointsInWindow(daily, start, today);
   const highlighted = inPeriod.find(point => point.id === selectedId) ?? inPeriod.at(-1);
   const highlightedPrev = highlighted ? daily[daily.indexOf(highlighted) - 1] : undefined;
@@ -82,11 +103,11 @@ export default function Weight() {
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
         <Ionicons name="arrow-forward" size={13} color={p.accent}/>
         <Text style={{ color: p.accent, fontFamily: fonts.bold, fontSize: 12 }}>{goal && latest && daily.length > 1 ? `${sign(goal.change)} kg since start` : latest ? 'Starting point recorded' : 'Add your first weigh-in'}</Text>
-        {periodChange !== null && <Text style={{ color: p.muted, fontFamily: fonts.bold, fontSize: 10, letterSpacing: 0.7, textTransform: 'uppercase', marginLeft: 8 }}>{sign(periodChange)} kg in {period}d</Text>}
+        {periodChange !== null && <Text style={{ color: p.muted, fontFamily: fonts.bold, fontSize: 10, letterSpacing: 0.7, textTransform: 'uppercase', marginLeft: 8 }}>{sign(periodChange)} kg in {days}d</Text>}
       </View>
     </Animated.View>
 
-    <View style={{ marginTop: 10 }}><Segmented options={['7', '30', '90'] as const} value={period} onChange={value => { setPeriod(value); setSelectedId(null); }} labels={{ '7': '7D', '30': '30D', '90': '90D' }}/></View>
+    <View style={{ marginTop: 10 }}><Segmented options={weightRanges} value={range} onChange={pickRange} icons={locked} hints={lockedHints}/></View>
 
     {highlighted ? <View>
       <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginTop: 14 }}>
@@ -94,11 +115,11 @@ export default function Weight() {
         {highlightedPrev && <Text style={{ color: p.accent, fontFamily: fonts.bold, fontSize: 12 }}>{sign(highlighted.kg - highlightedPrev.kg)} kg vs prev</Text>}
       </View>
       <View style={{ marginTop: 16, marginBottom: 4 }}>
-        <WeightChart points={inPeriod} start={start} end={today} selectedId={highlighted.id} onSelect={setSelectedId} formatDate={day => shortDay(locale, day, false)}
-          accessibilityLabel={`Weight over the last ${period} days: ${inPeriod.length} weigh-in${inPeriod.length === 1 ? '' : 's'}, latest ${highlighted.kg} kilograms`}/>
+        <WeightChart points={inPeriod} range={days} start={start} end={today} selectedId={highlighted.id} onSelect={setSelectedId} formatTick={tick => axisLabel(locale, tick)}
+          accessibilityLabel={`Weight over the last ${days} days: ${inPeriod.length} weigh-in${inPeriod.length === 1 ? '' : 's'}, latest ${highlighted.kg} kilograms`}/>
       </View>
       {inPeriod.length === 1 && <Text style={{ color: p.muted, fontFamily: fonts.medium, fontSize: 12, textAlign: 'center' }}>One weigh-in in this period. Add more to see a trend.</Text>}
-    </View> : <View style={{ marginTop: 14 }}><EmptyAction text={weights.length ? `No weigh-ins in the last ${period} days.` : 'No weigh-ins yet. Add today’s weight to start your chart.'} icon="analytics-outline" onPress={openToday}/></View>}
+    </View> : <View style={{ marginTop: 14 }}><EmptyAction text={weights.length ? `No weigh-ins in the last ${days} days.` : 'No weigh-ins yet. Add today’s weight to start your chart.'} icon="analytics-outline" onPress={openToday}/></View>}
 
     {/* .goal + .gbar */}
     <View style={{ marginTop: 24, marginBottom: 8 }}>

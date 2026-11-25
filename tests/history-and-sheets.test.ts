@@ -45,8 +45,17 @@ describe('Bottom sheets keep the drag handle fixed', () => {
     expect(header).toContain('{...pan.panHandlers}');
   });
   it('drag-to-dismiss is limited to the header so content scrolling still works', () => {
-    expect(sheet).toContain('onMoveShouldSetPanResponder: (_, g) => g.dy > 6 && Math.abs(g.dy) > Math.abs(g.dx)');
-    expect(sheet).toContain('g.dy > DISMISS_DISTANCE || g.vy > DISMISS_VELOCITY');
+    const header = sheet.slice(sheet.indexOf('const header ='), sheet.indexOf('return <Modal'));
+    expect(header).toContain('{...pan.panHandlers}');
+    // Only the header View carries the responder; the content area has none.
+    expect(sheet.match(/pan\.panHandlers/g)).toHaveLength(1);
+    expect(sheet).toContain('onMoveShouldSetPanResponderCapture: (_, g) => sheetShouldClaim(g.dx, g.dy)');
+    expect(sheet).toContain('onPanResponderTerminationRequest: () => false');
+    expect(sheet).toContain('if (sheetShouldDismiss(g.dy, g.vy)) closeRef.current(); else settle();');
+  });
+  it('the X button and the drag share one close path (and its onClose guards)', () => {
+    expect(sheet).toContain('onPress={() => close()}');
+    expect(sheet).toContain('useEffect(() => { closeRef.current = close; });');
   });
 });
 

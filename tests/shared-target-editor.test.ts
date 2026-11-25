@@ -21,10 +21,18 @@ describe('one nutrition target editor', () => {
 });
 
 describe('Profile Pro banner', () => {
-  it('opens the existing paywall and only mentions a trial the store returned', () => {
+  it('opens the existing paywall from the Pro card and never invents prices or trials', () => {
     const profile = source('src/app/(tabs)/profile.tsx');
-    expect(profile).toContain("router.push('/paywall')");
-    expect(profile).toContain("proTrial ? 'Start free' : 'See plans'");
-    expect(profile).not.toMatch(/7 days free|7-day/);
+    const card = source('src/ui/ProMembershipCard.tsx');
+    expect(profile).toContain("<ProMembershipCard signal={subscription} onOpen={() => router.push('/paywall')}/>");
+    // The card sits between the four stat cards and the settings list.
+    expect(profile.indexOf('<StatCard label="Habits"')).toBeLessThan(profile.indexOf('<ProMembershipCard'));
+    expect(profile.indexOf('<ProMembershipCard')).toBeLessThan(profile.indexOf('rows.map('));
+    for (const text of [profile, card]) {
+      expect(text).not.toMatch(/7 days free|7-day|\$\d|€\d|\d+[.,]\d\d\s?(USD|EUR|MAD)/);
+      expect(text).not.toMatch(/isPremium\s*[:=]\s*true/);
+    }
+    expect(card).toContain('proStatus(signal)');
+    expect(card).toContain("'Explore Pro'");
   });
 });

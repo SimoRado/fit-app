@@ -5,7 +5,7 @@ import { migrations } from '../src/data/schema';
 import { favoriteIds, loadDailyDeck, setFavorite } from '../src/data/motivation';
 import type { Queryable } from '../src/data/habitHistory';
 import { catalogIds, inCategory, motivationCard, motivationCatalog, motivationCategories, phraseRuns } from '../src/core/motivationCatalog';
-import { FREE_DAILY, PRO_DAILY, SWIPE, clampIndex, releaseVelocity, dailyAllowance, deckPreferenceKey, dragOffset, fitPhrase, parseDeck, resolveDeck, selectDailyIds, serializeDeck, stepIndex, swipeDecision, visibleIds, wrapPhrase } from '../src/core/motivationDeck';
+import { FREE_DAILY, PRO_DAILY, SWIPE, clampIndex, deckShouldClaim, releaseVelocity, dailyAllowance, deckPreferenceKey, dragOffset, fitPhrase, parseDeck, resolveDeck, selectDailyIds, serializeDeck, stepIndex, swipeDecision, visibleIds, wrapPhrase } from '../src/core/motivationDeck';
 import { addDays } from '../src/core/date';
 import { kinds, syncRecordFields } from '../convex/syncContract';
 
@@ -246,11 +246,35 @@ describe('motivation screen wiring', () => {
     expect(screen).toContain('<DeckLoadFailure');
   });
   it('drives the card on the UI thread and routes the arrows through the same animation', () => {
-    expect(deck).toContain('usePanGesture');
+    expect(deck).toContain('PanResponder.create');
+    expect(deck).toContain('runOnUI(handlers.current.onUpdate)(g.dx)');
     expect(deck).toContain('useAnimatedStyle');
     expect(deck).not.toMatch(/onUpdate[^}]*runOnJS/);
     expect(screen).toContain('deckRef.current?.go(-1)');
     expect(screen).toContain('deckRef.current?.go(1)');
+  });
+});
+
+describe('Motivation deck gesture source (render crash regression)', () => {
+  const deck = readFileSync('src/ui/motivation/SwipeDeck.tsx', 'utf8');
+  const screen = readFileSync('src/app/motivation.tsx', 'utf8');
+  it('does not mount a GestureHandlerRootView or depend on the undeclared gesture-handler native module', () => {
+    // RNGH is not a declared dependency (only an optional peer of expo-router at a version outside
+    // SDK 58's range); mounting its root view crashed Motivation with `getModuleId` undefined.
+    for (const text of [deck, screen]) {
+      expect(text).not.toMatch(/from 'react-native-gesture-handler'|require\('react-native-gesture-handler'\)/);
+      expect(text).not.toMatch(/<GestureHandlerRootView/);
+    }
+  });
+  it('converts PanResponder px/ms to the px/s the swipe thresholds use', () => {
+    expect(deck).toContain('runOnUI(handlers.current.onRelease)(g.vx * 1000)');
+  });
+  it('claims only horizontal drags so the page keeps scrolling vertically', () => {
+    expect(deckShouldClaim(12, 2)).toBe(true);
+    expect(deckShouldClaim(-12, 2)).toBe(true);
+    expect(deckShouldClaim(6, 0)).toBe(false);
+    expect(deckShouldClaim(10, 16)).toBe(false);
+    expect(deckShouldClaim(12, 12)).toBe(false);
   });
 });
 

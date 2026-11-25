@@ -1,21 +1,24 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, KeyboardAvoidingView, Modal, PanResponder, Platform, Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../state/app';
 import { localize } from '../core/i18n';
+import { sheetDragOffset, sheetShouldClaim, sheetShouldDismiss } from '../core/sheetGesture';
 import { Text } from './LocalizedText';
 import { useReducedMotion } from './motion';
 import { colors, fonts } from './theme';
 
 type CloseSheet = (after?: () => void) => void;
-/** Distance (px) or fling speed past which a downward drag on the header closes the sheet. */
-const DISMISS_DISTANCE = 110, DISMISS_VELOCITY = 1.1;
 
 /**
  * Shared bottom sheet. In both layouts the drag handle, title and close button
  * sit in a fixed header outside any scroll view, so they stay visible at every
- * scroll position; dragging that header down dismisses the sheet.
+ * scroll position; dragging that header (handle, title row) down dismisses the
+ * sheet. The drag follows the finger, closes past a distance or on a downward
+ * flick (`core/sheetGesture`), and springs back otherwise. It runs the very same
+ * `close()` as the X button, so any dismissal guard a screen puts in `onClose`
+ * applies to both.
  *
  * `layout="scroll"` (default): the content below the header scrolls.
  * `layout="fixed"`: the child owns the remaining height and provides its own
@@ -42,20 +45,34 @@ export function BottomSheet({ visible, title, onClose, children, layout = 'scrol
     if (reduced) { finish(); return; }
     Animated.timing(progress, { toValue: 0, duration: 220, easing: Easing.in(Easing.cubic), useNativeDriver: true }).start(({ finished }) => { if (finished) finish(); });
   }
-  // Drag-to-dismiss on the fixed header only, so it never competes with the content's scrolling.
-  const pan = PanResponder.create({
-    onMoveShouldSetPanResponder: (_, g) => g.dy > 6 && Math.abs(g.dy) > Math.abs(g.dx),
-    onPanResponderMove: (_, g) => { drag.setValue(Math.max(0, g.dy)); },
-    onPanResponderRelease: (_, g) => {
-      if (g.dy > DISMISS_DISTANCE || g.vy > DISMISS_VELOCITY) close();
-      else Animated.spring(drag, { toValue: 0, useNativeDriver: true, bounciness: 4 }).start();
-    },
-    onPanResponderTerminate: () => { Animated.spring(drag, { toValue: 0, useNativeDriver: true }).start(); },
+  // Drag-to-dismiss on the fixed header only, so it never competes with the content's scrolling,
+  // calendar taps or buttons. Created once; `closeRef` always calls the latest `close`.
+  const closeRef = useRef(close);
+  useEffect(() => { closeRef.current = close; });
+  // The ref is only read inside the gesture callbacks (never during render); one responder must
+  // survive re-renders, or a re-render mid-drag would reset its gesture state.
+  // eslint-disable-next-line react-hooks/refs
+  const [pan] = useState(() => {
+    const settle = () => Animated.spring(drag, { toValue: 0, useNativeDriver: true, bounciness: 4 }).start();
+    return PanResponder.create({
+      // Capture phase: the title text and X button must not swallow a downward drag. A plain tap
+      // never moves past the claim distance, so the X button still receives its press.
+      onMoveShouldSetPanResponderCapture: (_, g) => sheetShouldClaim(g.dx, g.dy),
+      onMoveShouldSetPanResponder: (_, g) => sheetShouldClaim(g.dx, g.dy),
+      // Once dragging, keep the gesture (Android would otherwise hand it to a parent mid-drag).
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderMove: (_, g) => { drag.setValue(sheetDragOffset(g.dy)); },
+      onPanResponderRelease: (_, g) => { if (sheetShouldDismiss(g.dy, g.vy)) closeRef.current(); else settle(); },
+      onPanResponderTerminate: settle,
+    });
   });
   const fixed = layout === 'fixed';
   const light = colors.light;
-  const header = <View {...pan.panHandlers} style={{ paddingHorizontal: 20, paddingTop: 10, paddingBottom: fixed ? 6 : 8, gap: 12 }}>
-    <View accessible={false} style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: colors.line3, opacity: 0.55, alignSelf: 'center' }}/>
+  const header = <View {...pan.panHandlers} style={{ paddingHorizontal: 20, paddingTop: 2, paddingBottom: fixed ? 6 : 8, gap: 4 }}>
+    {/* Handle: the visible bar stays 40×4; its touch area spans the header width and ~22 px tall. */}
+    <View accessible={false} style={{ alignSelf: 'stretch', height: 22, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: colors.line3, opacity: 0.55 }}/>
+    </View>
     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
       <Text accessibilityRole="header" style={{ flex: 1, color: colors.text, fontFamily: fonts.displayHeavy, fontSize: 26, lineHeight: 31, letterSpacing: -0.7 }}>{title}</Text>
       <Pressable accessibilityRole="button" accessibilityLabel={localize('Cancel', language)} hitSlop={6} onPress={() => close()}

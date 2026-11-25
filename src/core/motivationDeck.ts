@@ -141,6 +141,11 @@ export function releaseVelocity(reported: number, travel: number, elapsedMs: num
   return Math.abs(measured) > Math.abs(reported) ? measured : reported;
 }
 
+/** The deck claims a touch once it moves 8 px sideways, unless it first moved 14 px vertically. */
+export function deckShouldClaim(dx: number, dy: number) {
+  return Math.abs(dx) > 8 && Math.abs(dy) < 14 && Math.abs(dx) > Math.abs(dy);
+}
+
 /** Finger → card offset; past the first/last card the card resists instead of following 1:1. */
 export function dragOffset(dx: number, canPrev: boolean, canNext: boolean) {
   'worklet';

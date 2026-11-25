@@ -298,7 +298,7 @@ export function UnderlineTabs<T extends string>({ options, value, onChange, labe
 }
 
 /** `.seg2` / 7D-30D-90D — pill segmented control with a sliding thumb. */
-export function Segmented<T extends string>({ options, value, onChange, labels, stretch = true }: { options: readonly T[]; value: T; onChange: (value: T) => void; labels?: Partial<Record<T, string>>; stretch?: boolean }) {
+export function Segmented<T extends string>({ options, value, onChange, labels, stretch = true, icons, hints }: { options: readonly T[]; value: T; onChange: (value: T) => void; labels?: Partial<Record<T, string>>; stretch?: boolean; /** Optional small trailing icon per option (e.g. a Pro lock). */ icons?: Partial<Record<T, VoltIcon>>; /** Optional accessibility hint per option. */ hints?: Partial<Record<T, string>> }) {
   const p = usePalette();
   const reduced = useReducedMotion();
   const [width, setWidth] = useState(0);
@@ -309,8 +309,9 @@ export function Segmented<T extends string>({ options, value, onChange, labels, 
   const thumb = useAnimatedStyle(() => ({ transform: [{ translateX: interpolate(position.value, [0, Math.max(1, options.length - 1)], [0, cell * Math.max(1, options.length - 1)]) }] }), [cell, options.length]);
   return <View onLayout={(event: LayoutChangeEvent) => setWidth(event.nativeEvent.layout.width)} accessibilityRole="tablist" style={{ flexDirection: 'row', alignSelf: stretch ? 'stretch' : 'flex-start', padding: 4, borderRadius: 999, backgroundColor: p.light ? p.soft1 : p.card2 }}>
     {width > 0 && <Animated.View pointerEvents="none" style={[{ position: 'absolute', left: 4, top: 4, bottom: 4, width: cell, borderRadius: 999, backgroundColor: p.light ? p.c8 : p.elevated, boxShadow: p.light ? '0px 2px 8px rgba(42,9,80,0.14)' : undefined }, thumb]}/>}
-    {options.map(option => <Pressable key={option} accessibilityRole="tab" accessibilityState={{ selected: option === value }} onPress={() => onChange(option)} style={{ flex: stretch ? 1 : undefined, minHeight: 34, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center' }}>
+    {options.map(option => <Pressable key={option} accessibilityRole="tab" accessibilityState={{ selected: option === value }} accessibilityHint={hints?.[option]} onPress={() => onChange(option)} style={{ flex: stretch ? 1 : undefined, minHeight: 34, paddingHorizontal: 14, flexDirection: 'row', gap: 4, alignItems: 'center', justifyContent: 'center' }}>
       <Text style={{ color: option === value ? p.text : p.muted, fontFamily: fonts.bold, fontSize: 11.5, letterSpacing: 0.23 }}>{labels?.[option] ?? option}</Text>
+      {!!icons?.[option] && <Ionicons name={icons[option]} size={11} color={option === value ? p.text : p.muted}/>}
     </Pressable>)}
   </View>;
 }

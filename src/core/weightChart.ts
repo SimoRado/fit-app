@@ -84,3 +84,56 @@ export function monotonePath(points: readonly { x: number; y: number }[]): strin
   }
   return d;
 }
+
+/**
+ * X-axis ticks for the 7D / 30D / 90D weight chart. Ticks come from the selected date domain
+ * (`start`…`end`), never from where the weigh-ins happen to be, so they are evenly spread along the
+ * timeline whatever the data looks like and never pile up on clustered points.
+ *
+ * - 7D: every other day from the start (four labels, e.g. 19, 21, 23, 25 Nov) — formatted "19 Nov".
+ * - 30D: days of the month 1, 5, 10, 15, 20, 25, 30 that fall in the window — formatted "15". The
+ *   1st wins over a nearby 30th/31st when the window crosses a month.
+ * - 90D: the 15th of each month in the window — formatted "Sep 15" — plus one edge tick when only
+ *   two mid-months fit and the edge is far enough away.
+ *
+ * A minimum gap (in days) between ticks guarantees labels never overlap.
+ */
+export type AxisRange = 7 | 30 | 90;
+export type AxisTick = { day: string; kind: 'dayMonth' | 'day' | 'monthDay' };
+
+const TICK_GAP: Record<AxisRange, number> = { 7: 2, 30: 4, 90: 20 };
+
+function spaced(candidates: { day: string; priority: number }[], minGap: number) {
+  const kept: string[] = [];
+  for (const candidate of [...candidates].sort((a, b) => a.priority - b.priority || a.day.localeCompare(b.day))) {
+    if (kept.every(day => Math.abs(dayOffset(day, candidate.day)) >= minGap)) kept.push(candidate.day);
+  }
+  return kept.sort();
+}
+
+export function axisTicks(range: AxisRange, start: string, end: string): AxisTick[] {
+  if (!validDay(start) || !validDay(end) || end < start) return [];
+  const span = dayOffset(start, end);
+  const days: string[] = [];
+  for (let i = 0; i <= span; i++) days.push(addDays(start, i));
+  const dom = (day: string) => Number(day.slice(8, 10));
+  if (range === 7) {
+    // Anchor on the last day so today is always labelled: …, today-4, today-2, today.
+    return days.filter((_, i) => (span - i) % 2 === 0).map(day => ({ day, kind: 'dayMonth' }));
+  }
+  if (range === 30) {
+    const marks = [1, 5, 10, 15, 20, 25, 30];
+    const candidates = days.filter(day => marks.includes(dom(day))).map(day => ({ day, priority: dom(day) === 1 ? 0 : dom(day) === 15 ? 1 : 2 }));
+    return spaced(candidates, TICK_GAP[30]).map(day => ({ day, kind: 'day' }));
+  }
+  const mids = days.filter(day => dom(day) === 15);
+  const ticks = [...mids];
+  if (ticks.length < 3) {
+    // Only two mid-months fit: add the edge with the most room, if it is far enough from them.
+    const gapStart = ticks.length ? dayOffset(start, ticks[0]) : span;
+    const gapEnd = ticks.length ? dayOffset(ticks.at(-1)!, end) : span;
+    const edge = gapEnd >= gapStart ? end : start;
+    if (Math.max(gapStart, gapEnd) >= TICK_GAP[90]) ticks.push(edge);
+  }
+  return ticks.sort().map(day => ({ day, kind: 'monthDay' }));
+}

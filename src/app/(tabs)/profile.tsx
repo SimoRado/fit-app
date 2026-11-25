@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Platform, View } from 'react-native';
+import { Alert, View } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@clerk/expo';
@@ -14,16 +14,14 @@ import { clearAccountReminders } from '../../services/reminders';
 import { admobTestingEnabled } from '../../services/adMob';
 import { useApp, usePersonalization } from '../../state/app';
 import { useSubscription } from '../../state/subscriptions';
-import { subscriptionPackages } from '../../services/subscriptionLogic';
-import { buildPlans, planSubtitle } from '../../services/paywallLogic';
 import { BottomSheet } from '../../ui/BottomSheet';
-import { CubyMark } from '../../ui/CubyMark';
 import { Page, message } from '../../ui/components';
 import { Text } from '../../ui/LocalizedText';
 import { MotionPressable } from '../../ui/MotionPressable';
 import { EditProfileSheet, GoalsSheet, LanguageSheet, NotificationsSheet, NutritionTargetsSheet, languageNames, notificationsOn } from '../../ui/ProfileSheets';
 import { PersonalizationSheet } from '../../ui/PersonalizationSheet';
-import { fonts, brand } from '../../ui/theme';
+import { ProMembershipCard } from '../../ui/ProMembershipCard';
+import { fonts } from '../../ui/theme';
 import { ScreenTop, cardShadow, usePalette, useEntering, type VoltIcon } from '../../ui/voltKit';
 import Animated from 'react-native-reanimated';
 
@@ -90,13 +88,6 @@ export default function ProfileScreen() {
   const goalLine = [goalLabels[goal], (goal === 'lose' || goal === 'gain' || goal === 'habits') && profile?.target_weight ? `target ${profile.target_weight.toFixed(1)} kg` : null].filter(Boolean).join(' · ');
   const firstName = profile?.name?.trim().split(/\s+/)[0] ?? '';
   const initial = profile?.name?.trim().slice(0, 1).toLocaleUpperCase() || 'C';
-  // Banner copy comes from the live offering: a trial is mentioned only when the store returns one.
-  const proPlans = buildPlans(subscriptionPackages(subscription.offering), Platform.OS === 'ios' ? 'ios' : 'android');
-  const proAnnual = proPlans.find(plan => plan.kind === 'annual'), proMonthly = proPlans.find(plan => plan.kind === 'monthly');
-  const proTrial = proAnnual?.trial ?? null;
-  const proTeaser = proTrial && proAnnual ? planSubtitle(proAnnual)
-    : proAnnual ? `${proAnnual.billed}/year${proMonthly ? ` · ${proMonthly.billed}/month` : ''}`
-    : proMonthly ? `${proMonthly.billed}/month` : 'Ad-free, every feature';
 
   function confirmSignOut() {
     Alert.alert(localize('Sign out?', language), localize('Your data stays saved on this device for this account. Sign in again to pick up where you left off.', language), [
@@ -150,15 +141,7 @@ export default function ProfileScreen() {
       <StatCard label="Habits" value={String(summary.habits)}/>
     </View>
 
-    {subscription.ready && <MotionPressable pressScale={0.98} accessibilityRole="button" accessibilityLabel={subscription.isPremium ? 'Cubyfit Pro is active' : 'Try Cubyfit Pro'} onPress={() => router.push('/paywall')}
-      style={{ marginTop: 12, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 22, backgroundColor: p.heroCard }}>
-      <View style={{ width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: p.paleBlue }}><CubyMark size={30} tile={false} variant="brand"/></View>
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={{ color: '#FFFFFF', fontFamily: fonts.displayHeavy, fontSize: 15 }}>{subscription.isPremium ? 'Cubyfit Pro' : 'Try Cubyfit Pro'}</Text>
-        <Text numberOfLines={1} style={{ color: brand.lilac, fontSize: 11.5 }}>{subscription.isPremium ? 'Active · manage your subscription' : proTeaser}</Text>
-      </View>
-      <View style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: p.lime }}><Text style={{ color: brand.ink, fontFamily: fonts.bold, fontSize: 12 }}>{subscription.isPremium ? 'Manage' : proTrial ? 'Start free' : 'See plans'}</Text></View>
-    </MotionPressable>}
+    <ProMembershipCard signal={subscription} onOpen={() => router.push('/paywall')}/>
 
     <View style={{ marginTop: 10 }}>
       {rows.map((row, index) => <SettingsRow key={row.title} index={index} icon={row.icon} title={row.title} value={row.value} danger={row.danger} last={index === rows.length - 1} onPress={row.onPress}/>)}
