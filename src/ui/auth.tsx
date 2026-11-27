@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
-import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
-import { useReducedMotion } from './motion';
-import { KeyboardAvoidingView, LayoutChangeEvent, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import React, { useState } from 'react';
+import Animated from 'react-native-reanimated';
+import { useSegmentThumb } from './segmentMotion';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Link } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -88,17 +88,10 @@ export function LanguageButton() {
 export function AuthModeSwitch({ mode, onChange }: { mode: AuthMode; onChange: (mode: AuthMode) => void }) {
   useVoltTheme();
   const { language } = useApp();
-  const reduced = useReducedMotion();
-  const [width, setWidth] = useState(0);
-  const index = mode === 'login' ? 1 : 0;
-  // Same slide as the shared voltKit `Segmented` thumb (320 ms ease-out); instant with reduced motion.
-  const position = useSharedValue(index);
-  useEffect(() => { position.value = reduced ? index : withTiming(index, { duration: 320, easing: Easing.out(Easing.cubic) }); }, [index, position, reduced]);
-  const cell = Math.max(0, (width - 8) / 2);
-  const direction = language === 'ar' ? -1 : 1;
-  const thumb = useAnimatedStyle(() => ({ transform: [{ translateX: position.value * cell * direction }] }), [cell, direction]);
-  return <View accessibilityRole="tablist" onLayout={(event: LayoutChangeEvent) => setWidth(event.nativeEvent.layout.width)} style={{ flexDirection: 'row', padding: 4, borderRadius: 999, backgroundColor: colors.light ? colors.soft1 : colors.card2 }}>
-    {width > 0 && <Animated.View pointerEvents="none" style={[{ position: 'absolute', start: 4, top: 4, bottom: 4, width: cell, borderRadius: 999, backgroundColor: colors.c8, ...(colors.light ? { boxShadow: '0px 4px 12px rgba(11,20,70,0.14)' } : { borderWidth: 1, borderColor: colors.borderStrong }) }, thumb]}/>}
+  // Shared segmented thumb (MOTION.segment, ease-out); snaps with reduced motion.
+  const { onLayout, thumbStyle: thumb, cell, measured } = useSegmentThumb(mode === 'login' ? 1 : 0, 2, language === 'ar');
+  return <View accessibilityRole="tablist" onLayout={onLayout} style={{ flexDirection: 'row', padding: 4, borderRadius: 999, backgroundColor: colors.light ? colors.soft1 : colors.card2 }}>
+    {measured && <Animated.View pointerEvents="none" style={[{ position: 'absolute', start: 4, top: 4, bottom: 4, width: cell, borderRadius: 999, backgroundColor: colors.c8, ...(colors.light ? { boxShadow: '0px 4px 12px rgba(11,20,70,0.14)' } : { borderWidth: 1, borderColor: colors.borderStrong }) }, thumb]}/>}
     {(['signup', 'login'] as const).map(value => {
       const selected = mode === value;
       return <Pressable key={value} accessibilityRole="tab" accessibilityState={{ selected }} onPress={() => onChange(value)}

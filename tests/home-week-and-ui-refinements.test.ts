@@ -65,8 +65,8 @@ describe('small UI refinements', () => {
   });
   it('slides the Sign up / Log in pill instead of jumping', () => {
     const auth = read('src/ui/auth.tsx');
-    expect(auth).toContain('withTiming(index, { duration: 320');
-    expect(auth).toContain('translateX: position.value * cell * direction');
+    expect(auth).toContain('useSegmentThumb(mode === ');
+    expect(auth).toContain('thumbStyle: thumb');
   });
 });
 

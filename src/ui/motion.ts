@@ -35,3 +35,18 @@ const idleTabMotion: TabMotionContextValue = { transition: { route: '', sequence
 export function useTabMotion() {
   return useContext(TabMotionContext) ?? idleTabMotion;
 }
+
+/**
+ * Shared native-stack options. Normal pushes use the platform's own transition (iOS push,
+ * Android material fade/scale): no sideways shove of both pages. Reduced motion: none.
+ */
+export function useStackAnimation() {
+  const reduced = useContext(MotionContext);
+  return useMemo(() => ({ animation: reduced ? 'none' as const : 'default' as const }), [reduced]);
+}
+
+/** Create/edit forms rise in slightly and fade, like a light modal, instead of a full push. */
+export function useFormScreenAnimation() {
+  const reduced = useContext(MotionContext);
+  return useMemo(() => ({ animation: reduced ? 'none' as const : 'fade_from_bottom' as const, animationDuration: 260 }), [reduced]);
+}

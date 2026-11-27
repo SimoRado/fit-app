@@ -23,3 +23,24 @@ export function MotionPressable({ pressScale = 0.98, selected = false, onPressIn
   }, [onPressOut, reduced, scale]);
   return <AnimatedPressable {...props} style={[style, animatedStyle]} onPressIn={handleIn} onPressOut={handleOut} accessibilityState={selected ? { ...props.accessibilityState, selected: true } : props.accessibilityState}/>;
 }
+
+/**
+ * Drop-in `Pressable` with a quick opacity dip on press (UI thread, no re-render). For links,
+ * icon buttons, list rows and calendar cells, where scaling would clip or feel heavy. Elements
+ * that already pass a `({ pressed }) => style` function keep their own feedback unchanged.
+ * The action fires on press as usual; the feedback never delays it.
+ */
+export function TapPressable({ onPressIn, onPressOut, style, pressedOpacity = 0.62, ...props }: PressableProps & { pressedOpacity?: number }) {
+  const opacity = useSharedValue(1);
+  const animatedStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
+  const handleIn = useCallback((event: Parameters<NonNullable<PressableProps['onPressIn']>>[0]) => {
+    if (!props.disabled) opacity.set(withTiming(pressedOpacity, { duration: PRESS_IN_DURATION_MS, easing: Easing.out(Easing.quad) }));
+    onPressIn?.(event);
+  }, [onPressIn, opacity, pressedOpacity, props.disabled]);
+  const handleOut = useCallback((event: Parameters<NonNullable<PressableProps['onPressOut']>>[0]) => {
+    opacity.set(withTiming(1, { duration: PRESS_OUT_DURATION_MS, easing: Easing.out(Easing.quad) }));
+    onPressOut?.(event);
+  }, [onPressOut, opacity]);
+  if (typeof style === 'function') return <Pressable {...props} style={style} onPressIn={onPressIn} onPressOut={onPressOut}/>;
+  return <AnimatedPressable {...props} style={[style, animatedStyle]} onPressIn={handleIn} onPressOut={handleOut}/>;
+}

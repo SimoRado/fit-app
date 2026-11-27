@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { router } from 'expo-router';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Animated from 'react-native-reanimated';
 import { Text } from '../../ui/LocalizedText';
@@ -21,10 +21,11 @@ import { Button, Page, message, confirm } from '../../ui/components';
 import { fonts, brand } from '../../ui/theme';
 import { WorkoutInProgressCard } from '../../ui/WorkoutInProgressCard';
 import { BottomSheet } from '../../ui/BottomSheet';
-import { MotionPressable } from '../../ui/MotionPressable';
+import { MotionPressable, TapPressable as Pressable } from '../../ui/MotionPressable';
 import { CircleButton, EmptyAction, IconBox, MenuItem, SectionLink, StatTrio, isLight, useEntering, usePalette } from '../../ui/voltKit';
 import type { OpenWorkout } from '../../data/db';
 import { useSubscription } from '../../state/subscriptions';
+import { useSegmentThumb } from '../../ui/segmentMotion';
 import { CalendarButtons, MonthCalendarSheet, YearCalendarSheet, useCalendarMonth } from '../../ui/ProgressCalendar';
 import { dayLabel, type CalendarCell, type MiniCell } from '../../ui/HistoryCalendar';
 
@@ -188,8 +189,8 @@ export default function Workouts() {
         <Text style={{ color: p.accent, fontFamily: fonts.semibold, fontSize: 11.5 }}>{linksOf(todayRoutine.id).length} exercises · {setCountOf(todayRoutine.id)} sets</Text>
       </Pressable>
       <MotionPressable pressScale={0.86} accessibilityRole="button" accessibilityLabel={`Start ${todayRoutine.name}`} onPress={() => startRoutine(todayRoutine)} style={{ width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', backgroundColor: p.g1 }}><Ionicons name="play" size={20} color={p.plInk}/></MotionPressable>
-    </View> : todayPlan?.kind === 'rest' ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 22, backgroundColor: p.soft2 }}>
-      <IconBox icon="moon-outline" size={42} radius={14}/>
+    </View> : todayPlan?.kind === 'rest' ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 22, backgroundColor: p.soft1 }}>
+      <IconBox icon="moon-outline" size={42} radius={14} color={p.text}/>
       <View style={{ flex: 1 }}><Text style={{ color: p.text, fontFamily: fonts.displayHeavy, fontSize: 15 }}>Rest day</Text><Text style={{ color: p.muted, fontSize: 12 }}>{todayPlan.oneOff ? 'Marked for today only.' : 'Part of your weekly plan.'} Recovery is training too.</Text></View>
     </View> : null)}
 
@@ -207,7 +208,7 @@ export default function Workouts() {
       : <EmptyAction text="Create your first routine to start training faster." onPress={() => router.push('/routine-form')}/>}
 
     <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
-      <View style={{ flex: 1 }}><Button title="Empty workout" onPress={() => router.push('/workout-form')}/></View>
+      <View style={{ flex: 1 }}><Button title="Create routine" onPress={() => router.push('/routine-form')}/></View>
       {/* Rest today, or undo it whether it came from this date or from the weekly plan (then only today is changed). */}
       <View style={{ flex: 1 }}><Button title={todayPlan?.kind === 'rest' ? 'Undo rest day' : 'Rest day'} kind="ghost" onPress={() => todayPlan?.kind === 'rest' ? (todayPlan.oneOff ? saveSchedule({ rest: { day: today, on: false } }) : saveDay(today, { kind: 'none' })) : saveDay(today, { kind: 'rest' })}/></View>
     </View>
@@ -312,11 +313,14 @@ function PlanDay({ day, today, locale, routines, detailOf, weeklyPlan, resolved,
 function ScopeSwitch({ scope, onChange, weekdayName }: { scope: 'day' | 'week'; onChange: (scope: 'day' | 'week') => void; weekdayName: string }) {
   const p = usePalette();
   const light = isLight(p);
-  return <View accessibilityRole="tablist" style={{ flexDirection: 'row', padding: 4, borderRadius: 999, backgroundColor: light ? p.soft1 : p.card2 }}>
+  const { language } = useApp();
+  const { onLayout, thumbStyle, cell, measured } = useSegmentThumb(scope === 'week' ? 1 : 0, 2, language === 'ar');
+  return <View accessibilityRole="tablist" onLayout={onLayout} style={{ flexDirection: 'row', padding: 4, borderRadius: 999, backgroundColor: light ? p.soft1 : p.card2 }}>
+    {measured && <Animated.View pointerEvents="none" style={[{ position: 'absolute', start: 4, top: 4, bottom: 4, width: cell, borderRadius: 999, backgroundColor: light ? p.c8 : p.lime, ...(light ? { boxShadow: '0px 2px 8px rgba(11,20,70,0.12)' } : {}) }, thumbStyle]}/>}
     {(['day', 'week'] as const).map(item => {
       const on = scope === item;
       return <Pressable key={item} accessibilityRole="tab" accessibilityState={{ selected: on }} onPress={() => onChange(item)}
-        style={{ flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 999, backgroundColor: on ? (light ? p.c8 : p.lime) : 'transparent', ...(on && light ? { boxShadow: '0px 2px 8px rgba(11,20,70,0.12)' } : {}) }}>
+        style={{ flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 999, backgroundColor: on && !measured ? (light ? p.c8 : p.lime) : 'transparent' }}>
         <Text style={{ color: on ? (light ? p.text : brand.ink) : p.muted, fontFamily: fonts.bold, fontSize: 12.5 }}>{item === 'day' ? 'This day only' : `Every ${weekdayName}`}</Text>
       </Pressable>;
     })}

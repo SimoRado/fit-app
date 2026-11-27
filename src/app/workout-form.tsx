@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { DateField } from '../ui/DateField';
-import { Alert, Pressable, View } from 'react-native';
+import { Alert, View } from 'react-native';
+import { TapPressable as Pressable } from '../ui/MotionPressable';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown, FadeOut, LinearTransition } from 'react-native-reanimated';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -448,7 +449,7 @@ export default function WorkoutForm() {
       {/* Rest timer chip, floating above the dock. */}
       {restEndsAt !== null && <RestTimer endsAt={restEndsAt} onAdjust={delta => setRestEndsAt(value => value === null ? null : Math.max(currentTimestamp() + 5000, value + delta * 1000))} onSkip={() => setRestEndsAt(null)}/>}
 
-      <BottomSheet visible={picker} title={editingExercise !== null ? 'Replace exercise' : 'Add exercise'} onClose={() => setPicker(false)}>{close => <>
+      <BottomSheet stableHeight="88%" visible={picker} title={editingExercise !== null ? 'Replace exercise' : 'Add exercise'} onClose={() => setPicker(false)}>{close => <>
         <ExerciseBrowser selectedIds={new Set(draft.items.filter((_, index) => index !== editingExercise).map(item => item.exerciseId))} onSelect={exercise => pickExercise(exercise, close)}/>
         <Field label="Custom exercise name" value={custom} onChangeText={setCustom}/><Button title="Create custom exercise" kind="ghost" disabled={!custom.trim()} onPress={() => createCustom(close)}/>
       </>}</BottomSheet>

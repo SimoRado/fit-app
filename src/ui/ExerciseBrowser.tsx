@@ -1,5 +1,5 @@
 import React, { Profiler, useEffect, useRef, useState, useSyncExternalStore, type ProfilerOnRenderCallback } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, TextInput, View } from 'react-native';
+import { ActivityIndicator, ScrollView, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import type { Exercise } from '../core/types';
@@ -14,8 +14,9 @@ import { message } from './components';
 import { Text } from './LocalizedText';
 import { fonts } from './theme';
 import { useReducedMotion } from './motion';
-import { MotionPressable } from './MotionPressable';
+import { MotionPressable, TapPressable as Pressable } from './MotionPressable';
 import { isLight, usePalette } from './voltKit';
+import { ExerciseResultsSkeleton } from './Skeleton';
 
 type Result = Exercise & { muscle_group: string | null; equipment: string | null; category: string | null };
 const reportExerciseSearchRender: ProfilerOnRenderCallback = (_id, phase, actualDuration) => {
@@ -154,7 +155,7 @@ export function ExerciseBrowser({ onSelect, selectedIds = new Set<string>() }: {
       </View>
     </Profiler>
     {visibleResults.length === 60 && <Text style={{ color: p.muted, fontSize: 12 }}>Showing the first 60 matches. Refine your search for more.</Text>}
-    {(loading && !visibleResults.length) || (catalog.status === 'loading' && !visibleResults.length) ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 16 }}><ActivityIndicator color={p.accent}/><Text style={{ color: p.muted, fontFamily: fonts.semibold, fontSize: 13 }}>{catalog.status === 'loading' ? 'Preparing the exercise library…' : 'Loading exercises…'}</Text></View>
+    {(loading && !visibleResults.length) || (catalog.status === 'loading' && !visibleResults.length) ? <ExerciseResultsSkeleton/>
       : failure && !visibleResults.length ? <View style={{ gap: 10, padding: 16, borderRadius: 18, backgroundColor: soft }}>
         <Text accessibilityRole="alert" style={{ color: p.text, fontFamily: fonts.semibold, fontSize: 13 }}>{failure}</Text>
         <Pressable accessibilityRole="button" onPress={() => { ensureExerciseCatalog().catch(() => undefined).finally(() => setAttempt(value => value + 1)); }} style={{ alignSelf: 'flex-start', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: p.g1 }}><Text style={{ color: p.plInk, fontFamily: fonts.bold, fontSize: 12.5 }}>Try again</Text></Pressable>

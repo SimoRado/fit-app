@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { Alert, Keyboard, Pressable, ScrollView, TextInput, View, type HostInstance } from 'react-native';
+import { Alert, Keyboard, ScrollView, TextInput, View, type HostInstance } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -7,7 +7,7 @@ import { Text } from './LocalizedText';
 import { fonts, radii } from './theme';
 import { confirm, message } from './components';
 import { BloomSwitch } from './MotionBlocks';
-import { MotionPressable } from './MotionPressable';
+import { MotionPressable, TapPressable as Pressable } from './MotionPressable';
 import { Segmented } from './NutritionSheets';
 import { usePalette } from './voltKit';
 import { useReducedMotion } from './motion';

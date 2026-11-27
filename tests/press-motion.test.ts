@@ -12,8 +12,10 @@ describe('Volt press feedback', () => {
     expect(pressTarget(0.86, false, true)).toBe(1);
   });
   it('finishes feedback and tab selection promptly', () => {
-    expect(PRESS_IN_DURATION_MS).toBeLessThanOrEqual(80);
-    expect(PRESS_OUT_DURATION_MS).toBeLessThanOrEqual(120);
+    expect(PRESS_IN_DURATION_MS).toBeGreaterThanOrEqual(80);
+    expect(PRESS_IN_DURATION_MS).toBeLessThanOrEqual(130);
+    expect(PRESS_OUT_DURATION_MS).toBeGreaterThanOrEqual(120);
+    expect(PRESS_OUT_DURATION_MS).toBeLessThanOrEqual(180);
     expect(TAB_SELECTION_DURATION_MS).toBeLessThanOrEqual(200);
   });
 });

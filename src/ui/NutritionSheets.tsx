@@ -1,18 +1,19 @@
 import React, { Profiler, useEffect, useRef, useState, type ProfilerOnRenderCallback } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, View, type ScrollViewInstance } from 'react-native';
+import { ActivityIndicator, ScrollView, View, type ScrollViewInstance } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Link } from 'expo-router';
 import { Text } from './LocalizedText';
 import { Button, Field, confirm, message } from './components';
 import { colors, fonts, radii, brand } from './theme';
-import { MotionPressable } from './MotionPressable';
+import { MotionPressable, TapPressable as Pressable } from './MotionPressable';
 import { dayKey, validDay } from '../core/date';
 import { convertVolumeQuantity, displayQuantity, fromGrams, primaryUnits, parseQuantity, servingLabel, toGrams, unitOptions, type FoodUnit } from '../core/foodUnits';
 import { meals, parseNumber, portionNutrients, type CalorieDisplay, type Meal, type Nutrients } from '../core/nutrition';
 import { deleteCustomFood, deleteFoodEntry, foodEntryUnit, recentFoods, reusableFoods, saveCustomFood, saveFoodEntry, setCalorieDisplay, type CustomFood, type CustomFoodMeasure, type FoodEntry, type RecentFood, type ReusableFood, type SavedFoodUnit } from '../data/nutrition';
 import { NutritionTargetEditor } from './NutritionTargetEditor';
 import { MacroValuesCard } from './MacroValuesCard';
+import { FoodResultsSkeleton } from './Skeleton';
 import { catalogFoodById, foodCategories, searchFoodCatalog, type CatalogFood } from '../data/foodCatalog';
 import { useApp } from '../state/app';
 import { normalizeLibrarySearchText, rankLibrarySearchResults, SearchRequestGate } from '../core/librarySearch';
@@ -427,7 +428,7 @@ export function FoodSheet({ entry, meal: initialMeal, day: initialDay, close, on
         {searchPending && visibleResults.length > 0 && <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><ActivityIndicator size="small" color={colors.muted}/><Text style={{ color: colors.muted, fontSize: 11 }}>Updating local results…</Text></View>}
         <Profiler id="nutrition-search-results" onRender={reportNutritionSearchRender}>
           {visibleResults.length ? <View>{visibleResults.map(food => <Pressable key={food.key} accessibilityRole="button" onPress={() => selectFood(food)} style={{ minHeight: 57, borderBottomWidth: 1, borderBottomColor: colors.border, justifyContent: 'center' }}><Text style={{ color: colors.ink, fontFamily: fonts.bold }}>{food.name}</Text><Text style={{ color: colors.muted, fontSize: 12 }}>{food.missing?.includes('Calories') ? 'Calories unknown' : `${Math.round(food.nutrients.kcal)} kcal`} · {food.catalogId ? `OpenNutrition · ${food.category ?? 'food'}` : food.basis === '100g' ? 'saved · per 100 g' : 'saved serving'}</Text></Pressable>)}</View>
-            : searchPending ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10 }}><ActivityIndicator size="small" color={colors.muted}/><Text style={{ color: colors.muted }}>Searching your offline library…</Text></View>
+            : searchPending ? <FoodResultsSkeleton/>
             : <Text style={{ color: colors.muted }}>No foods found. Use Manual to enter your own values.</Text>}
         </Profiler>
         <CatalogCredit/>

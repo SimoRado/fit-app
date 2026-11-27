@@ -62,13 +62,14 @@ describe('Bottom sheets keep the drag handle fixed', () => {
 describe('Personalization', () => {
   const sheet = source('src/ui/PersonalizationSheet.tsx');
   it('offers the three style choices and two appearances', () => {
-    for (const text of ['Match my profile', "'Navy, sky and volt'", "'Indigo, violet and orchid'", 'Also used for calorie estimates', 'Light or dark']) expect(sheet).toContain(text);
+    for (const text of ["'Navy, sky and volt'", "'Indigo, violet and orchid'", 'Light or dark']) expect(sheet).toContain(text);
+    expect(sheet).not.toContain('Match my profile');
   });
   it('does not promise the postponed body map', () => {
     expect(sheet.toLowerCase()).not.toContain('body map');
   });
   it('uses the existing sex preference rather than a new field', () => {
-    expect(sheet).toContain('setSex(value)');
+    expect(sheet).not.toContain('setSex(');
     expect(source('src/state/app.tsx')).toContain('repo.setPreference(prefKeys.sex, next)');
   });
 });

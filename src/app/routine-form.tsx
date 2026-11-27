@@ -220,7 +220,7 @@ export default function RoutineForm() {
       <Text style={{ color: p.muted, fontSize: 12 }}>Routine changes never alter workouts you already completed.</Text>
     </>}
 
-    <BottomSheet visible={!!picker} title={picker?.mode === 'replace' ? 'Replace exercise' : 'Add exercise'} onClose={() => setPicker(null)}>{close => <>
+    <BottomSheet stableHeight="88%" visible={!!picker} title={picker?.mode === 'replace' ? 'Replace exercise' : 'Add exercise'} onClose={() => setPicker(null)}>{close => <>
       <ExerciseBrowser selectedIds={new Set(draft.exercises.filter(item => picker?.mode !== 'replace' || item.key !== picker.key).map(item => item.exerciseId))} onSelect={exercise => choose(exercise, close)}/>
       <Field label="Custom exercise name" value={custom} onChangeText={setCustom}/>
       <Button title="Create custom exercise" kind="ghost" disabled={!custom.trim()} onPress={() => createCustom(close)}/>

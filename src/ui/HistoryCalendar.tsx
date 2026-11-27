@@ -1,5 +1,6 @@
 import React, { memo } from 'react';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
+import { TapPressable as Pressable } from './MotionPressable';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { Text } from './LocalizedText';

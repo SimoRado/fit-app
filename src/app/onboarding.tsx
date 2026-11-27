@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 import { router } from 'expo-router';
 import { useMutation } from 'convex/react';
 import { useUser } from '@clerk/expo';
@@ -10,14 +10,19 @@ import { PRIVACY_VERSION, TERMS_VERSION } from '../../shared/legalVersions';
 import { validateProfileValues } from '../core/validation';
 import { Language, Profile } from '../core/types';
 import { repo } from '../data/db';
-import { useApp } from '../state/app';
+import { STYLE_MODE_KEY, useApp, usePersonalization } from '../state/app';
+import { prefKeys, type Sex } from '../core/nutritionTargets';
+import { startingPointComplete, startingPointIssue } from '../core/onboardingProfile';
+import { useSegmentThumb } from '../ui/segmentMotion';
+import Animated, { FadeIn } from 'react-native-reanimated';
+import { useReducedMotion } from '../ui/motion';
 import { Button, Card, Choices, Field, message, MultiChoices, Page, styles } from '../ui/components';
 import { Text } from '../ui/LocalizedText';
 import { PageTitle } from '../ui/voltKit';
 import { localize } from '../core/i18n';
 import { birthEligibility, canBeginProfile, languageOptions, reviewEditStep } from '../core/authMode';
 import { Ionicons } from '@expo/vector-icons';
-import { MotionPressable } from '../ui/MotionPressable';
+import { MotionPressable, TapPressable as Pressable } from '../ui/MotionPressable';
 import { colors, fonts } from '../ui/theme';
 import { BirthDateField } from '../ui/BirthDateField';
 import { LegalAgreementChoice } from '../ui/LegalAgreements';
@@ -30,6 +35,9 @@ export default function Onboarding() {
   const [experience, setExperience] = useState('Beginner'), [goal, setGoal] = useState('Improve general fitness'), [growth, setGrowth] = useState<string[]>(['Build discipline']), [language, setLanguage] = useState<Language>(appLanguage);
   const [step, setStep] = useState(0), [busy, setBusy] = useState(false);
   const [legalAccepted, setLegalAccepted] = useState(false);
+  // Required, never preselected: the existing body.sex value (calorie estimates only, never colours).
+  const [sex, setSex] = useState<Sex | null>(null);
+  const { style } = usePersonalization();
   useEffect(() => { if (!name && user?.fullName) setName(user.fullName); }, [name, user?.fullName]);
   useEffect(() => { if (existingProfile) router.replace('/(tabs)'); }, [existingProfile]);
 
@@ -47,7 +55,7 @@ export default function Onboarding() {
         if (birthStatus !== 'adult') return;
         validateProfileValues({ name, birth_date: birth, height_cm: 170, start_weight: 70, target_weight: null });
       }
-      if (step === 1) values();
+      if (step === 1) { const issue = startingPointIssue({ sex, height, weight, target }); if (issue) throw Error(issue); values(); }
       if (step === 2 && !growth.length) throw Error('Select at least one personal growth goal.');
       setStep(value => Math.min(3, value + 1));
     } catch (error) { message(error); }
@@ -62,17 +70,22 @@ export default function Onboarding() {
       if (!growth.length) throw Error('Select at least one personal growth goal.');
       await acceptEligibility({ birthDate: valid.birth_date, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', termsVersion: TERMS_VERSION, privacyVersion: PRIVACY_VERSION, agreed: true });
       const profile: Profile = { id: uid(), ...valid, experience, fitness_goal: goal, growth_goals: growth.join(','), language, completed_at: new Date().toISOString() };
-      await repo.createProfile(profile); await repo.setPreference('terms_accepted_version', TERMS_VERSION); await refresh(); router.replace('/(tabs)');
+      if (!sex || !valid.target_weight) throw Error(startingPointIssue({ sex, height, weight, target }) ?? 'Enter your target weight.');
+      await repo.createProfile(profile); await repo.setPreference('terms_accepted_version', TERMS_VERSION);
+      await repo.setPreference(prefKeys.sex, sex);
+      // New profiles keep the colours they chose explicitly; sex never selects a theme.
+      await repo.setPreference(STYLE_MODE_KEY, style); await refresh(); router.replace('/(tabs)');
     } catch (error) { message(error); } finally { setBusy(false); }
   }
 
   const ageBlocked = step === 0 && birthStatus !== 'adult';
+  const startingBlocked = step === 1 && !startingPointComplete({ sex, height, weight, target });
   const titles = ["Let's get to know you", 'Your starting point', 'Your goals', 'Review your details'];
   const details = ['Progress over perfection. Become better, one day at a time.', 'Tell us where you are starting from.', 'What would you like to focus on?', 'Check everything looks right, then let’s begin.'];
   const ready = canBeginProfile(legalAccepted, busy);
   const footer = <>
     {step > 0 && <View style={{ flex: 1 }}><Button title="Back" kind="ghost" onPress={() => setStep(value => value - 1)}/></View>}
-    <View style={{ flex: 2 }}><Button title={step === 3 ? busy ? 'Saving…' : "Let's Begin" : 'Continue  →'} onPress={step === 3 ? save : next} disabled={step === 3 ? !ready : busy || ageBlocked}/></View>
+    <View style={{ flex: 2 }}><Button title={step === 3 ? busy ? 'Saving…' : "Let's Begin" : 'Continue  →'} onPress={step === 3 ? save : next} disabled={step === 3 ? !ready : busy || ageBlocked || startingBlocked}/></View>
   </>;
   const edit = (target: number) => <Pressable accessibilityRole="button" accessibilityLabel={localize('Edit', appLanguage)} hitSlop={8} onPress={() => setStep(target)}><Text style={{ color: colors.accent, fontFamily: fonts.bold, fontSize: 13 }}>Edit</Text></Pressable>;
   const summaryRow = (label: string, value: string) => <View key={label} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}><Text style={{ color: colors.muted, fontSize: 14 }}>{label}</Text><Text style={{ flexShrink: 1, color: colors.text, fontFamily: fonts.bold, fontSize: 14, textAlign: 'right' }}>{value}</Text></View>;
@@ -105,9 +118,10 @@ export default function Onboarding() {
     </>}
     {step === 1 && <Card>
       <Choices label="Language" options={['en', 'fr', 'ar'] as const} value={language} onChange={nextLanguage => { setLanguage(nextLanguage); applyLanguage(nextLanguage); }}/>
+      <SexSelector value={sex} onChange={setSex} rtl={appLanguage === 'ar'}/>
       <Field label="Height (cm)" value={height} onChangeText={setHeight} keyboardType="decimal-pad"/>
       <Field label="Current weight (kg)" value={weight} onChangeText={setWeight} keyboardType="decimal-pad"/>
-      <Field label="Target weight (kg, optional)" value={target} onChangeText={setTarget} keyboardType="decimal-pad"/>
+      <Field label="Target weight (kg)" value={target} onChangeText={setTarget} keyboardType="decimal-pad"/>
     </Card>}
     {step === 2 && <Card>
       <Choices label="Experience" options={['Beginner', 'Intermediate', 'Advanced']} value={experience} onChange={setExperience} equalRow/>
@@ -125,7 +139,7 @@ export default function Onboarding() {
     {step === 3 && <>
       <Card>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>{eyebrow('About you')}{edit(reviewEditStep.about)}</View>
-        {summaryRow('Name', name.trim())}{summaryRow('Birthday', formatBirthday(birth, appLanguage))}{summaryRow('Language', languageOptions.find(option => option.code === language)?.label ?? language)}
+        {summaryRow('Name', name.trim())}{summaryRow('Birthday', formatBirthday(birth, appLanguage))}{summaryRow('Sex', sex === 'female' ? 'Female' : sex === 'male' ? 'Male' : '–')}{summaryRow('Language', languageOptions.find(option => option.code === language)?.label ?? language)}
       </Card>
       <Card>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>{eyebrow('Body')}{edit(reviewEditStep.body)}</View>
@@ -146,4 +160,23 @@ function formatBirthday(iso: string, language: Language) {
   const [year, month, day] = iso.split('-').map(Number);
   if (!year || !month || !day) return iso;
   try { return new Intl.DateTimeFormat(bcp47[language], { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(year, month - 1, day, 12)); } catch { return iso; }
+}
+
+/** Male | Female pill selector (same sliding thumb as other segmented controls); nothing preselected. */
+function SexSelector({ value, onChange, rtl }: { value: Sex | null; onChange: (value: Sex) => void; rtl: boolean }) {
+  const reduced = useReducedMotion();
+  const { onLayout, thumbStyle, cell, measured } = useSegmentThumb(value === 'female' ? 1 : 0, 2, rtl);
+  return <View style={{ gap: 7 }}>
+    <Text style={styles.label}>Sex</Text>
+    <View accessibilityRole="radiogroup" onLayout={onLayout} style={{ flexDirection: 'row', padding: 4, borderRadius: 999, backgroundColor: colors.light ? colors.soft1 : colors.card2 }}>
+      {measured && value && <Animated.View entering={reduced ? undefined : FadeIn.duration(160)} pointerEvents="none" style={[{ position: 'absolute', start: 4, top: 4, bottom: 4, width: cell, borderRadius: 999, backgroundColor: colors.c8, ...(colors.light ? { boxShadow: '0px 2px 8px rgba(11,20,70,0.12)' } : { borderWidth: 1, borderColor: colors.borderStrong }) }, thumbStyle]}/>}
+      {(['male', 'female'] as const).map(option => {
+        const on = value === option;
+        return <Pressable key={option} accessibilityRole="radio" accessibilityState={{ checked: on }} onPress={() => onChange(option)} style={{ flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 999 }}>
+          <Text style={{ color: on ? colors.text : colors.muted, fontFamily: fonts.bold, fontSize: 14 }}>{option === 'male' ? 'Male' : 'Female'}</Text>
+        </Pressable>;
+      })}
+    </View>
+    <Text style={{ color: colors.muted, fontSize: 12 }}>Used for calorie estimates.</Text>
+  </View>;
 }

@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { Animated, Platform, Pressable, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { Animated, Platform, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { TapPressable as Pressable } from './MotionPressable';
 import { Text } from './LocalizedText';
 import { fonts, brand } from './theme';
 import { usePalette } from './voltKit';

@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { LayoutChangeEvent, Pressable, View } from 'react-native';
+import { LayoutChangeEvent, View } from 'react-native';
+import { TapPressable as Pressable } from '../../ui/MotionPressable';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { Text } from '../../ui/LocalizedText';
-import { addDays, dayKey, daysBetween, fromDay, weekStart } from '../../core/date';
+import { addDays, dayKey, daysBetween, fromDay } from '../../core/date';
 import { personalRecords } from '../../core/logic';
 import { bestWeekday, comparePeriods, dayBars, habitBreakdown, periodStats } from '../../core/habitStats';
 import type { HistoryDay } from '../../core/habitHistory';
@@ -14,6 +15,8 @@ import { weightGoal } from '../../core/weightPolicy';
 import { Exercise, Habit, WeightEntry, Workout, WorkoutExercise, WorkoutSet } from '../../core/types';
 import { repo } from '../../data/db';
 import { useApp } from '../../state/app';
+import { useSubscription } from '../../state/subscriptions';
+import { canViewProgressPeriod, guardProgressPeriod, progressFloor, progressRange, visibleProgressRange, type ProgressPeriod } from '../../core/progressAccess';
 import { useScreenRevision } from '../../state/useScreenRevision';
 import { useLoadState } from '../../state/useLoadState';
 import { LoadError, SkeletonBlock, SkeletonCard, SkeletonRow, SkeletonScreen } from '../../ui/Skeleton';
@@ -24,20 +27,13 @@ import { HeroWaves, LotusFlower, linearGradient } from '../../ui/LotusArt';
 import { localeFor, shortDay } from '../../ui/dates';
 import { EmptyAction, KpiRow, ListRow, MiniBar, SectionLink, UnderlineTabs, useEntering, usePalette } from '../../ui/voltKit';
 
-type Period = 'Day' | 'Week' | 'Month' | 'Year';
+type Period = ProgressPeriod;
 type WeightRange = 'All' | 'Month' | 'Week';
 const monthStart = (day: string) => `${day.slice(0, 7)}-01`;
 const monthEnd = (day: string) => { const date = fromDay(monthStart(day)); return dayKey(new Date(date.getFullYear(), date.getMonth() + 1, 0, 12)); };
-const shiftMonth = (day: string, offset: number) => { const date = fromDay(monthStart(day)); return dayKey(new Date(date.getFullYear(), date.getMonth() + offset, 1, 12)); };
 const previousLabel: Record<Period, string> = { Day: 'vs yesterday', Week: 'vs last week', Month: 'vs last month', Year: 'vs last year' };
 
-function periodRange(period: Period, offset: number, today: string): { start: string; end: string } {
-  if (period === 'Day') { const day = addDays(today, offset); return { start: day, end: day }; }
-  if (period === 'Week') { const start = addDays(weekStart(today), offset * 7); return { start, end: addDays(start, 6) }; }
-  if (period === 'Month') { const start = shiftMonth(today, offset); return { start, end: monthEnd(start) }; }
-  const year = fromDay(today).getFullYear() + offset;
-  return { start: `${year}-01-01`, end: `${year}-12-31` };
-}
+const periodRange = progressRange;
 
 /** Progress (prototype "Statistics"): Lotus weight card, then habit statistics from history snapshots. */
 export default function Progress() {
@@ -52,8 +48,13 @@ export default function Progress() {
   const [sets, setSets] = useState<WorkoutSet[]>([]);
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [history, setHistory] = useState<HistoryDay[]>([]);
-  const [period, setPeriod] = useState<Period>('Week');
-  const [offset, setOffset] = useState(0);
+  const [requestedPeriod, setPeriod] = useState<Period>('Week');
+  const [requestedOffset, setOffset] = useState(0);
+  const subscription = useSubscription();
+  const isPro = subscription.isPremium;
+  // While the entitlement is still being checked, nothing historical is shown and nothing is
+  // locked: Pro users are not mistaken for Free, Free users see no Pro data.
+  const checking = !subscription.ready && !subscription.error;
   const [focusDay, setFocusDay] = useState<string | null>(null);
   // Records and habit-history reads each finish once before content replaces the skeleton.
   const dataLoad = useLoadState();
@@ -63,9 +64,30 @@ export default function Progress() {
 
   const today = dayKey();
   const locale = localeFor(language);
-  const { start, end } = periodRange(period, offset, today);
+  // Every render resolves the selection through the access rules, so a stale or expired selection
+  // can never show locked data, even for one frame.
+  const { period, offset } = guardProgressPeriod(requestedPeriod, requestedOffset, today, isPro);
+  useEffect(() => {
+    if (checking) return;
+    if (period !== requestedPeriod || offset !== requestedOffset) { setPeriod(period); setOffset(offset); setFocusDay(null); }
+  }, [checking, period, offset, requestedPeriod, requestedOffset]);
+  const floor = progressFloor(today, isPro);
+  const fullRange = periodRange(period, offset, today);
+  const { start, end } = visibleProgressRange(fullRange, today, isPro);
   const until = end < today ? end : today;
-  const { start: prevStart, end: prevEnd } = periodRange(period, offset - 1, today);
+  const fullPrevious = periodRange(period, offset - 1, today);
+  // Free comparisons only use this month's dates; a previous period entirely before it has none.
+  const { start: prevStart, end: prevEnd } = floor && fullPrevious.end < floor ? { start: fullPrevious.end, end: addDays(fullPrevious.end, -1) } : visibleProgressRange(fullPrevious, today, isPro);
+  /** Locked period requests open the existing paywall and leave the selection where it is. */
+  const openPaywall = () => { if (!checking) router.push('/paywall'); };
+  const choosePeriod = (value: Period) => {
+    if (!canViewProgressPeriod(value, 0, today, isPro)) { openPaywall(); return; }
+    setPeriod(value); setOffset(0); setFocusDay(null);
+  };
+  const previousPeriod = () => {
+    if (!canViewProgressPeriod(period, offset - 1, today, isPro)) { openPaywall(); return; }
+    setOffset(offset - 1); setFocusDay(null);
+  };
   const historyFrom = [prevStart, addDays(today, -89)].sort()[0];
 
   useEffect(() => {
@@ -88,33 +110,37 @@ export default function Progress() {
   // Recomputed only when workout data changes — not on period, chart or weight-range taps.
   const records = useMemo(() => personalRecords(exercises, links, sets, workouts), [exercises, links, sets, workouts]);
 
+  // Free plans only ever count rows from this month (weeks crossing the month, comparisons, insights).
+  const visibleHistory = floor ? history.filter(row => row.day >= floor) : history;
   // Snapshot statistics: habits eligible on each day, fully completed measured habits only.
-  const stats = periodStats(history, start, until);
-  const previous = periodStats(history, prevStart, prevEnd);
+  const stats = periodStats(visibleHistory, start, until);
+  const previous = periodStats(visibleHistory, prevStart, prevEnd);
   const delta = comparePeriods(stats, previous);
   const periodWorkouts = workouts.filter(workout => workout.day >= start && workout.day <= until);
   const rangeLabel = period === 'Day' ? new Intl.DateTimeFormat(locale, { weekday: 'long', day: 'numeric', month: 'short' }).format(fromDay(start))
-    : period === 'Week' ? `${shortDay(locale, start, false)} – ${shortDay(locale, end, false)}`
+    : period === 'Week' ? `${shortDay(locale, fullRange.start, false)} – ${shortDay(locale, end, false)}`
       : period === 'Month' ? new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric' }).format(fromDay(start)) : start.slice(0, 4);
 
   const bars = period === 'Day' ? [] : period === 'Year'
     ? Array.from({ length: 12 }, (_, month) => {
       const first = `${start.slice(0, 4)}-${String(month + 1).padStart(2, '0')}-01`;
       const last = monthEnd(first);
-      const s = periodStats(history, first, last < today ? last : today);
+      const s = periodStats(visibleHistory, first, last < today ? last : today);
       return { key: first, label: new Intl.DateTimeFormat(locale, { month: 'narrow' }).format(fromDay(first)), value: s.percent === null ? null : s.percent / 100, future: first > today, now: first === monthStart(today), due: s.due, done: s.done };
     })
-    : dayBars(history, daysBetween(start, end), today).map(bar => ({ key: bar.day, label: period === 'Week' ? new Intl.DateTimeFormat(locale, { weekday: 'narrow' }).format(fromDay(bar.day)) : String(fromDay(bar.day).getDate()), value: bar.value, future: bar.future, now: bar.today, due: bar.due, done: bar.done }));
+    : dayBars(visibleHistory, daysBetween(fullRange.start, end), today).map(bar => ({ key: bar.day, label: period === 'Week' ? new Intl.DateTimeFormat(locale, { weekday: 'narrow' }).format(fromDay(bar.day)) : String(fromDay(bar.day).getDate()), value: bar.value, future: bar.future, now: bar.today, due: bar.due, done: bar.done }));
 
-  const byHabit = habitBreakdown(history, start, until);
+  const byHabit = habitBreakdown(visibleHistory, start, until);
   const strongest = byHabit[0], weakest = byHabit.length > 1 ? byHabit.at(-1) : undefined;
-  const bestDay = bestWeekday(history.filter(row => row.day >= addDays(today, -89)), day => fromDay(day).getDay());
+  const bestDay = bestWeekday(visibleHistory.filter(row => row.day >= addDays(today, -89)), day => fromDay(day).getDay());
   const bestDayName = bestDay === null ? null : new Intl.DateTimeFormat(locale, { weekday: 'long' }).format(new Date(2024, 0, 7 + bestDay, 12));
   const habitIds = new Set(habits.map(habit => habit.id));
 
   const focus = focusDay ? bars.find(bar => bar.key === focusDay) : undefined;
 
-  const status = dataLoad.status === 'error' || historyLoad.status === 'error' ? 'error' : dataLoad.status === 'ready' && historyLoad.status === 'ready' ? 'ready' : 'loading';
+  // Waiting on the entitlement only matters if the shown range reaches before this month.
+  const waitingForPlan = checking && fullRange.start < (floor ?? fullRange.start);
+  const status = dataLoad.status === 'error' || historyLoad.status === 'error' ? 'error' : dataLoad.status === 'ready' && historyLoad.status === 'ready' && !waitingForPlan ? 'ready' : 'loading';
   if (status !== 'ready') return <Page title="Progress" eyebrow="Statistics">
     {status === 'error' ? <LoadError text="Could not load your progress." onRetry={() => { if (dataLoad.status === 'error') dataLoad.retry(); if (historyLoad.status === 'error') historyLoad.retry(); }}/> : <ProgressSkeleton/>}
   </Page>;
@@ -122,11 +148,11 @@ export default function Progress() {
   return <Page title="Progress" eyebrow="Statistics">
     <WeightCard weights={weights} startWeight={profile?.start_weight ?? null} target={profile?.target_weight ?? null} locale={locale}/>
 
-    <View style={{ marginTop: 6 }}><UnderlineTabs options={['Day', 'Week', 'Month', 'Year'] as const} value={period} onChange={value => { setPeriod(value); setOffset(0); setFocusDay(null); }}/></View>
+    <View style={{ marginTop: 6 }}><UnderlineTabs options={['Day', 'Week', 'Month', 'Year'] as const} value={period} icons={isPro ? undefined : { Year: 'lock-closed' }} hints={isPro ? undefined : { Year: 'Cubyfit Pro' }} onChange={choosePeriod}/></View>
     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 }}>
-      <Pressable accessibilityRole="button" accessibilityLabel="Previous period" onPress={() => { setOffset(value => value - 1); setFocusDay(null); }} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}><Ionicons name="chevron-back" size={18} color={p.text}/></Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel="Previous period" accessibilityHint={canViewProgressPeriod(period, offset - 1, today, isPro) ? undefined : 'Cubyfit Pro'} onPress={previousPeriod} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}><Ionicons name="chevron-back" size={18} color={p.text}/></Pressable>
       <View style={{ alignItems: 'center', gap: 2 }}><Text style={{ color: p.text, fontFamily: fonts.bold, fontSize: 14.5 }}>{rangeLabel}</Text>{offset === 0 && period !== 'Week' && <Text style={{ color: p.accent, fontFamily: fonts.bold, fontSize: 11 }}>{period === 'Day' ? 'Today' : `This ${period.toLowerCase()}`}</Text>}</View>
-      <Pressable accessibilityRole="button" accessibilityLabel="Next period" accessibilityState={{ disabled: offset >= 0 }} disabled={offset >= 0} onPress={() => { setOffset(value => value + 1); setFocusDay(null); }} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', opacity: offset >= 0 ? 0.25 : 1 }}><Ionicons name="chevron-forward" size={18} color={p.text}/></Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel="Next period" accessibilityState={{ disabled: offset >= 0 }} disabled={offset >= 0} onPress={() => { setOffset(Math.min(0, offset + 1)); setFocusDay(null); }} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', opacity: offset >= 0 ? 0.25 : 1 }}><Ionicons name="chevron-forward" size={18} color={p.text}/></Pressable>
     </View>
 
     {/* .pg-hero */}
@@ -136,7 +162,7 @@ export default function Progress() {
     {bars.length > 0 && <View style={{ marginTop: 14 }}>
       <Text style={{ color: p.muted, fontFamily: fonts.semibold, fontSize: 12.5, marginBottom: 10 }}>{focus ? `${new Intl.DateTimeFormat(locale, { weekday: 'long', day: 'numeric', month: 'short' }).format(fromDay(focus.key))} · ${focus.due ? `${focus.done}/${focus.due} habits` : 'no habits recorded'}` : period === 'Year' ? 'Completion by month' : 'Tap a day'}</Text>
       <View style={{ flexDirection: 'row', gap: bars.length > 12 ? 2 : 8, height: 150, alignItems: 'flex-end', borderTopWidth: 1, borderTopColor: p.border, borderStyle: 'dashed' }}>
-        {bars.map((bar, index) => <Bar key={bar.key} index={index} value={bar.value ?? 0} empty={bar.value === null} future={bar.future} now={bar.now} on={bar.key === focusDay} label={bars.length > 12 ? (index % 5 === 0 ? bar.label : '') : bar.label} onPress={period === 'Year' || bar.future ? undefined : () => setFocusDay(bar.key === focusDay ? null : bar.key)}/>)}
+        {bars.map((bar, index) => <Bar key={bar.key} index={index} value={bar.value ?? 0} empty={bar.value === null} future={bar.future || (!!floor && bar.key < floor)} now={bar.now} on={bar.key === focusDay} label={bars.length > 12 ? (index % 5 === 0 ? bar.label : '') : bar.label} onPress={period === 'Year' || bar.future || (!!floor && bar.key < floor) ? undefined : () => setFocusDay(bar.key === focusDay ? null : bar.key)}/>)}
       </View>
     </View>}
 
@@ -150,7 +176,7 @@ export default function Progress() {
       <SectionLink title="Worth knowing"/>
       {strongest && <Insight icon="trophy-outline" title="Strongest habit" body={`${strongest.name}, done ${strongest.percent}% of the time.`}/>}
       {weakest && weakest.percent < 100 && <Insight icon="leaf-outline" title="Needs attention" body={`${weakest.name} at ${weakest.percent}%. A smaller version can help.`}/>}
-      {bestDayName && <Insight icon="calendar-outline" title="Your best day" body={`${bestDayName}s, based on the last 90 days.`}/>}
+      {bestDayName && <Insight icon="calendar-outline" title="Your best day" body={`${bestDayName}s, based on ${floor ? 'this month' : 'the last 90 days'}.`}/>}
     </>}
 
     <SectionLink title="More"/>

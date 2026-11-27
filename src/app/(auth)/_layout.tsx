@@ -1,2 +1,3 @@
 import { Stack } from 'expo-router';
-export default function AuthLayout() { return <Stack screenOptions={{ headerShown: false }}/>; }
+import { useStackAnimation } from '../../ui/motion';
+export default function AuthLayout() { const stackAnimation = useStackAnimation(); return <Stack screenOptions={{ headerShown: false, ...stackAnimation }}/>; }

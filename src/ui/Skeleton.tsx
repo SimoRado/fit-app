@@ -90,3 +90,25 @@ export function LoadError({ text = 'Could not load this screen.', onRetry }: { t
     <Button title="Try again" kind="ghost" onPress={onRetry}/>
   </SkeletonCard>;
 }
+
+/** Exercise Library rows (name, muscle · equipment, Add pill) while the catalog first loads. */
+export function ExerciseResultsSkeleton({ rows = 6 }: { rows?: number }) {
+  const p = usePalette();
+  return <SkeletonScreen label="Loading exercises"><View style={{ gap: 8 }}>
+    {Array.from({ length: rows }, (_, index) => <View key={index} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingLeft: 12, paddingRight: 10, borderRadius: 20, backgroundColor: p.c8, borderWidth: 1, borderColor: p.c8Line }}>
+      <View style={{ flex: 1, gap: 7 }}><SkeletonBlock width={index % 2 ? '58%' : '44%'} height={12} radius={6}/><SkeletonBlock width={index % 3 ? '36%' : '50%'} height={10} radius={5}/></View>
+      <SkeletonBlock width={72} height={34} radius={17}/>
+    </View>)}
+  </View></SkeletonScreen>;
+}
+
+/** Food search rows (name, kcal · source) in the same 57 px divided rows as real results. */
+export function FoodResultsSkeleton({ rows = 6 }: { rows?: number }) {
+  const p = usePalette();
+  return <SkeletonScreen label="Loading foods"><View>
+    {Array.from({ length: rows }, (_, index) => <View key={index} style={{ minHeight: 57, justifyContent: 'center', gap: 7, borderBottomWidth: 1, borderBottomColor: p.border }}>
+      <SkeletonBlock width={index % 2 ? '52%' : '40%'} height={12} radius={6}/>
+      <SkeletonBlock width={index % 3 ? '34%' : '46%'} height={10} radius={5}/>
+    </View>)}
+  </View></SkeletonScreen>;
+}

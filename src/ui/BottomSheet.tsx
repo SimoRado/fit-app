@@ -1,10 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, KeyboardAvoidingView, Modal, PanResponder, Platform, Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
+import { Animated, Easing, KeyboardAvoidingView, Modal, PanResponder, Platform, ScrollView, useWindowDimensions, View } from 'react-native';
+import { TapPressable as Pressable } from './MotionPressable';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../state/app';
 import { localize } from '../core/i18n';
 import { sheetDragOffset, sheetShouldClaim, sheetShouldDismiss } from '../core/sheetGesture';
+import { MOTION } from '../core/pressMotion';
 import { Text } from './LocalizedText';
 import { useReducedMotion } from './motion';
 import { colors, fonts } from './theme';
@@ -24,7 +26,7 @@ type CloseSheet = (after?: () => void) => void;
  * `layout="fixed"`: the child owns the remaining height and provides its own
  * scroll area and footer.
  */
-export function BottomSheet({ visible, title, onClose, children, layout = 'scroll', fixedHeight = '90%' }: { visible: boolean; title: string; onClose: () => void; children: (close: CloseSheet) => React.ReactNode; layout?: 'scroll' | 'fixed'; fixedHeight?: '60%' | '82%' | '90%' }) {
+export function BottomSheet({ visible, title, onClose, children, layout = 'scroll', fixedHeight = '90%', stableHeight }: { visible: boolean; title: string; onClose: () => void; children: (close: CloseSheet) => React.ReactNode; layout?: 'scroll' | 'fixed'; fixedHeight?: '60%' | '82%' | '90%'; /** Scroll layout at a fixed height, so loading and loaded content never resize the sheet. */ stableHeight?: '88%' }) {
   const { language } = useApp();
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
@@ -32,18 +34,41 @@ export function BottomSheet({ visible, title, onClose, children, layout = 'scrol
   const [progress] = useState(() => new Animated.Value(0));
   const [drag] = useState(() => new Animated.Value(0));
   const [closing, setClosing] = useState(false);
+  // `mounted` keeps the Modal on screen after `visible` turns false until the slide-down finishes,
+  // so screens that close a sheet by flipping their own state still get the exit animation.
+  // Once hidden, the Modal is unmounted: nothing invisible is left to block touches.
+  const [mounted, setMounted] = useState(visible);
+  const lowered = useRef(false); // true while the sheet sits fully off-screen (progress 0)
+  const visibleRef = useRef(visible);
+  useEffect(() => { visibleRef.current = visible; }, [visible]);
   useEffect(() => {
-    if (!visible) return;
-    drag.setValue(0);
-    progress.setValue(reduced ? 1 : 0);
-    if (!reduced) Animated.timing(progress, { toValue: 1, duration: 300, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+    if (visible) {
+      lowered.current = false;
+      setMounted(true);
+      drag.setValue(0);
+      progress.setValue(reduced ? 1 : 0);
+      if (!reduced) Animated.timing(progress, { toValue: 1, duration: MOTION.sheetOpen, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+      return;
+    }
+    // Already slid down by close(), or reduced motion: unmount now.
+    if (reduced || lowered.current) { setMounted(false); setClosing(false); return; }
+    // Closed from outside (e.g. after a save): play the same exit, then unmount.
+    Animated.timing(progress, { toValue: 0, duration: MOTION.sheetClose, easing: Easing.in(Easing.cubic), useNativeDriver: true }).start(() => { if (!visibleRef.current) { setMounted(false); setClosing(false); } });
   }, [visible, reduced, progress, drag]);
+  // After close(): if the screen's dismissal guard (e.g. "Discard changes?") kept `visible` true,
+  // bring the sheet back up. Runs after commit, so it sees the parent's final `visible`.
+  const [closeRequest, setCloseRequest] = useState(0);
+  useEffect(() => {
+    if (!closeRequest || !visible || !lowered.current) return;
+    lowered.current = false; setClosing(false);
+    if (reduced) progress.setValue(1); else Animated.timing(progress, { toValue: 1, duration: MOTION.sheetOpen, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+  }, [closeRequest, visible, reduced, progress]);
   function close(after?: () => void) {
     if (closing) return;
     setClosing(true);
-    const finish = () => { setClosing(false); onClose(); after?.(); };
+    const finish = () => { lowered.current = true; setCloseRequest(value => value + 1); onClose(); after?.(); };
     if (reduced) { finish(); return; }
-    Animated.timing(progress, { toValue: 0, duration: 220, easing: Easing.in(Easing.cubic), useNativeDriver: true }).start(({ finished }) => { if (finished) finish(); });
+    Animated.timing(progress, { toValue: 0, duration: MOTION.sheetClose, easing: Easing.in(Easing.cubic), useNativeDriver: true }).start(({ finished }) => { if (finished) finish(); });
   }
   // Drag-to-dismiss on the fixed header only, so it never competes with the content's scrolling,
   // calendar taps or buttons. Created once; `closeRef` always calls the latest `close`.
@@ -81,15 +106,19 @@ export function BottomSheet({ visible, title, onClose, children, layout = 'scrol
       </Pressable>
     </View>
   </View>;
-  return <Modal visible={visible} transparent animationType="none" onRequestClose={() => close()} statusBarTranslucent navigationBarTranslucent={fixed}>
+  if (!mounted && !visible) return null;
+  return <Modal visible transparent animationType="none" onRequestClose={() => close()} statusBarTranslucent navigationBarTranslucent={fixed}>
     <KeyboardAvoidingView style={{ flex: 1, justifyContent: 'flex-end' }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <Animated.View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: colors.accentInk, opacity: progress.interpolate({ inputRange: [0, 1], outputRange: [0, .42] }) }}/>
       <Pressable accessibilityRole="button" accessibilityLabel={localize('Cancel', language)} onPress={() => close()} style={{ flex: 1, minHeight: insets.top + 24 }}/>
-      <Animated.View pointerEvents={closing ? 'none' : 'auto'} style={{ ...(fixed ? { height: fixedHeight } : { maxHeight: '88%' as const }), width: '100%', maxWidth: 620, alignSelf: 'center', backgroundColor: light ? colors.bg : colors.card, borderTopLeftRadius: 30, borderTopRightRadius: 30, overflow: 'hidden', transform: [{ translateY: Animated.add(progress.interpolate({ inputRange: [0, 1], outputRange: [height, 0] }), drag) }] }}>
-        <View style={{ flexShrink: 1, ...(fixed ? { flex: 1 } : {}), direction: language === 'ar' ? 'rtl' : 'ltr' }}>
+      <Animated.View pointerEvents={closing ? 'none' : 'auto'} style={{ ...(fixed ? { height: fixedHeight } : stableHeight ? { height: stableHeight } : { maxHeight: '88%' as const }), width: '100%', maxWidth: 620, alignSelf: 'center', backgroundColor: light ? colors.bg : colors.card, borderTopLeftRadius: 30, borderTopRightRadius: 30, overflow: 'hidden', transform: [{ translateY: Animated.add(progress.interpolate({ inputRange: [0, 1], outputRange: [height, 0] }), drag) }] }}>
+        <View style={{ flexShrink: 1, ...(fixed || stableHeight ? { flex: 1 } : {}), direction: language === 'ar' ? 'rtl' : 'ltr' }}>
           {header}
+          {/* `close` is only invoked from presses and gestures, never during render. */}
+          {/* eslint-disable-next-line react-hooks/refs */}
           {fixed ? <View style={{ flex: 1 }}>{children(close)}</View>
-            : <ScrollView style={{ flexShrink: 1 }} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 4, paddingBottom: Math.max(24, insets.bottom + 12), gap: 12 }}>
+            : <ScrollView style={stableHeight ? { flex: 1 } : { flexShrink: 1 }} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 4, paddingBottom: Math.max(24, insets.bottom + 12), gap: 12 }}>
+              {/* eslint-disable-next-line react-hooks/refs */}
               {children(close)}
             </ScrollView>}
         </View>

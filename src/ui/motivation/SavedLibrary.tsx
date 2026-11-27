@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Modal, Pressable, View, useWindowDimensions } from 'react-native';
+import { Modal, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeIn, FadeOut, ZoomIn, useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 import { Text } from '../LocalizedText';
-import { MotionPressable } from '../MotionPressable';
+import { MotionPressable, TapPressable as Pressable } from '../MotionPressable';
 import { useReducedMotion } from '../motion';
 import { fonts } from '../theme';
 import { CircleButton, isLight, usePalette } from '../voltKit';

@@ -5,13 +5,14 @@
  * theme context so they re-render when Shore/Abyss changes.
  */
 import React, { useEffect, useId, useRef, useState } from 'react';
-import { LayoutChangeEvent, Pressable, StyleProp, View, ViewStyle } from 'react-native';
+import { LayoutChangeEvent, StyleProp, View, ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { Easing, FadeInDown, interpolate, useAnimatedProps, useAnimatedStyle, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
 import Svg, { Defs, G, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 import { Text } from './LocalizedText';
-import { MotionPressable } from './MotionPressable';
+import { MotionPressable, TapPressable as Pressable } from './MotionPressable';
 import { useReducedMotion } from './motion';
+import { MOTION } from '../core/pressMotion';
 import { easing, fonts, type Palette, brand } from './theme';
 import { HORSESHOE, SQUARE_RINGS, horseshoeArc, horseshoeLength, ringFraction, squareRing } from '../core/voltGeometry';
 import { useVoltTheme } from './VoltThemeProvider';
@@ -280,7 +281,7 @@ export function StatTrio({ items }: { items: TrioItem[] }) {
 }
 
 /** `.pg-tabs` — evenly spaced text tabs with a sliding short underline. */
-export function UnderlineTabs<T extends string>({ options, value, onChange, labels }: { options: readonly T[]; value: T; onChange: (value: T) => void; labels?: Partial<Record<T, string>> }) {
+export function UnderlineTabs<T extends string>({ options, value, onChange, labels, icons, hints }: { options: readonly T[]; value: T; onChange: (value: T) => void; labels?: Partial<Record<T, string>>; /** Optional small trailing icon per option (e.g. a Pro lock). */ icons?: Partial<Record<T, VoltIcon>>; hints?: Partial<Record<T, string>> }) {
   const p = usePalette();
   const reduced = useReducedMotion();
   const [width, setWidth] = useState(0);
@@ -290,8 +291,9 @@ export function UnderlineTabs<T extends string>({ options, value, onChange, labe
   const cell = width / Math.max(1, options.length);
   const indicator = useAnimatedStyle(() => ({ transform: [{ translateX: position.value * cell + cell / 2 - 14 }] }), [cell]);
   return <View onLayout={(event: LayoutChangeEvent) => setWidth(event.nativeEvent.layout.width)} accessibilityRole="tablist" style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: p.border }}>
-    {options.map(option => <Pressable key={option} accessibilityRole="tab" accessibilityState={{ selected: option === value }} onPress={() => onChange(option)} style={{ flex: 1, paddingTop: 10, paddingBottom: 12, alignItems: 'center' }}>
+    {options.map(option => <Pressable key={option} accessibilityRole="tab" accessibilityState={{ selected: option === value }} accessibilityHint={hints?.[option]} onPress={() => onChange(option)} style={{ flex: 1, paddingTop: 10, paddingBottom: 12, flexDirection: 'row', gap: 4, alignItems: 'center', justifyContent: 'center' }}>
       <Text style={{ color: option === value ? p.text : p.muted, fontFamily: fonts.bold, fontSize: 13.5 }}>{labels?.[option] ?? option}</Text>
+      {!!icons?.[option] && <Ionicons name={icons[option]} size={12} color={option === value ? p.text : p.muted}/>}
     </Pressable>)}
     {width > 0 && <Animated.View pointerEvents="none" style={[{ position: 'absolute', left: 0, bottom: -1, width: 28, height: 2.5, borderRadius: 2, backgroundColor: p.text }, indicator]}/>}
   </View>;
@@ -304,7 +306,7 @@ export function Segmented<T extends string>({ options, value, onChange, labels, 
   const [width, setWidth] = useState(0);
   const index = Math.max(0, options.indexOf(value));
   const position = useSharedValue(index);
-  useEffect(() => { position.value = reduced ? index : withTiming(index, { duration: 320, easing: outEase }); }, [index, position, reduced]);
+  useEffect(() => { position.value = reduced ? index : withTiming(index, { duration: MOTION.segment, easing: outEase }); }, [index, position, reduced]);
   const cell = (width - 8) / Math.max(1, options.length);
   const thumb = useAnimatedStyle(() => ({ transform: [{ translateX: interpolate(position.value, [0, Math.max(1, options.length - 1)], [0, cell * Math.max(1, options.length - 1)]) }] }), [cell, options.length]);
   return <View onLayout={(event: LayoutChangeEvent) => setWidth(event.nativeEvent.layout.width)} accessibilityRole="tablist" style={{ flexDirection: 'row', alignSelf: stretch ? 'stretch' : 'flex-start', padding: 4, borderRadius: 999, backgroundColor: p.light ? p.soft1 : p.card2 }}>

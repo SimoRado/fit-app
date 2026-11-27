@@ -136,7 +136,7 @@ describe('final onboarding legal acknowledgment', () => {
   it('sits on the final step, unchecked by default, and gates Continue', () => {
     expect(onboarding).toContain('const [legalAccepted, setLegalAccepted] = useState(false)');
     expect(onboarding).toContain('<Card><LegalAgreementChoice checked={legalAccepted} onChange={setLegalAccepted}/></Card>');
-    expect(onboarding).toContain('disabled={step === 3 ? !ready : busy || ageBlocked}');
+    expect(onboarding).toContain('disabled={step === 3 ? !ready : busy || ageBlocked || startingBlocked}');
     expect(onboarding).toContain('canBeginProfile(legalAccepted, busy)');
   });
   it('persists versions through the existing server and local flow before creating the profile', () => {

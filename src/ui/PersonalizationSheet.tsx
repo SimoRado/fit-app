@@ -1,24 +1,20 @@
 /**
- * Personalization (reference screenshots 2 and 3): Sex, Style (Match my
- * profile / Volt / Lotus) and Appearance (Light / Dark).
+ * Personalization: Style (Volt / Lotus) and Appearance (Light / Dark), chosen freely.
  *
- * - Sex is the existing `body.sex` preference (also used for calorie
- *   estimates); nothing else about the profile changes here.
- * - Style and appearance are independent: Volt Light, Volt Dark, Lotus Light,
- *   Lotus Dark. "Match my profile" is only a visual default (female → Lotus,
- *   otherwise Volt); either style can always be chosen manually, and choosing
- *   one never changes the sex.
+ * - Colours never depend on sex. Sex (the `body.sex` preference used for calorie
+ *   estimates) is set during onboarding and edited with the nutrition targets.
+ * - Style and appearance are independent: Volt Light, Volt Dark, Lotus Light, Lotus Dark.
  * - Changing style or appearance only changes colours; no fitness data is touched.
  */
 import React, { startTransition, useEffect, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
+import { TapPressable as Pressable } from './MotionPressable';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from './LocalizedText';
 import { message } from './components';
-import { fonts, getAppearancePalette, resolveStyle, type Appearance, type Palette, type Style, type StyleMode } from './theme';
+import { fonts, getAppearancePalette, type Appearance, type Palette, type Style, type StyleMode } from './theme';
 import { usePalette } from './voltKit';
 import { usePersonalization } from '../state/app';
-import type { Sex } from '../core/nutritionTargets';
 import { settlePending, type Pending } from '../core/personalizationPending';
 
 const styleSwatches: Record<Style, [string, string, string]> = {
@@ -28,7 +24,7 @@ const styleSwatches: Record<Style, [string, string, string]> = {
 
 export function PersonalizationSheet() {
   const p = usePalette();
-  const { sex, setSex, styleMode, setStyleMode, style, appearance, setAppearance } = usePersonalization();
+  const { sex, styleMode, setStyleMode, style, appearance, setAppearance } = usePersonalization();
   // A style/appearance change recolours every mounted screen, which takes a noticeable moment on
   // mid-range phones (measured ≈1.3–3.4 s in a Redmi dev build). The tapped option is therefore
   // shown as selected at once from local state, and the app-wide change runs as a transition, so
@@ -39,7 +35,6 @@ export function PersonalizationSheet() {
   useEffect(() => {
     setPending(current => settlePending(current, { sex, styleMode, appearance }));
   }, [sex, styleMode, appearance]);
-  const shownSex = pending.sex ?? sex;
   const shownMode = pending.styleMode ?? styleMode;
   const choose = <K extends keyof Pending>(key: K, value: NonNullable<Pending[K]>, apply: () => Promise<void>) => {
     setPending(current => ({ ...current, [key]: value }));
@@ -51,28 +46,14 @@ export function PersonalizationSheet() {
       });
     });
   };
-  const profileStyle = resolveStyle('profile', sex);
+  // Colours are a free choice; they never depend on the sex saved for calorie estimates.
   const options: { mode: StyleMode; title: string; subtitle: string; swatch: [string, string, string] }[] = [
-    { mode: 'profile', title: 'Match my profile', subtitle: `Currently ${profileStyle === 'lotus' ? 'Lotus' : 'Volt'}`, swatch: ['#1D2E8F', '#7E30E1', '#E26EE5'] },
     { mode: 'volt', title: 'Volt', subtitle: 'Navy, sky and volt', swatch: styleSwatches.volt },
     { mode: 'lotus', title: 'Lotus', subtitle: 'Indigo, violet and orchid', swatch: styleSwatches.lotus },
   ];
   const visibleAppearance: Appearance = (pending.appearance ?? appearance) === 'shore' ? 'shore' : 'abyss';
   return <View style={{ gap: 10 }}>
     <Text style={{ color: p.muted, fontFamily: fonts.medium, fontSize: 13.5, lineHeight: 20 }}>Cubyfit adapts its colours to your preferences. Choose a style and appearance that feel right for you. Your data and tracking stay exactly the same.</Text>
-
-    <SectionHead title="Sex" hint="Also used for calorie estimates"/>
-    <View accessibilityRole="radiogroup" style={{ flexDirection: 'row', padding: 4, borderRadius: 999, backgroundColor: p.light ? p.soft1 : p.card2 }}>
-      {(['male', 'female'] as Sex[]).map(value => {
-        const on = shownSex === value;
-        return <Pressable key={value} accessibilityRole="radio" accessibilityState={{ checked: on }} onPress={() => { if (!on) choose('sex', value, () => setSex(value)); }}
-          style={{ flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 999, backgroundColor: on ? (p.light ? p.c8 : p.elevated) : 'transparent', ...(on && p.light ? { boxShadow: '0px 2px 8px rgba(11,20,70,0.12)' } : {}) }}>
-          <Text style={{ color: on ? p.text : p.muted, fontFamily: fonts.bold, fontSize: 14 }}>{value === 'male' ? 'Male' : 'Female'}</Text>
-        </Pressable>;
-      })}
-    </View>
-    {!shownSex && <Text style={{ color: p.muted, fontFamily: fonts.medium, fontSize: 12 }}>Not set yet. Automatic calorie estimates are less precise without it.</Text>}
-    {!!shownSex && <Text style={{ color: p.subtle, fontFamily: fonts.medium, fontSize: 12, lineHeight: 17 }}>Changing this updates automatic calorie estimates. Targets you set yourself stay the same.</Text>}
 
     <SectionHead title="Style" hint="Colours across the app"/>
     <View accessibilityRole="radiogroup" style={{ gap: 10 }}>

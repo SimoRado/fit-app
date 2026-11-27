@@ -4,13 +4,13 @@
  * inside <BottomSheet> by the Profile screen.
  */
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, Switch, TextInput, View } from 'react-native';
+import { ActivityIndicator, Switch, TextInput, View } from 'react-native';
 import { NutritionTargetEditor } from './NutritionTargetEditor';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { Text } from './LocalizedText';
 import { Button, Choices, Field, message, notify } from './components';
-import { MotionPressable } from './MotionPressable';
+import { MotionPressable, TapPressable as Pressable } from './MotionPressable';
 import { fonts, radii, brand } from './theme';
 import { usePalette, type VoltIcon } from './voltKit';
 import { useApp } from '../state/app';

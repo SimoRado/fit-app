@@ -4,13 +4,13 @@
  * Column widths adapt to narrow Android screens while inputs stay ≥ 56dp wide.
  */
 import React, { useState } from 'react';
-import { Pressable, TextInput, useWindowDimensions, View } from 'react-native';
+import { TextInput, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeIn, FadeInDown, FadeOut, LinearTransition } from 'react-native-reanimated';
 import type { Exercise } from '../core/types';
 import { setRowColumns as setColumns } from '../core/routineDraft';
 import { Text } from './LocalizedText';
-import { MotionPressable } from './MotionPressable';
+import { MotionPressable, TapPressable as Pressable } from './MotionPressable';
 import { useReducedMotion } from './motion';
 import { fonts } from './theme';
 import { isLight, usePalette } from './voltKit';

@@ -1,7 +1,11 @@
 import React from 'react';
 import { Link } from 'expo-router';
-import { Linking, Pressable, View } from 'react-native';
+import { Linking, View } from 'react-native';
+import { TapPressable as Pressable } from './MotionPressable';
 import { Ionicons } from '@expo/vector-icons';
+import Animated, { ZoomIn } from 'react-native-reanimated';
+import { useReducedMotion } from './motion';
+import { MOTION } from '../core/pressMotion';
 import { Text } from './LocalizedText';
 import { colors, fonts } from './theme';
 
@@ -31,7 +35,7 @@ export function LegalAgreementChoice({ checked, onChange }: { checked: boolean; 
     <Pressable accessibilityRole="checkbox" accessibilityState={{ checked }} accessibilityLabel="I have read and agree to the Terms of Use and acknowledge the Privacy Policy" hitSlop={4} onPress={() => onChange(!checked)}
       style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12, minHeight: 52, paddingVertical: 4 }}>
       <View style={{ width: 26, height: 26, marginTop: 1, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: checked ? colors.accent : 'transparent', borderWidth: checked ? 0 : 2, borderColor: colors.borderStrong }}>
-        {checked && <Ionicons name="checkmark" size={18} color={colors.accentText}/>}
+        {checked && <CheckIn><Ionicons name="checkmark" size={18} color={colors.accentText}/></CheckIn>}
       </View>
       <Text style={{ color: colors.text, fontFamily: fonts.medium, fontSize: 14, lineHeight: 20, flex: 1 }}>
         I have read and agree to the <Text accessibilityRole="link" onPress={() => openLegal(TERMS_URL)} style={inline}>Terms of Use</Text> and acknowledge the <Text accessibilityRole="link" onPress={() => openLegal(PRIVACY_URL)} style={inline}>Privacy Policy</Text>.
@@ -50,10 +54,16 @@ export function SignupLegalChoice({ checked, onChange }: { checked: boolean; onC
   const inline = { color: colors.text, fontFamily: fonts.bold, textDecorationLine: 'underline' as const };
   return <Pressable accessibilityRole="checkbox" accessibilityState={{ checked }} accessibilityLabel="I agree to the Terms of Use and acknowledge the Privacy Policy" hitSlop={4} onPress={() => onChange(!checked)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 44 }}>
     <View style={{ width: 24, height: 24, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: checked ? colors.g1 : 'transparent', borderWidth: checked ? 0 : 2, borderColor: colors.borderStrong }}>
-      {checked && <Ionicons name="checkmark" size={16} color={colors.candyInk}/>}
+      {checked && <CheckIn><Ionicons name="checkmark" size={16} color={colors.candyInk}/></CheckIn>}
     </View>
     <Text style={{ flex: 1, color: colors.muted, fontFamily: fonts.medium, fontSize: 12, lineHeight: 18 }}>
       I agree to the <Text accessibilityRole="link" onPress={() => openLegal(TERMS_URL)} style={inline}>Terms of Use</Text> and acknowledge the <Text accessibilityRole="link" onPress={() => openLegal(PRIVACY_URL)} style={inline}>Privacy Policy</Text>.
     </Text>
   </Pressable>;
+}
+
+/** Checkmark pops in briefly when a box is ticked (instant with reduced motion). */
+function CheckIn({ children }: { children: React.ReactNode }) {
+  const reduced = useReducedMotion();
+  return <Animated.View entering={reduced ? undefined : ZoomIn.duration(MOTION.toggle)}>{children}</Animated.View>;
 }

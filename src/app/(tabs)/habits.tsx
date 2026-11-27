@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Pressable, View } from 'react-native';
+import { Alert, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
@@ -22,7 +22,7 @@ import { Button, Field, Page, confirm, message } from '../../ui/components';
 import { BottomSheet } from '../../ui/BottomSheet';
 import { fonts, brand } from '../../ui/theme';
 import { reconcileReminders } from '../../services/reminders';
-import { MotionPressable } from '../../ui/MotionPressable';
+import { MotionPressable, TapPressable as Pressable } from '../../ui/MotionPressable';
 import { CircleButton, EmptyAction, MiniBar, SectionLink, isLight, useEntering, usePalette, type VoltIcon } from '../../ui/voltKit';
 import { CubyMark } from '../../ui/CubyMark';
 import { HabitEditor } from '../../ui/HabitEditor';

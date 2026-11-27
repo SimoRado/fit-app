@@ -82,8 +82,8 @@ describe('Volt appearance foundation', () => {
   it('persists the style choice as a synced preference without touching profile data', () => {
     const appState = source('src/state/app.tsx');
     expect(appState).toContain("export const STYLE_MODE_KEY = 'style_mode'");
-    expect(appState).toContain('repo.setPreference(STYLE_MODE_KEY, next)');
-    expect(appState).toContain('applyStyle(resolveStyle(savedMode, savedSex))');
+    expect(appState).toContain('repo.setPreference(STYLE_MODE_KEY, nextStyle)');
+    expect(appState).toContain('applyStyle(explicitStyle)');
     const setStyleMode = appState.slice(appState.indexOf('const setStyleMode'), appState.indexOf('const setSex'));
     expect(setStyleMode).not.toMatch(/saveProfile|prefKeys.sex/);
   });

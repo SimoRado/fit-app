@@ -40,7 +40,9 @@ function AnimatedTab({ title, icon, selected, width, palette, activeText, active
   const fillStyle = useAnimatedStyle(() => ({ opacity: progress.value }));
   const labelStyle = useAnimatedStyle(() => ({
     opacity: progress.value,
-    maxWidth: interpolate(progress.value, [0, 1], [0, Math.max(0, width * 2.7 - 42)]),
+    maxWidth: interpolate(progress.value, [0, 1], [0, Math.max(0, width * 2.7 - 49)]),
+    // Space between the icon and the selected label; collapses with the label.
+    marginStart: interpolate(progress.value, [0, 1], [0, 7]),
     transform: [{ translateX: interpolate(progress.value, [0, 1], [-5, 0]) }],
   }), [width]);
   return <Animated.View style={[{ height: '100%', borderRadius: radii.pill, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }, selected ? { boxShadow: `0px 8px 20px -6px ${palette.candyGlow}` } : null, tabStyle]}>

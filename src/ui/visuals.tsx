@@ -1,5 +1,6 @@
 import React from 'react';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
+import { TapPressable as Pressable } from './MotionPressable';
 import { Text } from './LocalizedText';
 import { colors, fonts } from './theme';
 import { useVoltTheme } from './VoltThemeProvider';

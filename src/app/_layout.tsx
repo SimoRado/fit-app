@@ -13,7 +13,7 @@ import { AppProvider, useApp } from '../state/app';
 import { removeLocalAccountData, setLocalAccount } from '../data/db';
 import { setActiveLanguage } from '../core/i18n';
 import { AppFonts } from '../ui/fonts';
-import { MotionProvider } from '../ui/motion';
+import { MotionProvider, useFormScreenAnimation, useStackAnimation } from '../ui/motion';
 import { SubscriptionProvider } from '../state/subscriptions';
 import { AdEligibilityBridge } from '../state/AdEligibilityBridge';
 import { SyncProvider } from '../state/sync';
@@ -88,6 +88,8 @@ function LocalAccount({ userId, children }: { userId: string; children: React.Re
 }
 
 function AuthenticatedStack({ signedIn }: { signedIn: boolean }) {
+  const stackAnimation = useStackAnimation();
+  const formAnimation = useFormScreenAnimation();
   const { palette } = useVoltTheme();
   const { ready, profile, legalAccepted, ageRejected } = useApp();
   const { isAuthenticated } = useConvexAuth();
@@ -98,7 +100,7 @@ function AuthenticatedStack({ signedIn }: { signedIn: boolean }) {
   const hold = destination === '/age-hold';
   const needsAgreement = destination === '/legal-agreements';
   const appAllowed = destination === '/(tabs)';
-  return <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: palette.bg } }}>
+  return <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: palette.bg }, ...stackAnimation }}>
     <Stack.Protected guard={false}><Stack.Screen name="(auth)"/></Stack.Protected>
     <Stack.Protected guard={signedIn}><Stack.Screen name="index"/><Stack.Screen name="cloud-sync"/><Stack.Screen name="delete-account"/></Stack.Protected>
     <Stack.Protected guard={destination === '/onboarding'} redirectTo={destination}><Stack.Screen name="onboarding"/></Stack.Protected>
@@ -106,17 +108,18 @@ function AuthenticatedStack({ signedIn }: { signedIn: boolean }) {
     <Stack.Protected guard={needsAgreement} redirectTo={destination}><Stack.Screen name="legal-agreements"/></Stack.Protected>
     <Stack.Protected guard={appAllowed} redirectTo={destination}>
       <Stack.Screen name="(tabs)"/>
-      <Stack.Screen name="habit-form"/><Stack.Screen name="habit-history"/><Stack.Screen name="workout-form"/>
-      <Stack.Screen name="routine-form"/><Stack.Screen name="weight"/><Stack.Screen name="weight-form"/>
-      <Stack.Screen name="measurement-form"/><Stack.Screen name="mission-form"/><Stack.Screen name="missions"/>
+      <Stack.Screen name="habit-form" options={formAnimation}/><Stack.Screen name="habit-history"/><Stack.Screen name="workout-form" options={formAnimation}/>
+      <Stack.Screen name="routine-form" options={formAnimation}/><Stack.Screen name="weight"/><Stack.Screen name="weight-form" options={formAnimation}/>
+      <Stack.Screen name="measurement-form" options={formAnimation}/><Stack.Screen name="mission-form" options={formAnimation}/><Stack.Screen name="missions"/>
       <Stack.Screen name="motivation"/><Stack.Screen name="reminders"/><Stack.Screen name="account"/><Stack.Screen name="premium-test"/><Stack.Screen name="paywall" options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}/><Stack.Screen name="admob-testing"/>
     </Stack.Protected>
   </Stack>;
 }
 
 function AuthStack() {
+  const stackAnimation = useStackAnimation();
   const { palette } = useVoltTheme();
-  return <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: palette.bg } }}>
+  return <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: palette.bg }, ...stackAnimation }}>
     <Stack.Protected guard><Stack.Screen name="(auth)"/></Stack.Protected>
     <Stack.Protected guard={false} redirectTo="/(auth)/welcome">
       <Stack.Screen name="index"/><Stack.Screen name="(tabs)"/><Stack.Screen name="onboarding"/><Stack.Screen name="age-hold"/><Stack.Screen name="legal-agreements"/>

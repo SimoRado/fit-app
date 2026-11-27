@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { Link, router } from 'expo-router';
-import { Pressable, useWindowDimensions, View } from 'react-native';
+import { useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '../../ui/LocalizedText';
 import { Page, message } from '../../ui/components';
@@ -27,7 +27,7 @@ import { useLoadState } from '../../state/useLoadState';
 import { LoadError, SkeletonBlock, SkeletonCard, SkeletonRow, SkeletonScreen } from '../../ui/Skeleton';
 import { FoodSheet, TargetSetup, TargetsSheet } from '../../ui/NutritionSheets';
 import { AnimatedCollapse, AnimatedWeekBar } from '../../ui/MotionBlocks';
-import { MotionPressable } from '../../ui/MotionPressable';
+import { MotionPressable, TapPressable as Pressable } from '../../ui/MotionPressable';
 import { CircleButton, CountUp, EmptyAction, Horseshoe, KpiRow, ListRow, MiniBar, PlusDot, RowValue, SectionLink, StatTrio, VCard, usePalette, type VoltIcon } from '../../ui/voltKit';
 
 const num = (value: number) => Math.round(value).toLocaleString();

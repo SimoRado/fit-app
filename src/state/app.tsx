@@ -29,9 +29,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const [next, preferences] = await Promise.all([repo.profile(), repo.preferences()]);
     const savedAppearance = parseAppearance(preferences.find(item => item.key === 'appearance')?.value);
     applyAppearance(savedAppearance);
-    const savedMode = parseStyleMode(preferences.find(item => item.key === STYLE_MODE_KEY)?.value);
+    const storedMode = preferences.find(item => item.key === STYLE_MODE_KEY)?.value;
     const savedSex = parseSex(preferences.find(item => item.key === prefKeys.sex)?.value);
-    applyStyleMode(savedMode); applySex(savedSex); applyStyle(resolveStyle(savedMode, savedSex));
+    // Style is independent of sex. Accounts that still follow the retired "Match my profile" mode
+    // keep exactly the colours they see today: it is resolved once and saved as an explicit style.
+    const explicitStyle = resolveStyle(parseStyleMode(storedMode), savedSex);
+    if (next && storedMode !== explicitStyle) void repo.setPreference(STYLE_MODE_KEY, explicitStyle).catch(() => undefined);
+    applyStyleMode(explicitStyle); applySex(savedSex); applyStyle(explicitStyle);
     applyMeasurementSystem(parseMeasurementSystem(preferences.find(item => item.key === 'measurement_system')?.value));
     setLegalAccepted(preferences.find(item => item.key === 'terms_accepted_version')?.value === TERMS_VERSION);
     setAgeRejected(preferences.find(item => item.key === 'age_rejected')?.value === 'true');
@@ -40,17 +44,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // Style only changes colours; it never writes profile, sex or fitness data.
   const setStyleMode = useCallback(async (next: StyleMode) => {
     const previous = styleMode;
-    applyStyleMode(next); applyStyle(resolveStyle(next, sex));
-    try { await repo.setPreference(STYLE_MODE_KEY, next); }
-    catch (error) { applyStyleMode(previous); applyStyle(resolveStyle(previous, sex)); throw error; }
-  }, [styleMode, sex, applyStyle]);
-  // The existing body.sex preference (also used for calorie estimates). 'Match my profile' follows it.
+    const nextStyle = next === 'profile' ? style : next;
+    applyStyleMode(nextStyle); applyStyle(nextStyle);
+    try { await repo.setPreference(STYLE_MODE_KEY, nextStyle); }
+    catch (error) { applyStyleMode(previous); applyStyle(previous === 'profile' ? style : previous); throw error; }
+  }, [styleMode, style, applyStyle]);
+  // The existing body.sex preference, used only for calorie estimates. It never changes colours.
   const setSex = useCallback(async (next: Sex) => {
     const previous = sex;
-    applySex(next); applyStyle(resolveStyle(styleMode, next));
+    applySex(next);
     try { await repo.setPreference(prefKeys.sex, next); }
-    catch (error) { applySex(previous); applyStyle(resolveStyle(styleMode, previous)); throw error; }
-  }, [sex, styleMode, applyStyle]);
+    catch (error) { applySex(previous); throw error; }
+  }, [sex]);
   const setAppearance = useCallback(async (next: Appearance) => {
     const previous = appearance;
     applyAppearance(next);

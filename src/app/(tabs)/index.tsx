@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeIn } from 'react-native-reanimated';
@@ -22,7 +22,7 @@ import { foodEntries, nutritionTarget, type FoodEntry, type NutritionTarget } fr
 import { sumNutrients, type Meal, type Nutrients } from '../../core/nutrition';
 import { BottomSheet } from '../../ui/BottomSheet';
 import { FoodSheet } from '../../ui/NutritionSheets';
-import { MotionPressable } from '../../ui/MotionPressable';
+import { MotionPressable, TapPressable as Pressable } from '../../ui/MotionPressable';
 import { CubyMark } from '../../ui/CubyMark';
 import { DayPills, HeroNumber, IconBox, SquareRings, VCard, VChip, cardShadow, useEntering, usePalette, type VoltIcon } from '../../ui/voltKit';
 import { LotusFlower, candyStyle } from '../../ui/LotusArt';
@@ -346,7 +346,7 @@ function UpNextRow({ icon, caption, title, detail, onOpen, action, done = false,
   const p = usePalette();
   return <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingLeft: 12, paddingRight: 10, borderRadius: 22, backgroundColor: p.c8, borderWidth: 1, borderColor: p.light ? 'transparent' : p.c8Line, ...cardShadow(p) }}>
     <Pressable accessibilityRole="button" accessibilityLabel={title} onPress={onOpen} style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-      <IconBox icon={icon} size={42} radius={14} background={done ? p.lime : emphasis ? p.g1 : p.soft1} color={done ? (p.light ? brand.white : brand.ink) : emphasis ? p.plInk : p.accent} iconSize={18}/>
+      <IconBox icon={icon} size={42} radius={14} background={done ? (p.light ? p.paleBlue : p.soft1) : emphasis ? p.g1 : p.soft1} color={done ? (p.light ? p.text : p.blue) : emphasis ? p.plInk : p.accent} iconSize={18}/>
       <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
         <Text numberOfLines={1} style={{ color: p.muted, fontFamily: fonts.semibold, fontSize: 11.5 }}>{caption}</Text>
         <Text numberOfLines={1} style={{ color: p.text, fontFamily: fonts.displayHeavy, fontSize: 15 }}>{title}</Text>
