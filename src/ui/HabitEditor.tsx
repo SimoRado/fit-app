@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { Keyboard, Pressable, ScrollView, TextInput, View, type HostInstance } from 'react-native';
+import { Alert, Keyboard, Pressable, ScrollView, TextInput, View, type HostInstance } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -15,12 +15,13 @@ import { WheelTimePicker, WHEEL_HEIGHT, deviceUses12h } from './WheelTimePicker'
 import { HabitGlyph, groupColors } from './HabitVisuals';
 import { useApp } from '../state/app';
 import { repo } from '../data/db';
-import { uid } from '../core/date';
+import { dayKey, uid } from '../core/date';
 import type { Habit } from '../core/types';
 import { reminderTimes, validReminderTime } from '../core/habitExtras';
 import { HABIT_GROUPS, HABIT_ICON_IDS, HABIT_ICONS, WEEKDAYS, displayTime, frequencyLabel, frequencyPreset, habitGroup, isHabitIconId, normalizeDays, type FrequencyPreset, type HabitGroup } from '../core/habitDesign';
 import { reconcileReminders, requestReminderPermission } from '../services/reminders';
 import { isFeatureLimitError } from '../services/featureLimits';
+import { reportFailure } from '../core/monitoring';
 import { useSubscription } from '../state/subscriptions';
 
 type Close = (after?: () => void) => void;
@@ -111,6 +112,7 @@ export function HabitEditor({ habit, startDay, initialMode = 'time', close, onSa
       if (measured && (!Number.isFinite(amount) || amount <= 0 || amount > 1000000 || !Number.isFinite(tap) || tap <= 0 || tap > 1000000)) throw Error('Enter a positive target and step.');
       saving.current = true; setBusy(true); setError('');
       const notify = mode === 'time' && remind;
+      if (notify && (habit?.start_date ?? startDay) > dayKey()) throw Error('Reminders can be enabled when this habit starts. Turn off Remind me to save it now.');
       if (notify && !(await requestReminderPermission(language))) throw Error('Allow notifications to get reminders, or turn the reminder off.');
       const times = mode === 'time' ? [time] : [];
       const saved: Habit = {
@@ -120,13 +122,33 @@ export function HabitEditor({ habit, startDay, initialMode = 'time', close, onSa
         habit_type: measured ? 'quantity' : 'boolean', target_value: measured ? amount : 1, unit: measured ? unit.trim() : '', increment: measured ? tap : 1,
         sort_order: habit?.sort_order,
       };
+      const oldReminderPreference = notify ? (await repo.preferences()).find(row => row.key === 'habit_reminders')?.value : null;
       await repo.saveHabit(saved, { isPremium: subscription.isPremium });
-      if (notify) await repo.setPreference('habit_reminders', 'on');
-      // Show the saved habit at once; notification rescheduling (slow on Android) follows in the background.
+      try {
+        if (notify) await repo.setPreference('habit_reminders', 'on');
+        if (notify || habit?.reminder_enabled) await reconcileReminders();
+        else void reconcileReminders().catch(cause => reportFailure('habit-reminder-reconcile', cause));
+      } catch (cause) {
+        reportFailure('habit-reminder-scheduling', cause);
+        if (notify && oldReminderPreference !== 'on') await repo.setPreference('habit_reminders', oldReminderPreference ?? 'off');
+        // The schedule and the persisted switch must agree. Preserve an edited
+        // habit's previous state; keep a newly created habit without a reminder.
+        if (habit) {
+          await repo.saveHabit(habit, { isPremium: subscription.isPremium });
+          setError('Could not update the reminder. Your previous habit settings were kept. Check notification access or update the Development Client, then try again.');
+        } else {
+          const withoutReminder = { ...saved, reminder_enabled: 0 };
+          await repo.saveHabit(withoutReminder, { isPremium: subscription.isPremium });
+          setRemind(false);
+          onSaved(withoutReminder); close();
+          Alert.alert('Habit saved without a reminder', 'Android could not schedule this reminder. Check notification access or update the Development Client, then edit the habit to try again.');
+        }
+        return;
+      }
       onSaved(saved); close();
-      void reconcileReminders();
     } catch (cause) {
       if (isFeatureLimitError(cause)) { onLimit(); return; }
+      if (cause instanceof Error && /notification|reminder|Development Client|Android/i.test(cause.message)) setRemind(false);
       setError(cause instanceof Error ? cause.message : 'Could not save this habit.');
     }
     finally { saving.current = false; setBusy(false); }
@@ -134,7 +156,9 @@ export function HabitEditor({ habit, startDay, initialMode = 'time', close, onSa
   function remove() {
     if (!habit) return;
     confirm(`Delete “${habit.name}”?`, async () => {
-      try { await repo.deleteHabit(habit.id); onSaved(); close(); void reconcileReminders(); } catch (cause) { message(cause); }
+      try { await repo.deleteHabit(habit.id); } catch (cause) { message(cause); return; }
+      try { await reconcileReminders(); } catch (cause) { message(cause); }
+      onSaved(); close();
     }, 'This removes the habit. Days already in History keep their results.', 'Delete habit');
   }
 
@@ -167,7 +191,7 @@ export function HabitEditor({ habit, startDay, initialMode = 'time', close, onSa
         {HABIT_GROUPS.map(item => {
           const on = item.id === group;
           return <MotionPressable key={item.id} selected={on} pressScale={0.97} accessibilityRole="radio" accessibilityState={{ selected: on }} accessibilityLabel={`${item.id}, ${item.subtitle}`} onPress={() => chooseGroup(item.id)}
-            style={{ flex: 1, minWidth: 0, gap: 4, paddingVertical: 12, paddingHorizontal: 11, borderRadius: 18, borderWidth: 1.5, borderColor: on ? p.text : 'transparent', backgroundColor: on ? p.c8 : 'transparent' }}>
+            style={{ flex: 1, minWidth: 0, gap: 4, paddingVertical: 12, paddingHorizontal: 11, borderRadius: 18, borderWidth: 1.5, borderColor: on ? p.text : p.borderStrong, backgroundColor: p.c8 }}>
             <View style={{ width: 22, height: 5, borderRadius: 3, backgroundColor: groupColors(p, item.id).solid }}/>
             <Text style={{ color: p.text, fontFamily: fonts.displayHeavy, fontSize: 14.5, marginTop: 3 }}>{item.id}</Text>
             <Text numberOfLines={1} style={{ color: p.muted, fontFamily: fonts.medium, fontSize: 11 }}>{item.subtitle}</Text>

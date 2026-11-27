@@ -2,17 +2,20 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import Animated from 'react-native-reanimated';
+import Animated, { FadeIn } from 'react-native-reanimated';
 import { Text } from '../../ui/LocalizedText';
 import { addDays, dayKey, daysBetween, fromDay } from '../../core/date';
+import { clampHomeDay, homeDaySelectable, homeWeekBounds, homeWeekLabel, shiftHomeWeek, sundayWeekStart } from '../../core/homeWeek';
+import { useReducedMotion } from '../../ui/motion';
+import { localize } from '../../core/i18n';
 import { habitStreak, scheduled } from '../../core/logic';
 import { Habit, HabitCompletion, HabitProgress, Routine, RoutineExercise, Workout } from '../../core/types';
 import { repo } from '../../data/db';
 import { useApp } from '../../state/app';
 import { useScreenRevision } from '../../state/useScreenRevision';
 import { useLoadState } from '../../state/useLoadState';
-import { Button, Page, message } from '../../ui/components';
-import { colors, fonts, brand } from '../../ui/theme';
+import { Page, message } from '../../ui/components';
+import { fonts, brand } from '../../ui/theme';
 import { gymOverridesPreferenceKey, gymSchedulePreferenceKey, parseGymOverrides, parseGymSchedule, resolveDayPlan, type GymDayOverride, type GymDayPlan } from '../../core/gymSchedule';
 import { dailyProgressPercent } from '../../core/voltGeometry';
 import { foodEntries, nutritionTarget, type FoodEntry, type NutritionTarget } from '../../data/nutrition';
@@ -32,16 +35,6 @@ const TAB_PRELOAD_DELAY_MS = 900;
 const TAB_PRELOAD_GAP_MS = 700;
 
 const localeFor = (language: string) => language === 'fr' ? 'fr-FR' : language === 'ar' ? 'ar-u-nu-arab' : 'en-US';
-const sundayWeekStart = (day: string) => {
-  const date = fromDay(day);
-  date.setDate(date.getDate() - date.getDay());
-  return dayKey(date);
-};
-const monthGridStart = (date: Date) => {
-  const start = new Date(date.getFullYear(), date.getMonth(), 1, 12);
-  start.setDate(start.getDate() - start.getDay());
-  return dayKey(start);
-};
 /** Prototype: next meal follows the clock (breakfast < 11h, lunch < 15h, dinner < 20h, then snacks). */
 const mealForHour = (hour: number): Meal => hour < 11 ? 'breakfast' : hour < 15 ? 'lunch' : hour < 20 ? 'dinner' : 'snacks';
 const mealTitle: Record<Meal, string> = { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner', snacks: 'Snacks' };
@@ -62,9 +55,8 @@ export default function Home() {
   const [restDays, setRestDays] = useState<string[]>([]);
   const [openWorkout, setOpenWorkout] = useState<OpenWorkout | null>(null);
   const [selectedDay, setSelectedDay] = useState(dayKey());
-  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [weekStart, setWeekStart] = useState(() => sundayWeekStart(dayKey()));
   const [foodOpen, setFoodOpen] = useState(false);
-  const [monthCursor, setMonthCursor] = useState(() => fromDay(dayKey()));
   // Tagged with its day: a read for a previously selected date can never be shown under the current one.
   const [nutrition, setNutrition] = useState<{ day: string; target: NutritionTarget | null; consumed: Nutrients; entries: FoodEntry[] } | null>(null);
   // First-load state: skeletons only until each read has completed once; refreshes keep content.
@@ -118,15 +110,21 @@ export default function Home() {
 
   const today = dayKey();
   const locale = localeFor(language);
-  const weekDays = useMemo(() => daysBetween(sundayWeekStart(selectedDay), addDays(sundayWeekStart(selectedDay), 6)), [selectedDay]);
-  const monthLabel = new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric' }).format(fromDay(selectedDay));
-  const selectedLabel = new Intl.DateTimeFormat(locale, { weekday: 'long', day: 'numeric', month: 'long' }).format(fromDay(selectedDay));
+  const weekDays = useMemo(() => daysBetween(weekStart, addDays(weekStart, 6)), [weekStart]);
+  const weekBounds = homeWeekBounds(weekStart, today);
+  const weekLabel = homeWeekLabel(weekStart, today, locale);
+  const reducedMotion = useReducedMotion();
+  // Keep the selection inside the Home range (e.g. after midnight while the app stayed open).
+  useEffect(() => {
+    const clamped = clampHomeDay(selectedDay, today);
+    if (clamped !== selectedDay) { setSelectedDay(clamped); setWeekStart(sundayWeekStart(clamped)); }
+  }, [selectedDay, today]);
+  const changeWeek = (direction: -1 | 1) => {
+    const next = shiftHomeWeek(weekStart, selectedDay, direction, today);
+    setWeekStart(next.weekStart); setSelectedDay(next.selected);
+  };
   const firstName = profile?.name?.trim().split(/\s+/)[0] || 'friend';
   const initials = profile?.name?.trim().slice(0, 1).toLocaleUpperCase() || 'C';
-  const monthGrid = useMemo(() => daysBetween(monthGridStart(monthCursor), addDays(monthGridStart(monthCursor), 41)), [monthCursor]);
-  const monthGridTitle = new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric' }).format(monthCursor);
-  const currentMonth = fromDay(today);
-  const nextMonthAvailable = monthCursor.getFullYear() < currentMonth.getFullYear() || (monthCursor.getFullYear() === currentMonth.getFullYear() && monthCursor.getMonth() < currentMonth.getMonth());
 
   const habitItems = habits.filter(habit => !habit.archived && scheduled(habit, selectedDay)).map(habit => {
     const progress = habitProgress.find(item => item.habit_id === habit.id && item.day === selectedDay);
@@ -176,7 +174,6 @@ export default function Home() {
       changed();
     } catch (error) { message(error); }
   };
-  const changeMonth = (offset: number) => setMonthCursor(current => new Date(current.getFullYear(), current.getMonth() + offset, 1, 12));
   const cardEntering = useEntering(0);
 
   return <Page title="">
@@ -194,17 +191,21 @@ export default function Home() {
       </Pressable>
     </View>
 
-    {/* Month chip + week pills */}
-    <MotionPressable pressScale={0.96} accessibilityRole="button" accessibilityLabel={`Choose date, ${selectedLabel}`} onPress={() => { setMonthCursor(fromDay(selectedDay)); setCalendarOpen(true); }} style={{ alignSelf: 'flex-start', minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 13, borderRadius: 999, backgroundColor: p.c8, borderWidth: p.light ? 0 : 1, borderColor: p.c8Line, ...(p.light ? { boxShadow: '0px 1px 2px rgba(73,16,139,0.04), 0px 8px 20px -12px rgba(73,16,139,0.2)' } : {}) }}>
-      <Ionicons name="calendar-outline" size={15} color={p.text}/><Text style={{ color: p.text, fontFamily: fonts.bold, fontSize: 12.5 }}>{monthLabel}</Text><Ionicons name="chevron-down" size={14} color={p.text}/>
-    </MotionPressable>
-    <DayPills selected={selectedDay} onSelect={setSelectedDay} days={weekDays.map(day => ({
+    {/* Week navigator + week pills (Home looks back 30 days at most; no future weeks). */}
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 14 }}>
+      <WeekArrow direction={-1} disabled={!weekBounds.canGoBack} onPress={() => changeWeek(-1)}/>
+      <Text accessibilityRole="header" numberOfLines={1} style={{ minWidth: 112, textAlign: 'center', color: p.text, fontFamily: fonts.bold, fontSize: 13.5 }}>{weekLabel}</Text>
+      <WeekArrow direction={1} disabled={!weekBounds.canGoForward} onPress={() => changeWeek(1)}/>
+    </View>
+    <Animated.View key={weekStart} entering={reducedMotion ? undefined : FadeIn.duration(220)}>
+    <DayPills selected={selectedDay} onSelect={day => { if (homeDaySelectable(day, today)) setSelectedDay(day); }} days={weekDays.map(day => ({
       key: day,
       number: String(fromDay(day).getDate()),
       label: new Intl.DateTimeFormat(locale, { weekday: 'short' }).format(fromDay(day)),
-      disabled: day > today,
+      disabled: !homeDaySelectable(day, today),
       accessibilityLabel: new Intl.DateTimeFormat(locale, { weekday: 'long', day: 'numeric', month: 'long' }).format(fromDay(day)),
     }))}/>
+    </Animated.View>
 
     {/* .card8.dp — daily progress */}
     {homeStatus === 'error' ? <LoadError text="Could not load today's progress." onRetry={retryHome}/> : homeStatus === 'loading' ? <HomeProgressSkeleton/> : <Animated.View entering={cardEntering}>
@@ -220,7 +221,7 @@ export default function Home() {
             <View style={{ gap: 7, marginTop: 10 }}>
               <Legend icon="restaurant-outline" color={p.q1} label="Calories" value={caloriesOn ? (dayNutrition?.target?.kcal ? `${Math.round(dayNutrition.consumed.kcal).toLocaleString(locale)} / ${dayNutrition.target.kcal.toLocaleString(locale)}` : '…') : 'Not set'}/>
               <Legend icon="checkmark-circle-outline" color={p.q2} label="Habits" value={habitItems.length ? `${habitsDone} / ${habitItems.length}` : 'None due'}/>
-              <Legend icon="barbell-outline" color={p.q3} label="Workout" value={selectedWorkout ? 'Done' : routines.length ? (selectedDay === today ? 'To do' : 'Rest') : 'Not planned'}/>
+              <Legend icon="barbell-outline" color={p.light && p.style === 'volt' ? p.chipFg : p.q3} background={p.light && p.style === 'volt' ? p.softLime : undefined} label="Workout" value={selectedWorkout ? 'Done' : routines.length ? (selectedDay === today ? 'To do' : 'Rest') : 'Not planned'}/>
             </View>
           </View>
         </View>
@@ -281,23 +282,6 @@ export default function Home() {
 
     <View style={{ height: 8 }}/>
     <BottomSheet visible={foodOpen} title="Add food" onClose={() => setFoodOpen(false)}>{close => <FoodSheet key={`${nextMeal}:${selectedDay}`} entry={null} meal={nextMeal} day={selectedDay} close={close} onSaved={() => changed()}/>}</BottomSheet>
-    <BottomSheet visible={calendarOpen} title="Choose a date" onClose={() => setCalendarOpen(false)}>{close => <View style={{ gap: 12 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Previous month" onPress={() => changeMonth(-1)} style={{ minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}><Ionicons name="chevron-back" size={20} color={colors.text}/></Pressable>
-        <Text style={{ color: colors.text, fontFamily: fonts.displayHeavy, fontSize: 18 }}>{monthGridTitle}</Text>
-        <Pressable accessibilityRole="button" accessibilityLabel="Next month" accessibilityState={{ disabled: !nextMonthAvailable }} disabled={!nextMonthAvailable} onPress={() => changeMonth(1)} style={{ minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center', opacity: nextMonthAvailable ? 1 : .35 }}><Ionicons name="chevron-forward" size={20} color={colors.text}/></Pressable>
-      </View>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-around' }}>{weekDays.map(day => <Text key={day} style={{ width: '13%', color: colors.muted, textAlign: 'center', fontFamily: fonts.bold, fontSize: 10 }}>{new Intl.DateTimeFormat(locale, { weekday: 'short' }).format(fromDay(day)).slice(0, 2)}</Text>)}</View>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', rowGap: 4 }}>
-        {monthGrid.map(day => {
-          const selected = day === selectedDay;
-          const outside = fromDay(day).getMonth() !== monthCursor.getMonth();
-          const future = day > today;
-          return <Pressable key={day} accessibilityRole="button" accessibilityState={{ selected, disabled: future }} accessibilityLabel={new Intl.DateTimeFormat(locale, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(fromDay(day))} disabled={future} onPress={() => { setSelectedDay(day); close(() => setCalendarOpen(false)); }} style={{ width: '14.285%', minHeight: 42, alignItems: 'center', justifyContent: 'center' }}><View style={{ width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', ...(selected ? candyStyle(colors, 'pill') : null), opacity: future ? .32 : outside ? .48 : 1 }}><Text style={{ color: selected ? colors.candyInk : colors.text, fontFamily: selected ? fonts.bold : fonts.body, fontSize: 13 }}>{fromDay(day).getDate()}</Text></View></Pressable>;
-        })}
-      </View>
-      <Button title="Today" kind="ghost" disabled={selectedDay === today} onPress={() => { setSelectedDay(today); close(() => setCalendarOpen(false)); }}/>
-    </View>}</BottomSheet>
   </Page>;
 }
 
@@ -335,10 +319,10 @@ function HomeCardsSkeleton({ showUpNext }: { showUpNext: boolean }) {
 }
 
 /** `.lg8r` — ring legend row. */
-function Legend({ icon, color, label, value }: { icon: VoltIcon; color: string; label: string; value: string }) {
+function Legend({ icon, color, background, label, value }: { icon: VoltIcon; color: string; background?: string; label: string; value: string }) {
   const p = usePalette();
   return <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-    <View style={{ width: 22, height: 22, borderRadius: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: p.lgi }}><Ionicons name={icon} size={13} color={color}/></View>
+    <View style={{ width: 22, height: 22, borderRadius: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: background ?? p.lgi }}><Ionicons name={icon} size={13} color={color}/></View>
     <Text numberOfLines={1} style={{ flex: 1, minWidth: 0, color: p.muted, fontFamily: fonts.semibold, fontSize: 12 }}>{label}</Text>
     <Text numberOfLines={1} style={{ maxWidth: '62%', color: p.text, fontFamily: fonts.bold, fontSize: 12.5 }}>{value}</Text>
   </View>;
@@ -378,4 +362,15 @@ function UpNextRow({ icon, caption, title, detail, onOpen, action, done = false,
 function MoreLink({ icon, label, onPress }: { icon: VoltIcon; label: string; onPress: () => void }) {
   const p = usePalette();
   return <MotionPressable pressScale={0.95} accessibilityRole="button" onPress={onPress} style={{ flex: 1, minWidth: 0, minHeight: 49, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: p.c8, borderWidth: 1, borderColor: p.light ? 'transparent' : p.c8Line, borderRadius: 16, paddingHorizontal: 7, ...cardShadow(p) }}><Ionicons name={icon} size={15} color={p.accent}/><Text numberOfLines={1} style={{ color: p.text, fontFamily: fonts.bold, fontSize: 11.5 }}>{label}</Text></MotionPressable>;
+}
+
+/** Small round chevron used by the Home week navigator. */
+function WeekArrow({ direction, disabled, onPress }: { direction: -1 | 1; disabled: boolean; onPress: () => void }) {
+  const p = usePalette();
+  const { language } = useApp();
+  const icon = (direction < 0) !== (language === 'ar') ? 'chevron-back' : 'chevron-forward';
+  return <MotionPressable pressScale={0.9} accessibilityRole="button" accessibilityLabel={localize(direction < 0 ? 'Previous week' : 'Next week', language)} accessibilityState={{ disabled }} disabled={disabled} hitSlop={8} onPress={onPress}
+    style={{ width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: p.c8, opacity: disabled ? 0.35 : 1, ...(p.light ? { boxShadow: '0px 2px 8px rgba(11,20,70,0.10)' } : { borderWidth: 1, borderColor: p.borderStrong }) }}>
+    <Ionicons name={icon} size={16} color={p.text}/>
+  </MotionPressable>;
 }

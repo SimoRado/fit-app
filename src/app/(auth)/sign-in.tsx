@@ -1,9 +1,7 @@
 import React, { useState } from 'react';
 import { useSignIn } from '@clerk/expo';
 import { AuthAction, AuthError, AuthField, AuthLink, AuthPage, clerkErrorCode, clerkMessage } from '../../ui/auth';
-import { SocialAuth } from '../../ui/SocialAuth';
-import { Text } from '../../ui/LocalizedText';
-import { styles } from '../../ui/components';
+import { router } from 'expo-router';
 import { authDiagnostic } from '../../core/runtime';
 
 export default function SignIn() {
@@ -41,9 +39,9 @@ export default function SignIn() {
     } catch (cause) { setError(clerkMessage(cause)); } finally { setBusy(false); }
   }
   async function resend() { try { const result = await signIn.mfa.sendEmailCode(); if (result.error) setError(clerkMessage(result.error)); else setError(''); } catch (cause) { setError(clerkMessage(cause)); } }
-  return <AuthPage title={needsCode ? 'Confirm sign in' : 'Welcome back'} detail={needsCode ? 'Enter the email code for this device.' : 'Sign in to your account. Local workout data stays on this phone.'}>
+  const goBack = () => router.replace({ pathname: '/(auth)/welcome', params: { mode: 'login' } });
+  return <AuthPage onBack={needsCode ? undefined : goBack} title={needsCode ? 'Confirm sign in' : 'Welcome back'} detail={needsCode ? 'Enter the email code for this device.' : 'Sign in to your account. Local workout data stays on this phone.'}>
     {needsCode ? <><AuthField label="Email code" value={code} onChangeText={setCode} code/><AuthError message={error}/><AuthAction title="Verify and sign in" onPress={verify} disabled={busy}/><AuthAction title="Resend code" onPress={resend} disabled={busy}/></> : <>
-      <SocialAuth/><Text style={[styles.muted, { textAlign: 'center' }]}>OR USE EMAIL</Text>
       <AuthField label="Email" value={email} onChangeText={setEmail} email/>
       <AuthField label="Password" value={password} onChangeText={setPassword} secure/>
       <AuthError message={error}/><AuthAction title={busy ? 'Signing in…' : 'Sign in'} onPress={submit} disabled={busy}/>

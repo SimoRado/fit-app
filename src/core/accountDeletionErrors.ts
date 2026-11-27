@@ -1,11 +1,9 @@
 /**
  * Turns a failed `accountDeletionActions.request` call into user-facing copy.
  *
- * `jobMayExist` is false when the server's handler itself rejected the request:
- * it creates the deletion job only as its last step, so a handler error means
- * nothing was started and the locally remembered receipt can be dropped. A
- * network failure is ambiguous (the job may have been created before the
- * response was lost), so the receipt is kept and the status check resolves it.
+ * Only explicit pre-job validation errors can discard the receipt. A generic
+ * server or network failure may arrive after the durable job was created, so
+ * the receipt stays available for recovery and completion checking.
  */
 export type DeletionFailure = { title: string; message: string; jobMayExist: boolean; reverify: boolean };
 
@@ -17,6 +15,6 @@ export function deletionFailure(error: unknown): DeletionFailure {
   if (/Recent authentication required/.test(text)) return { title, jobMayExist: false, reverify: true, message: 'For your security, confirm your email code again, then retry. Nothing was deleted.' };
   if (/Authentication required|Sign in again/.test(text)) return { title, jobMayExist: false, reverify: true, message: 'Your session has expired. Sign in again, then retry. Nothing was deleted.' };
   if (/Deletion confirmation required/.test(text)) return { title, jobMayExist: false, reverify: false, message: 'The confirmation could not be accepted. Type the phrase again and retry. Nothing was deleted.' };
-  if (fromServer) return { title, jobMayExist: false, reverify: false, message: 'The server could not start the deletion. Nothing was deleted. Please try again later.' };
-  return { title, jobMayExist: true, reverify: false, message: 'Could not reach the server. Check your connection and try again. If the request already went through, its status appears here when you reconnect.' };
+  if (fromServer) return { title: 'Deletion status uncertain', jobMayExist: true, reverify: false, message: 'The request may already be processing. Its receipt is saved and the app will check status when connected.' };
+  return { title: 'Deletion status uncertain', jobMayExist: true, reverify: false, message: 'Could not reach the server. The request may already be processing. Its receipt is saved and the app will check status when you reconnect.' };
 }

@@ -208,8 +208,9 @@ export default function Habits() {
   async function deleteHabit(id: string) {
     const before = habits;
     setHabits(rows => rows.filter(row => row.id !== id));
-    try { await repo.deleteHabit(id); changed(); void reconcileReminders(); }
-    catch (error) { setHabits(before); message(error); }
+    try { await repo.deleteHabit(id); } catch (error) { setHabits(before); message(error); return; }
+    changed();
+    try { await reconcileReminders(); } catch (error) { message(error); }
   }
   /** One-tap starter: saved locally at once with no reminder; editable afterwards. */
   async function createStarter(starter: StarterHabit) {

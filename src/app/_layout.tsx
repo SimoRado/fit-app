@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { ClerkProvider, useAuth } from '@clerk/expo';
 import { tokenCache } from '@clerk/expo/token-cache';
 import { ConvexProviderWithClerk } from 'convex/react-clerk';
+import { ConvexHttpClient } from 'convex/browser';
 import { ConvexReactClient, useConvexAuth, useQuery } from 'convex/react';
 import { Stack } from 'expo-router';
 import Constants from 'expo-constants';
@@ -21,7 +22,9 @@ import { useVoltTheme, VoltThemeProvider } from '../ui/VoltThemeProvider';
 import { authDiagnostic } from '../core/runtime';
 import { clerkGateState } from '../core/googleSession';
 import { api } from '../../convex/_generated/api';
-import { pendingDeletions, forgetDeletion } from '../data/pendingDeletion';
+import { pendingDeletions, forgetDeletion, rememberDeletion } from '../data/pendingDeletion';
+import { accountDeletionView, blockAccountForDeletion, unblockAccountAfterRejectedDeletion, useAccountDeletionBlocked } from '../data/deletionLifecycle';
+import { DeletionProgress } from '../ui/DeletionProgress';
 import { clearMonitoringUser, reportFailure } from '../core/monitoring';
 import { accessDestination } from '../core/accessGate';
 import { allowsClerkPublishableKey, usesExpectedConvexDeployment, validateCubyfitAuthConfiguration } from '../core/productionConfig';
@@ -62,6 +65,9 @@ if (internalBuild && !usesExpectedConvexDeployment(convexUrl, 'development')) {
   throw new Error('Cubyfit internal builds must use the development Convex deployment');
 }
 const convex = new ConvexReactClient(convexUrl, { unsavedChangesWarning: false });
+// The Clerk identity is deleted before the device can observe completion.
+// This client sends no Clerk token and calls only the minimal completion query.
+const deletionCompletionClient = new ConvexHttpClient(convexUrl);
 
 function Loading() { const { palette } = useVoltTheme(); return <View style={{ flex: 1, backgroundColor: palette.bg, justifyContent: 'center' }}><ActivityIndicator color={palette.accent}/></View>; }
 
@@ -124,29 +130,66 @@ function AuthStack() {
 
 function Navigator() {
   const { isLoaded, isSignedIn, userId, signOut } = useAuth();
+  const { isAuthenticated } = useConvexAuth();
+  const blocked = useAccountDeletionBlocked(userId);
+  const [pending, setPending] = useState<Awaited<ReturnType<typeof pendingDeletions>> | null>(null);
+  const [cleanupError, setCleanupError] = useState<string | null>(null);
+  const cleanupBusy = useRef(false);
+  const currentDeletion = useQuery(api.accountDeletion.current, isLoaded && isSignedIn && isAuthenticated && userId && pending !== null && !blocked ? {} : 'skip');
   useEffect(() => {
+    if (blocked && userId) void clearAccountReminders().catch(cause => reportFailure('deletion-reminders', cause));
+  }, [blocked, userId]);
+  useEffect(() => {
+    void pendingDeletions().then(setPending).catch(() => { setCleanupError('Could not read the saved deletion receipt. Restart the app and try again.'); setPending([]); });
+  }, [blocked, userId]);
+  useEffect(() => {
+    if (!userId || !currentDeletion?.receipt) return;
+    blockAccountForDeletion(userId);
+    void rememberDeletion({ userId, receipt: currentDeletion.receipt }).then(() => pendingDeletions()).then(setPending).catch(() => setCleanupError('Could not save the deletion receipt on this device.'));
+  }, [userId, currentDeletion?.receipt]);
+  useEffect(() => {
+    if (pending === null) return;
     let active = true;
-    let busy = false;
     const reconcile = async () => {
-      if (busy) return;
-      busy = true;
+      if (cleanupBusy.current) return;
+      cleanupBusy.current = true;
+      let step: 'receipt' | 'completion' | 'reminders' | 'sqlite' | 'signout' | 'securestore' = 'receipt';
       try {
-        for (const pending of await pendingDeletions()) {
+        const saved = await pendingDeletions();
+        for (const pending of saved) {
           if (!active) return;
-          const state = await convex.query(api.accountDeletion.completionStatus, { receipt: pending.receipt });
+          step = 'completion';
+          const state = await deletionCompletionClient.query(api.accountDeletion.completionStatus, { receipt: pending.receipt });
+          if (!active) return;
           if (!state?.completed) continue;
+          step = 'reminders';
           if (userId === pending.userId) await clearAccountReminders();
+          step = 'sqlite';
           await removeLocalAccountData(pending.userId);
+          step = 'signout';
+          if (userId === pending.userId && isSignedIn) await signOut();
+          step = 'securestore';
           await forgetDeletion(pending.userId);
-          if (userId === pending.userId) { try { await signOut(); } catch { /* Clerk may already have ended the session. */ } }
+          if (userId !== pending.userId) unblockAccountAfterRejectedDeletion(pending.userId);
+          setPending(await pendingDeletions());
+          setCleanupError(null);
         }
-      } catch { /* An offline device will try again when it reconnects. */ }
-      finally { busy = false; }
+        if (saved.length) setCleanupError(null);
+      } catch (cause) {
+        reportFailure(`deletion-${step}`, cause);
+        if (__DEV__) console.warn('Deletion cleanup retry', step, cause instanceof Error ? cause.name : typeof cause);
+        setCleanupError(step === 'completion' ? 'Could not check deletion completion. This device will retry when connected.'
+          : step === 'receipt' || step === 'securestore' ? 'Could not read or update the saved deletion receipt on this device. This device will retry.'
+            : step === 'reminders' ? 'Cloud deletion is complete. This device could not cancel reminders yet and will retry.'
+              : step === 'sqlite' ? 'Cloud deletion is complete. This device could not remove local account data yet and will retry.'
+                : 'Cloud deletion and local data removal are complete. Sign-out needs another attempt.');
+      }
+      finally { cleanupBusy.current = false; }
     };
     void reconcile();
     const timer = setInterval(() => { void reconcile(); }, 20000);
     return () => { active = false; clearInterval(timer); };
-  }, [userId, signOut]);
+  }, [userId, isSignedIn, signOut, pending]);
   useEffect(() => { authDiagnostic('Clerk auth state', { loaded: isLoaded, signedIn: Boolean(isSignedIn), hasUser: Boolean(userId) }, 'NAVIGATION'); }, [isLoaded, isSignedIn, userId]);
   // Keep the root appearance alive across Clerk transitions. The signed-in
   // AppProvider restores the account's persisted selection after local data is
@@ -156,6 +199,10 @@ function Navigator() {
   useEffect(() => { authDiagnostic('protected route gate', { gate }, 'NAVIGATION'); }, [gate]);
   if (gate === 'loading') return <Loading/>;
   const signedIn = gate === 'signed-in';
+  const view = accountDeletionView({ signedIn, userId, authenticated: isAuthenticated, pending, current: currentDeletion, blocked });
+  if (view === 'loading') return <Loading/>;
+  const accountReceipt = pending?.find(item => item.userId === userId)?.receipt ?? currentDeletion?.receipt ?? null;
+  if (view === 'progress') return <DeletionProgress receipt={signedIn ? accountReceipt : pending?.[0]?.receipt ?? null} signedIn={signedIn} cleanupError={cleanupError}/>;
   return signedIn && userId ? <LocalAccount key={userId} userId={userId}><AuthenticatedStack signedIn={signedIn}/></LocalAccount> : <AuthStack/>;
 }
 

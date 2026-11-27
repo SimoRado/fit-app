@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useSignUp } from '@clerk/expo';
-import { AuthAction, AuthError, AuthField, AuthLink, AuthPage, clerkMessage } from '../../ui/auth';
+import { View } from 'react-native';
+import { AccountEmailCard, AuthAction, AuthError, AuthField, AuthLink, AuthPage, LanguageButton, clerkMessage } from '../../ui/auth';
 import { OtpField } from '../../ui/OtpField';
 import { Text } from '../../ui/LocalizedText';
 import { styles } from '../../ui/components';
@@ -68,23 +69,25 @@ export default function VerifyEmail() {
     try { const result = await signUp.verifications.sendEmailCode(); authDiagnostic('verification resend result', { success: !result.error }, 'EMAIL'); if (result.error) setError(clerkMessage(result.error)); else setNotice('A new code was sent.'); }
     catch (cause) { authDiagnostic('verification resend failed', {}, 'EMAIL'); setError(clerkMessage(cause)); } finally { setBusy(false); }
   }
-  return <AuthPage title={needsDetails ? 'Complete your account' : 'Verify your email'} detail={needsDetails ? 'One more account step before your fitness profile.' : "We've sent a verification code to your email address."}>
-    <Text style={styles.muted}>{signUp.emailAddress ?? ''}</Text>
+  return <AuthPage title={needsDetails ? 'Complete your account' : 'Verify your email'} detail={needsDetails ? 'One more step before your fitness profile.' : "We've sent a verification code to your email address."} headerRight={<LanguageButton/>}
+    footer={needsDetails ? <View style={{ gap: 4 }}><AuthAction title={busy ? 'Completing…' : 'Continue'} onPress={completeRequirements} disabled={busy || requirements.unsupported.length > 0 || requirements.unverified.length > 0}/><AuthLink href="/(auth)/sign-up" title="Start registration again"/></View> : undefined}>
+    {needsDetails ? <AccountEmailCard email={signUp.emailAddress ?? ''}/> : <Text style={styles.muted}>{signUp.emailAddress ?? ''}</Text>}
     {needsDetails ? <>
-      {requirements.firstName && <AuthField label="First name" value={firstName} onChangeText={setFirstName}/>}
-      {requirements.lastName && <AuthField label="Last name" value={lastName} onChangeText={setLastName}/>}
+      {(requirements.firstName || requirements.lastName) && <View style={{ flexDirection: 'row', gap: 10 }}>
+        {requirements.firstName && <View style={{ flex: 1, minWidth: 0 }}><AuthField label="First name" value={firstName} onChangeText={setFirstName}/></View>}
+        {requirements.lastName && <View style={{ flex: 1, minWidth: 0 }}><AuthField label="Last name" value={lastName} onChangeText={setLastName}/></View>}
+      </View>}
       {requirements.username && <AuthField label="Username" value={username} onChangeText={setUsername}/>}
       {requirements.legalAccepted && <SignupLegalChoice checked={legalAccepted} onChange={setLegalAccepted}/>}
       {requirements.unsupported.length > 0 && <Text style={styles.muted}>Additional required fields: {requirements.unsupported.join(', ')}</Text>}
       {requirements.unverified.length > 0 && <Text style={styles.muted}>Fields still awaiting verification: {requirements.unverified.join(', ')}</Text>}
       <AuthError message={error}/>
-      <AuthAction title={busy ? 'Completing…' : 'Continue'} onPress={completeRequirements} disabled={busy || requirements.unsupported.length > 0 || requirements.unverified.length > 0}/>
     </> : <>
       <OtpField value={code} onChangeText={setCode}/>
       <AuthError message={error}/>{notice ? <Text style={styles.muted}>{notice}</Text> : null}
       <AuthAction title={busy ? 'Verifying…' : 'Verify email'} onPress={verify} disabled={busy}/>
       <AuthAction title="Resend code" onPress={resend} disabled={busy || !signUp.emailAddress}/>
     </>}
-    <AuthLink href="/(auth)/sign-up" title="Start registration again"/>
+    {!needsDetails && <AuthLink href="/(auth)/sign-up" title="Start registration again"/>}
   </AuthPage>;
 }

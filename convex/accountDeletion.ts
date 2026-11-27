@@ -20,14 +20,16 @@ export const begin = internalMutation({ args: { owner: v.string(), clerkUserId: 
 export const job = internalQuery({ args: { jobId: v.id('deletionJobs') }, handler: (ctx, { jobId }) => ctx.db.get(jobId) });
 export const current = query({ args: {}, handler: async ctx => {
   const identity = await ctx.auth.getUserIdentity();
-  if (!identity) throw Error('Authentication required');
+  if (!identity) return null;
   const job = await ctx.db.query('deletionJobs').withIndex('by_owner', q => q.eq('owner', identity.tokenIdentifier)).first();
   return job ? { receipt: job.receipt, stage: job.stage } : null;
 } });
 export const status = query({ args: { receipt: v.string() }, handler: async (ctx, { receipt }) => {
   if (receipt.length < 60 || receipt.length > 100) return null;
   const identity = await ctx.auth.getUserIdentity();
-  if (!identity) throw Error('Authentication required');
+  // Clerk may invalidate the session before the device sees completion.
+  // Never expose stage or service detail without authenticated ownership.
+  if (!identity) return null;
   const job = await ctx.db.query('deletionJobs').withIndex('by_receipt', q => q.eq('receipt', receipt)).first();
   if (!job || job.owner !== identity.tokenIdentifier) return null;
   return { stage: job.stage, errorCategory: job.errorCategory ?? null, completedAt: job.completedAt ?? null };

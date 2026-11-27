@@ -135,8 +135,9 @@ describe('final onboarding legal acknowledgment', () => {
   const legal = source('src/ui/LegalAgreements.tsx');
   it('sits on the final step, unchecked by default, and gates Continue', () => {
     expect(onboarding).toContain('const [legalAccepted, setLegalAccepted] = useState(false)');
-    expect(onboarding).toContain('{step === 3 && <Card><LegalAgreementChoice checked={legalAccepted} onChange={setLegalAccepted}/></Card>}');
-    expect(onboarding).toContain('disabled={busy || (step === 3 && !legalAccepted)}');
+    expect(onboarding).toContain('<Card><LegalAgreementChoice checked={legalAccepted} onChange={setLegalAccepted}/></Card>');
+    expect(onboarding).toContain('disabled={step === 3 ? !ready : busy || ageBlocked}');
+    expect(onboarding).toContain('canBeginProfile(legalAccepted, busy)');
   });
   it('persists versions through the existing server and local flow before creating the profile', () => {
     const accept = onboarding.indexOf('await acceptEligibility({'), create = onboarding.indexOf('await repo.createProfile(profile)');
@@ -144,7 +145,7 @@ describe('final onboarding legal acknowledgment', () => {
     expect(accept).toBeGreaterThan(-1);
     expect(create).toBeGreaterThan(accept);
     expect(onboarding).toContain("await repo.setPreference('terms_accepted_version', TERMS_VERSION)");
-    expect(onboarding).toContain('if (age !== null && age < 18)');
+    expect(onboarding).toContain("if (birthStatus !== 'adult') return;");
   });
   it('uses the requested copy with separate Terms and Privacy links', () => {
     expect(legal).toContain("I have read and agree to the <Text accessibilityRole=\"link\" onPress={() => openLegal(TERMS_URL)}");

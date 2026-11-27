@@ -9,7 +9,8 @@ import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 import { Text } from './LocalizedText';
 import { AuthError } from './auth';
-import { colors, fonts, brand } from './theme';
+import Svg, { Path } from 'react-native-svg';
+import { colors, fonts } from './theme';
 import { useVoltTheme } from './VoltThemeProvider';
 import { appleOAuthMessage, googleOAuthMessage, googleOAuthOutcome, oauthOutcome } from '../core/oauthErrors';
 import { authDiagnostic, runtimeSignals } from '../core/runtime';
@@ -24,14 +25,23 @@ WebBrowser.maybeCompleteAuthSession();
 
 function SocialButton({ provider, enabled, busy, onPress }: { provider: 'google' | 'apple'; enabled: boolean; busy: boolean; onPress: () => void }) {
   const label = `Continue with ${provider === 'google' ? 'Google' : 'Apple'}`;
-  // Volt: Apple is the inverted ink pill (navy on Shore, ice on Abyss); Google is the outlined surface pill.
-  const appleBackground = colors.text, appleInk = colors.light ? '#FFFFFF' : brand.ink;
-  return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled: busy || !enabled }} disabled={busy || !enabled} onPress={onPress} style={({ pressed }) => ({ minHeight: 52, borderWidth: provider === 'google' ? 1.5 : 0, borderColor: colors.borderStrong, borderRadius: 999, backgroundColor: provider === 'apple' ? appleBackground : colors.c8, flexDirection: 'row', gap: 12, alignItems: 'center', justifyContent: 'center', opacity: enabled ? 1 : .5, transform: [{ scale: pressed ? 0.98 : 1 }] })}>
-    <Ionicons name={provider === 'google' ? 'logo-google' : 'logo-apple'} size={20} color={provider === 'google' ? '#4285F4' : appleInk}/><Text style={{ color: provider === 'google' ? colors.text : appleInk, fontSize: 15.5, fontFamily: fonts.bold }}>{busy ? 'Connecting…' : label}</Text>
+  // Brand-recognisable buttons in every theme: white Google pill, black Apple pill.
+  const googleInk = '#1F2937';
+  return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled: busy || !enabled }} disabled={busy || !enabled} onPress={onPress} style={({ pressed }) => ({ minHeight: 54, borderWidth: provider === 'google' ? 1.5 : 1, borderColor: provider === 'google' ? colors.borderStrong : colors.light ? '#000000' : colors.borderStrong, borderRadius: 999, backgroundColor: provider === 'apple' ? '#000000' : '#FFFFFF', flexDirection: 'row', gap: 12, alignItems: 'center', justifyContent: 'center', opacity: enabled ? 1 : .5, transform: [{ scale: pressed ? 0.98 : 1 }] })}>
+    {provider === 'google' ? <GoogleLogo/> : <Ionicons name="logo-apple" size={21} color="#FFFFFF"/>}<Text style={{ color: provider === 'google' ? googleInk : '#FFFFFF', fontSize: 15.5, fontFamily: fonts.bold }}>{busy ? 'Connecting…' : label}</Text>
   </Pressable>;
 }
 
-export function SocialAuth({ legalAccepted: externalLegal, onLegalChange }: { legalAccepted?: boolean; onLegalChange?: (checked: boolean) => void } = {}) {
+function GoogleLogo() {
+  return <Svg width={20} height={20} viewBox="0 0 48 48" accessible={false}>
+    <Path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+    <Path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+    <Path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+    <Path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+  </Svg>;
+}
+
+export function SocialAuth({ legalAccepted: externalLegal, onLegalChange, showLegal = true }: { legalAccepted?: boolean; onLegalChange?: (checked: boolean) => void; showLegal?: boolean } = {}) {
   useVoltTheme();
   const { startSSOFlow } = useSSO();
   const { startAppleAuthenticationFlow } = useSignInWithApple();
@@ -137,7 +147,7 @@ export function SocialAuth({ legalAccepted: externalLegal, onLegalChange }: { le
     } finally { inFlight.current = false; setBusy(null); }
   }
   return <View style={{ gap: 10 }}>
-    <SignupLegalChoice checked={legalAccepted} onChange={setLegalAccepted}/>
+    {showLegal && <SignupLegalChoice checked={legalAccepted} onChange={setLegalAccepted}/>}
     {(Platform.OS === 'android' || Platform.OS === 'ios') && <SocialButton provider="google" enabled={legalAccepted && canStartGoogleOAuth(runtime.kind, busy !== null, clerkConfigured)} busy={busy === 'google'} onPress={() => void start('google')}/>}
     {applePresentation === 'browser' && <SocialButton provider="apple" enabled={legalAccepted && busy === null} busy={busy === 'apple'} onPress={() => void start('apple')}/>}
     {applePresentation === 'native' && <AppleAuthentication.AppleAuthenticationButton buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE} buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK} cornerRadius={28} style={{ height: 56, width: '100%', opacity: legalAccepted ? 1 : .5 }} onPress={() => void start('apple')}/>}

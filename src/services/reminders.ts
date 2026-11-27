@@ -8,6 +8,8 @@ import { desiredReminders } from '../core/reminderDefinitions';
 import { localize } from '../core/i18n';
 import { db, getLocalAccount, repo } from '../data/db';
 import { reconcileScheduledReminders } from './reminderPlanner';
+import { runtimeSignals } from '../core/runtime';
+import { reportFailure } from '../core/monitoring';
 export { desiredReminders } from '../core/reminderDefinitions';
 
 Notifications.setNotificationHandler({
@@ -37,11 +39,24 @@ async function todaysHabitsComplete() {
 }
 
 export async function requestReminderPermission(language: Language = 'en') {
-  if (Platform.OS === 'android') await Notifications.setNotificationChannelAsync('reminders', { name: localize('Reminders', language), importance: AndroidImportance.DEFAULT });
+  if (Platform.OS === 'android') await ensureAndroidReminderChannel(language);
   const current = await Notifications.getPermissionsAsync();
   if (current.granted || current.ios?.status === IosAuthorizationStatus.PROVISIONAL) return true;
   const requested = await Notifications.requestPermissionsAsync();
   return requested.granted || requested.ios?.status === IosAuthorizationStatus.PROVISIONAL;
+}
+
+async function ensureAndroidReminderChannel(language: Language) {
+  const expoGo = runtimeSignals().kind === 'expo-go';
+  try {
+    const channel = await Notifications.setNotificationChannelAsync('reminders', { name: localize('Reminders', language), importance: AndroidImportance.DEFAULT });
+    if (channel?.importance === AndroidImportance.NONE) throw Error('Notification channel is disabled in Android settings. Enable Reminders for Cubyfit, then try again.');
+  } catch (cause) {
+    reportFailure('reminder-channel', cause);
+    if (cause instanceof Error && cause.message.startsWith('Notification channel is disabled')) throw cause;
+    if (expoGo) throw Error('Expo Go could not set up Android reminders on this device. Open Cubyfit in a Development build and try again. Your habit has not been changed.');
+    throw Error('Android could not set up reminders. The installed Development Client may need a new APK with the current Expo Notifications module. Your habit has not been changed.');
+  }
 }
 
 let reconcileTail: Promise<void> = Promise.resolve();
@@ -76,8 +91,13 @@ async function reconcileRemindersNow(account: string | null) {
 
   const permitted = permission.granted || permission.ios?.status === IosAuthorizationStatus.PROVISIONAL;
   const desired = permitted ? desiredReminders(habits, preferences, dayKey(), Platform.OS, profile?.language ?? 'en') : [];
-  if (Platform.OS === 'android' && desired.length) {
-    await Notifications.setNotificationChannelAsync('reminders', { name: localize('Reminders', profile?.language ?? 'en'), importance: AndroidImportance.DEFAULT });
+  const existingByKey = new Map(existing.map(row => [row.key, row]));
+  const needsNewSchedule = desired.some(reminder => {
+    const prior = existingByKey.get(reminder.key);
+    return !prior || prior.config !== reminder.config || !scheduledIds.has(prior.notification_id);
+  });
+  if (Platform.OS === 'android' && needsNewSchedule) {
+    await ensureAndroidReminderChannel(profile?.language ?? 'en');
   }
 
   await reconcileScheduledReminders(desired, existing, scheduledIds, {

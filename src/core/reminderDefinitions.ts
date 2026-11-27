@@ -20,7 +20,9 @@ export function desiredReminders(habits: Habit[], preferences: Preference[], tod
     for (const time of reminderTimes(habit)) {
       const [hour, minute] = time.split(':').map(Number);
       const definition = { title: localize(`Time for ${habit.name}`, language), body: localize('One small step counts.', language), hour, minute, habitId: habit.id };
-      if (habit.frequency === 'days') for (const day of [...new Set(habit.days.split(',').map(Number))].filter(value => Number.isInteger(value) && value >= 0 && value <= 6)) add({ ...definition, key: `habit:${habit.id}:${time}:${day}`, weekday: day + 1 });
+      const days = habit.frequency === 'quota' && habit.weekly_target === 3 ? [1, 3, 5]
+        : habit.frequency === 'days' ? [...new Set(habit.days.split(',').map(Number))].filter(value => Number.isInteger(value) && value >= 0 && value <= 6) : null;
+      if (days) for (const day of days) add({ ...definition, key: `habit:${habit.id}:${time}:${day}`, weekday: day + 1 });
       else add({ ...definition, key: `habit:${habit.id}:${time}` });
     }
   }

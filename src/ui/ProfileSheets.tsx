@@ -209,11 +209,14 @@ export function NotificationsSheet({ onChanged }: { onChanged: () => void }) {
     setPending(kind);
     try {
       if (on && !(await requestReminderPermission(language))) { notify('Notifications are off', 'Allow notifications for this app in your device settings, then try again.'); return; }
-      await repo.setPreference(`${kind}_reminders`, on ? 'on' : 'off');
-      const next = new Map(prefs).set(`${kind}_reminders`, on ? 'on' : 'off');
+      const key = `${kind}_reminders`;
+      const previous = prefs.get(key) ?? 'off';
+      await repo.setPreference(key, on ? 'on' : 'off');
+      const next = new Map(prefs).set(key, on ? 'on' : 'off');
       if (on && kind !== 'habit' && !prefs.get(`${kind}_time`)) { await repo.setPreference(`${kind}_time`, reminderDefaults[kind]); next.set(`${kind}_time`, reminderDefaults[kind]); }
+      try { await reconcileReminders(); }
+      catch (cause) { await repo.setPreference(key, previous); throw cause; }
       setPrefs(next);
-      await reconcileReminders();
       changed(); onChanged();
     } catch (error) { message(error); }
     finally { setPending(null); }

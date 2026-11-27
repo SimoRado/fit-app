@@ -19,7 +19,7 @@ describe('Clerk Apple authentication readiness', () => {
     const socialAuth = readFileSync(join(process.cwd(), 'src/ui/SocialAuth.tsx'), 'utf8');
     expect(socialAuth).toContain("applePresentation === 'native' && <AppleAuthentication.AppleAuthenticationButton");
     expect(socialAuth).toContain("applePresentation === 'unavailable' && <SocialButton provider=\"apple\" enabled={false}");
-    for (const screen of ['sign-in.tsx', 'sign-up.tsx']) {
+    for (const screen of ['welcome.tsx']) {
       expect(readFileSync(join(process.cwd(), 'src/app/(auth)', screen), 'utf8')).toContain('<SocialAuth');
     }
   });
@@ -60,8 +60,8 @@ describe('Clerk Apple authentication readiness', () => {
     expect(socialAuth).toContain('startSSOFlow({ strategy:');
     expect(socialAuth).toContain('redirectUrl: redirect!.url');
     expect(googleRedirect('betterday', options => options.native).url).toBe('betterday://oauth-callback');
-    for (const screen of ['sign-in.tsx', 'sign-up.tsx']) {
-      expect(readFileSync(join(process.cwd(), 'src/app/(auth)', screen), 'utf8')).toContain('OR USE EMAIL');
+    for (const screen of ['welcome.tsx']) {
+      expect(readFileSync(join(process.cwd(), 'src/app/(auth)', screen), 'utf8')).toContain('<OrDivider/>');
     }
   });
 

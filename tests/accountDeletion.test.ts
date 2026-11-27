@@ -37,6 +37,8 @@ describe('account deletion authorization and cleanup', () => {
     expect(repeated).toEqual(started);
     await expect(t.mutation(internal.accountDeletion.begin, { owner, clerkUserId: 'user_B', receipt })).rejects.toThrow('Deletion target mismatch');
     await expect(alice.query(api.weights.history, {})).rejects.toThrow('Account deletion in progress');
+    await expect(alice.query(api.eligibility.current, {})).rejects.toThrow('Account deletion in progress');
+    expect(await alice.query(api.accountDeletion.current, {})).toEqual(started);
     await expect(alice.mutation(api.weights.save, { ...entry, kg: 90 })).rejects.toThrow('Account deletion in progress');
     await expect(alice.mutation(api.sync.apply, { kind: 'weights', clientId: entry.clientId, payload: JSON.stringify(entry), expectedRevision: 1, operationId: 'e'.repeat(32) })).rejects.toThrow('Account deletion in progress');
     expect(await bob.query(api.weights.history, {})).toHaveLength(1);
@@ -50,7 +52,8 @@ describe('account deletion authorization and cleanup', () => {
     expect((await alice.query(api.accountDeletion.status, { receipt }))?.stage).toBe('revenuecat_pending');
     expect(await alice.query(api.accountDeletion.status, { receipt: 'x'.repeat(72) })).toBeNull();
     expect(await bob.query(api.accountDeletion.status, { receipt })).toBeNull();
-    await expect(t.query(api.accountDeletion.status, { receipt })).rejects.toThrow('Authentication required');
+    expect(await t.query(api.accountDeletion.status, { receipt })).toBeNull();
+    expect(await t.query(api.accountDeletion.current, {})).toBeNull();
     expect(await t.query(api.accountDeletion.completionStatus, { receipt })).toBeNull();
     expect(await t.query(api.accountDeletion.completionStatus, { receipt: 'not-a-receipt' })).toBeNull();
     await t.mutation(internal.accountDeletion.fail, { jobId, retryStage: 'revenuecat_pending', errorCategory: 'revenuecat_rate_limit' });
@@ -173,5 +176,6 @@ describe('client deletion errors', () => {
     expect(config.message).toContain('Nothing was deleted');
     expect(deletionFailure(Error('Server Error\nUncaught Error: Recent authentication required'))).toMatchObject({ jobMayExist: false, reverify: true });
     expect(deletionFailure(Error('Network request failed'))).toMatchObject({ jobMayExist: true });
+    expect(deletionFailure(Error('Server Error\nUncaught Error: unexpected job failure'))).toMatchObject({ jobMayExist: true });
   });
 });

@@ -12,6 +12,7 @@ import { convertVolumeQuantity, displayQuantity, fromGrams, primaryUnits, parseQ
 import { meals, parseNumber, portionNutrients, type CalorieDisplay, type Meal, type Nutrients } from '../core/nutrition';
 import { deleteCustomFood, deleteFoodEntry, foodEntryUnit, recentFoods, reusableFoods, saveCustomFood, saveFoodEntry, setCalorieDisplay, type CustomFood, type CustomFoodMeasure, type FoodEntry, type RecentFood, type ReusableFood, type SavedFoodUnit } from '../data/nutrition';
 import { NutritionTargetEditor } from './NutritionTargetEditor';
+import { MacroValuesCard } from './MacroValuesCard';
 import { catalogFoodById, foodCategories, searchFoodCatalog, type CatalogFood } from '../data/foodCatalog';
 import { useApp } from '../state/app';
 import { normalizeLibrarySearchText, rankLibrarySearchResults, SearchRequestGate } from '../core/librarySearch';
@@ -404,7 +405,7 @@ export function FoodSheet({ entry, meal: initialMeal, day: initialDay, close, on
             </View>
           </Reveal>}
         </View>}
-        {preview && <View style={{ flexDirection: 'row', gap: 6 }}>{([['KCAL', preview.kcal], ['P', preview.protein], ['C', preview.carbs], ['F', preview.fat]] as const).map(([label, value]) => <View key={label} style={{ flex: 1, backgroundColor: colors.card, borderRadius: 18, padding: 9 }}><Text style={{ color: colors.muted, fontSize: 10 }}>{label}</Text><Text numberOfLines={1} adjustsFontSizeToFit style={{ color: colors.ink, fontFamily: fonts.displayHeavy, fontSize: 21 }}>{Math.round(value)}</Text></View>)}</View>}
+        {preview && <MacroValuesCard nutrients={preview}/>}
         {selected.catalogId && <Text style={{ color: colors.muted, fontSize: 12 }}>Per 100 g: fiber {selected.fiber ?? 'unknown'} g · sugars {selected.sugar ?? 'unknown'} g · sodium {selected.sodium ?? 'unknown'} mg</Text>}
         {!!selected.missing?.length && <Text accessibilityRole="alert" style={{ color: colors.danger }}>Missing nutrition: {selected.missing.join(', ')}. Enter verified values manually to log this food.</Text>}
         {selected.sourceLabel && <Text style={{ color: colors.muted, fontSize: 11 }}>Source: {selected.sourceUrl ? <Link href={selected.sourceUrl as `https://${string}`} style={{ textDecorationLine: 'underline' }}>{selected.sourceLabel}</Link> : selected.sourceLabel}</Text>}

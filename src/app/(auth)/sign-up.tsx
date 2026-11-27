@@ -1,10 +1,8 @@
 import React, { useState } from 'react';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useSignUp } from '@clerk/expo';
 import { AuthAction, AuthError, AuthField, AuthLink, AuthPage, clerkMessage } from '../../ui/auth';
-import { Text } from '../../ui/LocalizedText';
-import { styles } from '../../ui/components';
-import { SocialAuth } from '../../ui/SocialAuth';
+import { SignupLegalChoice } from '../../ui/LegalAgreements';
 import { authDiagnostic } from '../../core/runtime';
 import { passwordPolicyMessage } from '../../core/passwordPolicy';
 import { PasswordRequirements } from '../../ui/PasswordRequirements';
@@ -12,7 +10,11 @@ import { PasswordRequirements } from '../../ui/PasswordRequirements';
 export default function SignUp() {
   const { signUp } = useSignUp();
   const [email, setEmail] = useState(''), [password, setPassword] = useState(''), [error, setError] = useState(''), [busy, setBusy] = useState(false);
-  const [legalAccepted, setLegalAccepted] = useState(false);
+  const params = useLocalSearchParams<{ legal?: string }>();
+  // The acknowledgment is normally given on Welcome; the box only reappears if this screen is opened without it.
+  const [legalAccepted, setLegalAccepted] = useState(params.legal === '1');
+  const [legalFromWelcome] = useState(params.legal === '1');
+  const goBack = () => router.replace({ pathname: '/(auth)/welcome', params: { mode: 'signup', ...(legalAccepted ? { legal: '1' } : {}) } });
   async function submit() {
     if (busy) return;
     if (!legalAccepted) { setError('Agree to the Terms of Use before creating an account.'); return; }
@@ -31,11 +33,11 @@ export default function SignUp() {
       router.push('/(auth)/verify-email');
     } catch (cause) { authDiagnostic('signup request failed', { stage: 'initiation' }, 'EMAIL'); setError(clerkMessage(cause)); } finally { setBusy(false); }
   }
-  return <AuthPage title="Create your account" detail="For adults 18 and older. Your fitness profile comes after email verification.">
-    <SocialAuth legalAccepted={legalAccepted} onLegalChange={setLegalAccepted}/><Text style={[styles.muted, { textAlign: 'center' }]}>OR USE EMAIL</Text>
+  return <AuthPage title="Create your account" detail="For adults 18 and older. Your fitness profile comes after email verification." onBack={goBack}>
     <AuthField label="Email address" value={email} onChangeText={setEmail} email/>
     <AuthField label="Password" value={password} onChangeText={setPassword} secure/>
     <PasswordRequirements password={password}/>
+    {!legalFromWelcome && <SignupLegalChoice checked={legalAccepted} onChange={setLegalAccepted}/>}
     <AuthError message={error}/><AuthAction title={busy ? 'Creating…' : 'Continue'} onPress={submit} disabled={busy || !legalAccepted}/>
     <AuthLink href="/(auth)/sign-in" title="Already have an account? Sign in"/>
   </AuthPage>;

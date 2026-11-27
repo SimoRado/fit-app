@@ -1,9 +1,32 @@
 import { describe, expect, it, vi } from 'vitest';
 import { NotificationSchedule } from '../src/core/types';
 import { ReminderDefinition, reconcileScheduledReminders } from '../src/services/reminderPlanner';
+import { desiredReminders } from '../src/core/reminderDefinitions';
+import type { Habit } from '../src/core/types';
 
 const reminder = (config = '08:00'): ReminderDefinition => ({
   key: 'motivation', config, title: 'Morning reminder', body: 'One step.', hour: Number(config.slice(0, 2)), minute: Number(config.slice(3)),
+});
+
+describe('habit reminder recurrence', () => {
+  const habit: Habit = { id: 'h', owner_id: 'p', name: 'Walk', description: '', category: 'Body', icon: 'walk', frequency: 'daily', days: '0,1,2,3,4,5,6', weekly_target: 7, start_date: '2026-11-01', archived: 0, reminder_time: '08:30', reminder_enabled: 1, reminder_times: '["08:30"]', created_at: '2026-11-01' };
+  const prefs = [{ key: 'habit_reminders', value: 'on' }];
+  const planned = (row: Habit) => desiredReminders([row], prefs, '2026-11-27', 'android', 'en', 'Africa/Casablanca', 0);
+  it('uses daily and selected weekdays at the chosen local time', () => {
+    expect(planned(habit).map(row => [row.weekday, row.hour, row.minute])).toEqual([[undefined, 8, 30]]);
+    expect(planned({ ...habit, frequency: 'days', days: '1,3,5' }).map(row => row.weekday)).toEqual([2, 4, 6]);
+  });
+  it('schedules a three times weekly goal on Monday, Wednesday and Friday', () => {
+    expect(planned({ ...habit, frequency: 'quota', weekly_target: 3 }).map(row => row.weekday)).toEqual([2, 4, 6]);
+  });
+  it('does not schedule disabled or archived habits', () => {
+    expect(planned({ ...habit, reminder_enabled: 0 })).toEqual([]);
+    expect(planned({ ...habit, archived: 1 })).toEqual([]);
+  });
+  it('changes schedule configuration when local timezone changes', () => {
+    expect(desiredReminders([habit], prefs, '2026-11-27', 'android', 'en', 'Africa/Casablanca', 0)[0].config)
+      .not.toBe(desiredReminders([habit], prefs, '2026-11-27', 'android', 'en', 'Europe/Paris', -60)[0].config);
+  });
 });
 const prior: NotificationSchedule = { key: 'motivation', config: '07:00', notification_id: 'old' };
 

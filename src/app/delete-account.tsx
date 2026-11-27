@@ -1,15 +1,14 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Alert, Linking, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth, useSession } from '@clerk/expo';
 import * as Crypto from 'expo-crypto';
-import { useAction, useMutation, useQuery } from 'convex/react';
+import { useAction } from 'convex/react';
 import { router } from 'expo-router';
 import { api } from '../../convex/_generated/api';
-import { removeLocalAccountData } from '../data/db';
-import { forgetDeletion, pendingDeletions, rememberDeletion } from '../data/pendingDeletion';
+import { forgetDeletion, rememberDeletion } from '../data/pendingDeletion';
+import { blockAccountForDeletion, unblockAccountAfterRejectedDeletion } from '../data/deletionLifecycle';
 import { deletionFailure } from '../core/accountDeletionErrors';
-import { clearAccountReminders } from '../services/reminders';
 import { useSubscription } from '../state/subscriptions';
 import { Button, Card, Field, message, Page, styles } from '../ui/components';
 import { Text } from '../ui/LocalizedText';
@@ -20,34 +19,16 @@ const DELETE_PHRASE = 'DELETE-ACCOUNT';
 const SERVER_CONFIRMATION = 'DELETE';
 
 export default function DeleteAccount() {
-  const { userId, getToken, signOut } = useAuth();
+  const { userId, getToken } = useAuth();
   const { session } = useSession();
   const subscription = useSubscription();
   const request = useAction(api.accountDeletionActions.request);
-  const retry = useMutation(api.accountDeletion.retry);
-  const current = useQuery(api.accountDeletion.current, userId ? {} : 'skip');
   const [confirmation, setConfirmation] = useState('');
   const [code, setCode] = useState('');
   const [verificationReady, setVerificationReady] = useState(false);
   const [verified, setVerified] = useState(false);
-  const [receipt, setReceipt] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
-  const [localDone, setLocalDone] = useState(false);
-  const status = useQuery(api.accountDeletion.status, receipt ? { receipt } : 'skip');
-  useEffect(() => { if (!userId) return; pendingDeletions().then(items => { const pending = items.find(item => item.userId === userId); if (pending) setReceipt(pending.receipt); }).catch(message); }, [userId]);
-  useEffect(() => { if (userId && current?.receipt && !receipt) { setReceipt(current.receipt); void rememberDeletion({ userId, receipt: current.receipt }).catch(message); } }, [userId, current, receipt]);
-  useEffect(() => {
-    if (!userId || !receipt || status?.stage !== 'completed' || localDone) return;
-    setLocalDone(true);
-    void (async () => {
-      await clearAccountReminders();
-      await removeLocalAccountData(userId);
-      await forgetDeletion(userId);
-      try { await signOut(); } catch { /* Clerk may have already invalidated this session. */ }
-      router.replace('/(auth)/welcome');
-    })().catch(error => { setLocalDone(false); message(error); });
-  }, [userId, receipt, status?.stage, localDone, signOut]);
   async function sendCode() {
     if (!session) throw Error('Sign in again before deleting your account.');
     setBusy(true); setNotice('');
@@ -77,16 +58,16 @@ export default function DeleteAccount() {
     try {
       const sessionToken = await getToken({ skipCache: true });
       if (!sessionToken) throw Error('Sign in again before deleting your account.');
-      const requestReceipt = receipt ?? Crypto.randomUUID() + Crypto.randomUUID();
+      const requestReceipt = Crypto.randomUUID() + Crypto.randomUUID();
       await rememberDeletion({ userId, receipt: requestReceipt });
+      // Unmount all normal queries and sync before the server creates the job.
+      blockAccountForDeletion(userId);
       const job = await request({ confirmation: SERVER_CONFIRMATION, sessionToken, receipt: requestReceipt });
-      setReceipt(job.receipt);
-      setNotice('Deletion requested. Cloud cleanup will continue even if you close the app.');
+      if (job.receipt !== requestReceipt) await rememberDeletion({ userId, receipt: job.receipt });
     } catch (error) {
       const failure = deletionFailure(error);
-      // The server rejected the request before creating a job: drop the receipt saved above,
-      // otherwise this page would later report "deletion request not found".
-      if (!failure.jobMayExist) { await forgetDeletion(userId).catch(() => undefined); setReceipt(null); }
+      // Only explicit pre-job validation failures can discard the receipt.
+      if (!failure.jobMayExist) { await forgetDeletion(userId).catch(() => undefined); unblockAccountAfterRejectedDeletion(userId); }
       if (failure.reverify) { setVerified(false); setVerificationReady(false); setCode(''); }
       setNotice(failure.message);
       Alert.alert(failure.title, failure.message);
@@ -106,11 +87,7 @@ export default function DeleteAccount() {
       <Text style={styles.muted}>Deleting your account does not cancel an App Store or Google Play subscription. Cancel any active subscription through your store.</Text>
       {!!managementURL && <Button title="Manage subscription" kind="ghost" onPress={() => { if (managementURL.startsWith('https://')) void Linking.openURL(managementURL).catch(message); }}/>}
     </Card>
-    {receipt ? <Card><Text style={styles.label}>Deletion status</Text><Text style={styles.text}>{status?.stage === 'completed' ? 'Finishing cleanup on this device…' : status?.stage === 'retry_required' ? 'A service needs another attempt. Your account is locked against new cloud writes.' : status === null ? 'The deletion request was not found. Reconnect and submit it again.' : 'Deletion is in progress. Keep the app connected to finish local cleanup.'}</Text>
-      {status?.errorCategory && <Text style={styles.muted}>Service status: {status.errorCategory.replace(/_/g, ' ')}</Text>}
-      {status?.stage === 'retry_required' && <Button title="Retry now" onPress={async () => { await retry({}); }}/>}
-      {status === null && <Button title="Start request again" kind="ghost" onPress={async () => { if (userId) await forgetDeletion(userId); setReceipt(null); setVerified(false); }}/>}
-    </Card> : <Card>
+    <Card>
       <Text style={styles.label}>1 · Type the confirmation phrase</Text>
       <Text style={styles.muted}>{`To continue, type ${DELETE_PHRASE} exactly as shown, in capital letters.`}</Text>
       <TextInput accessibilityLabel={`Type ${DELETE_PHRASE} to confirm`} value={confirmation} onChangeText={setConfirmation} autoCapitalize="characters" autoCorrect={false} autoComplete="off" spellCheck={false} placeholder={DELETE_PHRASE} placeholderTextColor={colors.line3}
@@ -122,7 +99,7 @@ export default function DeleteAccount() {
       {verified && <Text style={styles.muted}>Identity verified.</Text>}
       <Text style={[styles.label, { marginTop: 8 }]}>3 · Delete</Text>
       <Button title="Permanently delete account" kind="danger" disabled={busy || !verified || !phraseOk} onPress={submit}/>
-    </Card>}
+    </Card>
     {!!notice && <Text style={styles.muted}>{notice}</Text>}
     <View><Button title="Keep my account" kind="ghost" onPress={() => router.back()}/></View>
   </Page>;

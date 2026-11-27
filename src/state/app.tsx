@@ -35,7 +35,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     applyMeasurementSystem(parseMeasurementSystem(preferences.find(item => item.key === 'measurement_system')?.value));
     setLegalAccepted(preferences.find(item => item.key === 'terms_accepted_version')?.value === TERMS_VERSION);
     setAgeRejected(preferences.find(item => item.key === 'age_rejected')?.value === 'true');
-    setProfile(next); setLanguage(next?.language ?? 'en'); setRevision(x => x + 1); setReady(true);
+    setProfile(next); setLanguage(current => next?.language ?? current); setRevision(x => x + 1); setReady(true);
   }, [applyAppearance, applyStyle]);
   // Style only changes colours; it never writes profile, sex or fitness data.
   const setStyleMode = useCallback(async (next: StyleMode) => {

@@ -5,6 +5,7 @@ import Purchases, { type CustomerInfo, type PurchasesOffering, type PurchasesPac
 import { reportFailure } from '../core/monitoring';
 import { activeEntitlements, hasPremium, isPurchaseCancelled, subscriptionPackages, visibleCustomerInfo } from '../services/subscriptionLogic';
 import { runtimeSignals } from '../core/runtime';
+import { isAccountDeletionBlocked, useAccountDeletionBlocked } from '../data/deletionLifecycle';
 
 const apiKey = __DEV__ ? process.env.EXPO_PUBLIC_REVENUECAT_TEST_KEY
   : Platform.OS === 'android' ? process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY
@@ -15,8 +16,9 @@ let configured = false;
 let identityQueue: Promise<void> = Promise.resolve();
 function alignIdentity(userId: string) {
   const next = identityQueue.catch(() => undefined).then(async () => {
+    if (isAccountDeletionBlocked(userId)) return;
     if (!configured) { Purchases.configure({ apiKey: apiKey!, appUserID: userId }); configured = true; }
-    else if (await Purchases.getAppUserID() !== userId) await Purchases.logIn(userId);
+    else if (await Purchases.getAppUserID() !== userId && !isAccountDeletionBlocked(userId)) await Purchases.logIn(userId);
   });
   identityQueue = next;
   return next;
@@ -36,6 +38,7 @@ function errorText(error: unknown) { return error instanceof Error ? error.messa
 
 export function SubscriptionProvider({ children }: { children: React.ReactNode }) {
   const { isLoaded, userId } = useAuth();
+  const deleting = useAccountDeletionBlocked(userId);
   const [ready, setReady] = useState(false);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -51,7 +54,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   useEffect(() => {
     const seq = ++generation.current;
     setReady(false); setInfo(null); setOffering(null); setError(null); setIdentifiedUser(null);
-    if (!isLoaded || !userId) { currentUser.current = null; return; }
+    if (!isLoaded || !userId || deleting) { currentUser.current = null; return; }
     if (!apiKey) { setError(__DEV__ ? 'RevenueCat Test Store key is missing.' : 'RevenueCat production key is missing.'); return; }
     if (__DEV__ && !apiKey.startsWith('test_')) { setError('Only a RevenueCat Test Store public key is allowed here.'); return; }
     if (!__DEV__ && apiKey.startsWith('test_')) { setError('RevenueCat Test Store is disabled in release builds.'); return; }
@@ -89,7 +92,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     };
     void start();
     return () => { generation.current = seq + 1; currentUser.current = null; if (listener) Purchases.removeCustomerInfoUpdateListener(listener); };
-  }, [isLoaded, userId, retry]);
+  }, [isLoaded, userId, retry, deleting]);
 
   async function assertIdentity() {
     if (!ready || !userId || currentUser.current !== userId || await Purchases.getAppUserID() !== userId) throw Error('Subscription account is still changing. Please retry.');

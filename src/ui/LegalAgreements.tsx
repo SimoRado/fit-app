@@ -41,15 +41,19 @@ export function LegalAgreementChoice({ checked, onChange }: { checked: boolean; 
   </View>;
 }
 
+/**
+ * Compact sign-up acknowledgment. The links open the documents without needing the box checked;
+ * the box itself only unlocks account creation. Formal acceptance (versions, timestamp) is still
+ * recorded at the final onboarding step through `eligibility.accept`.
+ */
 export function SignupLegalChoice({ checked, onChange }: { checked: boolean; onChange: (checked: boolean) => void }) {
-  return <View style={{ gap: 5 }}>
-    <Pressable accessibilityRole="checkbox" accessibilityState={{ checked }} onPress={() => onChange(!checked)} style={{ flexDirection: 'row', alignItems: 'center', gap: 9, minHeight: 44 }}>
-      <Text style={{ color: colors.accent, fontSize: 22 }}>{checked ? '☑' : '☐'}</Text>
-      <Text style={{ color: colors.text, fontSize: 12.5, flex: 1 }}>I agree to the Terms of Use and acknowledge the Privacy Policy.</Text>
-    </Pressable>
-    <View style={{ flexDirection: 'row', gap: 18, marginLeft: 30 }}>
-      <Link href="https://cubyfit.app/terms" accessibilityRole="link" style={linkStyle}>Terms of Use</Link>
-      <Link href="https://cubyfit.app/privacy" accessibilityRole="link" style={linkStyle}>Privacy Policy</Link>
+  const inline = { color: colors.text, fontFamily: fonts.bold, textDecorationLine: 'underline' as const };
+  return <Pressable accessibilityRole="checkbox" accessibilityState={{ checked }} accessibilityLabel="I agree to the Terms of Use and acknowledge the Privacy Policy" hitSlop={4} onPress={() => onChange(!checked)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 44 }}>
+    <View style={{ width: 24, height: 24, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: checked ? colors.g1 : 'transparent', borderWidth: checked ? 0 : 2, borderColor: colors.borderStrong }}>
+      {checked && <Ionicons name="checkmark" size={16} color={colors.candyInk}/>}
     </View>
-  </View>;
+    <Text style={{ flex: 1, color: colors.muted, fontFamily: fonts.medium, fontSize: 12, lineHeight: 18 }}>
+      I agree to the <Text accessibilityRole="link" onPress={() => openLegal(TERMS_URL)} style={inline}>Terms of Use</Text> and acknowledge the <Text accessibilityRole="link" onPress={() => openLegal(PRIVACY_URL)} style={inline}>Privacy Policy</Text>.
+    </Text>
+  </Pressable>;
 }

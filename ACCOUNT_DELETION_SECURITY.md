@@ -2,7 +2,7 @@
 
 ## Scope
 
-Fitapp's Convex data is owned by the authenticated Clerk identity's `tokenIdentifier` (`issuer` plus `subject`). Every private public query and mutation uses this owner and now rejects requests once that owner has a deletion job. The public `health.ping` returns no personal data. `identity.current` returns only the caller's identity. The receipt-based deletion status exposes only the stage and a nonsensitive error category to a holder of an unguessable receipt.
+Fitapp's Convex data is owned by the authenticated Clerk identity's `tokenIdentifier` (`issuer` plus `subject`). Every private public query and mutation uses this owner and now rejects requests once that owner has a deletion job. The public `health.ping` returns no personal data. `identity.current` returns only the caller's identity. Detailed deletion status requires both an authenticated owner and its unguessable receipt; it exposes only the stage and a nonsensitive error category. The unauthenticated completion endpoint exposes only a completed bit.
 
 ## Cloud inventory
 
@@ -15,6 +15,8 @@ The client requires the literal `DELETE` and Clerk email-code reverification. A 
 A scheduled internal action repeatedly removes cloud records. It then searches RevenueCat API v2 for the Clerk user ID, verifies the matching alias set, requests customer deletion, and confirms a subsequent GET returns 404. It refuses any customer with another nonanonymous alias, leaving the job for review. Then it deletes the Clerk user through the Backend API. Missing customers and users are treated idempotently. Temporary failures retain the job, record a safe error category, and schedule exponential retry. Completion receipts are retained for 30 days to allow a returning device to clean up its SQLite file, then expire. Incomplete jobs are retained until resolved.
 
 The current device stores its receipt in Expo SecureStore, checks the public status on reopening, closes and removes only the matching account's SQLite database, and signs out that account. A disconnected device cannot be erased remotely; it retries status on reconnection. Its stale cloud writes remain blocked by the server.
+
+The app checks for an existing job before mounting normal account providers, and unmounts them before submitting a new deletion request. Detailed `accountDeletion.status` and `accountDeletion.current` return no data when Clerk authentication disappears; the former still checks authenticated owner before revealing stage or error category. An independent, unauthenticated client polls only the minimal `completionStatus` result so local cleanup can finish after Clerk deletes the identity.
 
 ## Development configuration required
 
